@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: vidsave-backend
+    runtime: python
+    buildCommand: "./render-build.sh"
+    startCommand: "gunicorn --chdir backend --workers 2 --threads 4 --timeout 300 server:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: PATH
+        value: "/opt/render/project/src/bin:${PATH}"
+      - key: VIDSAVE_IMPERSONATE
+        value: "chrome"
+    autoDeploy: true
