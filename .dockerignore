@@ -1,0 +1,12 @@
+.git
+.dart_tool
+android
+ios
+linux
+macos
+windows
+web
+test
+docs
+.vscode
+.idea
