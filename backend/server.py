@@ -1,0 +1,1055 @@
+"""yt-dlp based resolver/downloader backend for the VidSave Flutter app.
+
+Why this exists
+---------------
+The Flutter app cannot run yt-dlp itself (no Python runtime on Android/iOS),
+and modern services like YouTube serve video and audio as *separate* DASH
+streams that must be merged (and transcoded to mp3 for audio mode) with ffmpeg.
+So we run yt-dlp here, on a server you control, and expose two small endpoints:
+
+    POST /api/resolve   -> { "url": "/download?job=<id>", "filename": "...", ... }
+    GET  /download      -> streams a resolved upstream URL or processed file
+
+Direct media URLs are proxied through the job endpoint and are never accepted
+as arbitrary client-provided download targets.
+
+Run locally:
+    pip install -r backend/requirements.txt
+    # ffmpeg must be on PATH for merging/mp3 conversion
+    python backend/server.py            # listens on 0.0.0.0:8787
+
+Point the Flutter app at it:
+    RemoteMediaResolver(backend: YtDlpBackend(uri: Uri.parse('http://<host>:8787')))
+"""
+
+from __future__ import annotations
+
+import hmac
+import json
+import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+from dataclasses import dataclass, field
+from typing import Any
+
+from flask import Flask, Response, jsonify, request, send_file
+
+try:
+    from .stream_proxy import stream_upstream_response, validate_public_http_url
+except ImportError:  # Support running as `python backend/server.py`.
+    from stream_proxy import stream_upstream_response, validate_public_http_url
+
+app = Flask(__name__)
+
+# --- configuration ---------------------------------------------------------
+
+# Optional shared secret. When set, clients must send it as `X-Api-Key`.
+API_KEY = os.environ.get("VIDSAVE_API_KEY", "").strip()
+
+# Directory where yt-dlp writes merged/transcoded output.
+WORK_DIR = os.environ.get("VIDSAVE_WORK_DIR") or os.path.join(
+    tempfile.gettempdir(), "vidsave"
+)
+os.makedirs(WORK_DIR, exist_ok=True)
+
+# yt-dlp can be invoked as a module or as a standalone binary.
+YTDLP_CMD = os.environ.get("VIDSAVE_YTDLP", "").strip() or None
+FFMPEG_PATH = shutil.which("ffmpeg")
+
+# Browser impersonation support (requires curl_cffi)
+try:
+    import curl_cffi  # noqa: F401
+    HAS_CURL_CFFI = True
+except ImportError:
+    HAS_CURL_CFFI = False
+
+# Modern browser User-Agent to match impersonation targets and bypass bot checks
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/133.0.0.0 Safari/537.36"
+)
+UA = BROWSER_UA
+
+# Impersonation target: 'chrome' or 'firefox'
+IMPERSONATE_TARGET = os.environ.get("VIDSAVE_IMPERSONATE", "chrome").strip() or "chrome"
+
+
+def _ytdlp_prefix() -> list[str]:
+    if YTDLP_CMD:
+        return YTDLP_CMD.split()
+    return [sys.executable, "-m", "yt_dlp"]
+
+
+def _auto_update_ytdlp_background() -> None:
+    """Check for and apply yt-dlp updates in a low-priority background thread."""
+    def _updater() -> None:
+        try:
+            logging.info("Checking for yt-dlp and curl-cffi updates...")
+            cmd = [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                "yt-dlp",
+                "curl-cffi",
+                "--no-warn-script-location",
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if res.returncode == 0:
+                logging.info("yt-dlp / curl-cffi update check completed successfully.")
+            else:
+                logging.warning("Update check exited with status %d: %s", res.returncode, res.stderr.strip())
+        except Exception as err:
+            logging.warning("Background update encountered an issue: %s", err)
+
+    t = threading.Thread(target=_updater, daemon=True, name="ytdlp-auto-updater")
+    t.start()
+
+
+# --- smart input handling --------------------------------------------------
+#
+# The UI text box accepts BOTH a pasted media URL and a plain search phrase
+# ("Sagopa Kajmer", "komik videolar"). We decide here which one we got, and for
+# plain text we hand yt-dlp the pseudo-URL `ytsearch1:<query>`, which makes it
+# search YouTube and resolve the single most relevant hit.
+
+_URL_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+_YTSEARCH_PREFIX_RE = re.compile(r"^yt(search|search\d*|playlist):", re.I)
+
+
+def _looks_like_url(value: str) -> bool:
+    """True when the input should be treated as a direct media/URL target."""
+    candidate = value.strip()
+    if not candidate:
+        return False
+    if _URL_SCHEME_RE.match(candidate):
+        return True
+    # Scheme-less forms people paste in practice: youtu.be/ID, www.site.com/x,
+    # or a bare host with a path (example.com/watch?v=...).
+    return bool(
+        re.match(r"^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+([/?#].*)?$", candidate, re.I)
+        and "." in candidate.split("/")[0]
+    )
+
+
+def resolve_source_input(raw: str) -> tuple[str, str]:
+    """Turn user input into the `source` string yt-dlp should receive.
+
+    Returns a ``(source, mode)`` pair where ``mode`` is ``"url"`` when the input
+    was recognised as a URL and ``"search"`` when it was treated as a search
+    query. Plain text is wrapped as ``ytsearch1:<query>`` so yt-dlp finds the top
+    YouTube match; anything already looking like a URL is passed through intact.
+    """
+    value = (raw or "").strip()
+    if not value:
+        raise ValueError("empty")
+    # Already a ytsearch/ytplaylist pseudo-URL: respect the caller's choice.
+    if _YTSEARCH_PREFIX_RE.match(value):
+        return value, "search"
+    if _looks_like_url(value):
+        return value, "url"
+    # Plain text -> YouTube search, first (most relevant) result.
+    return f"ytsearch1:{value}", "search"
+
+
+def _is_search_source(value: str) -> bool:
+    """True when `value` is a yt-dlp search pseudo-URL (not a real URL).
+
+    yt-dlp treats a `ytsearch:` result as a playlist, so callers must NOT pass
+    `--no-playlist` for these or the download resolves to nothing.
+    """
+    return bool(_YTSEARCH_PREFIX_RE.match((value or "").strip()))
+
+
+_SEARCH_EMPTY_MESSAGE = "Arama için sonuç bulunamadı, başka kelimeler deneyin."
+
+
+def _search_has_result(info: dict[str, Any]) -> bool:
+    """True when a `ytsearch:` lookup actually returned a usable entry.
+
+    `_run_json` unwraps the playlist wrapper, so `info` here is normally the flat
+    video object. An empty dict means the query matched nothing.
+    """
+    if not isinstance(info, dict) or not info:
+        return False
+    # A flat video result exposes a direct `url` and/or a `formats` list.
+    if info.get("url") or info.get("formats"):
+        return True
+    # Defensive: handle a still-wrapped playlist just in case.
+    if info.get("_type") == "playlist":
+        entries = info.get("entries") or []
+        return any(isinstance(entry, dict) for entry in entries)
+    return bool(info.get("id"))
+
+
+# --- job registry ----------------------------------------------------------
+#
+# A resolve call may need to download + merge + transcode, which takes longer
+# than a mobile client is willing to wait. We therefore run the heavy work in a
+# background thread, hand the client a job id, and let it poll `/api/resolve`
+# or hit `/download?job=<id>` once the job reports `ready`.
+
+
+@dataclass
+class Job:
+    id: str
+    kind: str  # "video" | "audio"
+    source: str
+    mode: str = "url"  # "url" | "search" - how the user input was interpreted
+    status: str = "pending"  # pending | running | ready | error
+    progress: float = 0.0
+    filename: str | None = None
+    filepath: str | None = None
+    direct_url: str | None = None
+    title: str | None = None
+    ext: str | None = None
+    mime: str | None = None
+    error: str | None = None
+    # Requested video height in pixels (480/720/1080/...); None = "en iyi".
+    height: int | None = None
+    # When True the job only probes the link: no download, just title+options.
+    info_only: bool = False
+    duration: int | None = None
+    uploader: str | None = None
+    qualities: list[dict[str, Any]] = field(default_factory=list)
+    created_at: float = field(default_factory=time.time)
+
+
+_JOBS: dict[str, Job] = {}
+_JOBS_LOCK = threading.Lock()
+
+
+def _prune_jobs(max_age_seconds: int = 3600) -> None:
+    cutoff = time.time() - max_age_seconds
+    with _JOBS_LOCK:
+        for job_id in [j.id for j in _JOBS.values() if j.created_at < cutoff]:
+            job = _JOBS.pop(job_id, None)
+            if job and job.filepath and os.path.exists(job.filepath):
+                try:
+                    os.remove(job.filepath)
+                except OSError:
+                    pass
+
+
+def _new_job(
+    kind: str,
+    source: str,
+    mode: str = "url",
+    *,
+    height: int | None = None,
+    info_only: bool = False,
+) -> Job:
+    job = Job(
+        id=uuid.uuid4().hex,
+        kind=kind,
+        source=source,
+        mode=mode,
+        height=height,
+        info_only=info_only,
+    )
+    with _JOBS_LOCK:
+        _JOBS[job.id] = job
+    return job
+
+
+# --- quality / info helpers -------------------------------------------------
+
+
+def _truthy(value: Any) -> bool:
+    """Lenient boolean parsing for JSON bodies (true, "true", 1, "1")."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _parse_height(value: Any) -> int | None:
+    """Normalize a requested video height; ``None`` means 'best available'.
+
+    Raises ``ValueError`` for a non-numeric or out-of-range value so the API can
+    answer with ``quality.invalid`` instead of silently ignoring the request.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise ValueError("not a number")
+    try:
+        height = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("not a number") from exc
+    if height <= 0 or height > 4320:
+        raise ValueError("out of range")
+    return height
+
+
+def _available_qualities(info: dict[str, Any]) -> list[dict[str, Any]]:
+    """Distinct video heights the source offers, tallest first.
+
+    ``[None]`` is prepended by the client as "en iyi kalite", so this only lists
+    real, pickable heights plus the size of the file we would deliver for each.
+    """
+    best: dict[int, dict[str, Any]] = {}
+    for fmt in info.get("formats") or []:
+        if not isinstance(fmt, dict):
+            continue
+        if (fmt.get("vcodec") or "none") == "none":
+            continue
+        height = fmt.get("height")
+        if not isinstance(height, int) or height <= 0:
+            continue
+        size = _format_size(fmt)
+        current = best.get(height)
+        if current is None or size > current["sizeInBytes"]:
+            best[height] = {
+                "height": height,
+                "label": f"{height}p",
+                "sizeInBytes": size,
+                "fps": fmt.get("fps"),
+                "ext": fmt.get("ext"),
+            }
+    return [best[height] for height in sorted(best, reverse=True)]
+
+
+def _format_size(fmt: dict[str, Any]) -> int:
+    size = fmt.get("filesize")
+    if not isinstance(size, int):
+        approx = fmt.get("filesize_approx")
+        size = approx if isinstance(approx, int) else 0
+    return size
+
+
+def _info_payload(job: Job, info: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": "info",
+        "job": job.id,
+        "kind": job.kind,
+        "inputMode": job.mode,
+        "title": info.get("title") or job.title,
+        "duration": info.get("duration") if isinstance(info.get("duration"), int) else None,
+        "uploader": info.get("uploader"),
+        "thumbnail": info.get("thumbnail"),
+        "qualities": _available_qualities(info),
+    }
+
+
+# --- yt-dlp invocation -----------------------------------------------------
+
+
+def _format_selector(kind: str, height: int | None = None) -> str:
+    """Pick the best single file we can hand over as a *direct* URL.
+
+    Preference order matters: we want a progressive (video+audio in one file)
+    stream first, because then the app can download straight from the CDN with
+    no server-side merge or ffmpeg. Falling back to merged streams means the
+    server must run ffmpeg, so we only do that when necessary.
+
+    ``height`` is the resolution the user explicitly picked in the app. ``None``
+    means "best quality", which we cap at 1080p: most videos only offer separate
+    DASH streams, so an uncapped `best` would pull a 4K/8K file (hundreds of MB)
+    and merge it server-side, which looks like a hang to the app.
+    """
+    if kind == "audio":
+        # Audio-only first. Prefer m4a so a progressive single file is already
+        # mp3-friendly; only fall back to merged video+audio when nothing else
+        # exists (that path needs ffmpeg to extract the audio track).
+        return "bestaudio[ext=m4a]/bestaudio/best"
+
+    cap = f"[height<={height}]" if height else "[height<=1080]"
+    # A picked 1080p falls back to *lower* resolutions when 1080p is missing;
+    # any other pick stays strictly at the requested height.
+    lower = "[height<=1080]" if (height or 1080) == 1080 else cap
+    return (
+        f"best[ext=mp4][vcodec!=none][acodec!=none]{cap}/"
+        f"best[vcodec!=none][acodec!=none]{cap}/"
+        f"bv*[ext=mp4]{cap}+ba[ext=m4a]/b[ext=mp4]{lower}/"
+        f"bv*{cap}+ba/b{lower}/bv*+ba/b"
+    )
+
+
+def _base_args(*, allow_playlist_items: bool = False) -> list[str]:
+    """Shared yt-dlp flags, tuned for the fastest possible transfer.
+
+    ``allow_playlist_items`` must be True for ``ytsearch:`` pseudo-URLs: yt-dlp
+    treats a search result as a playlist, so ``--no-playlist`` would silently
+    make the search match nothing and the download would fail.
+    """
+    args = _ytdlp_prefix() + [
+        "--no-warnings",
+        "--user-agent",
+        BROWSER_UA,
+        "--add-header",
+        "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "--add-header",
+        "Accept-Language:en-US,en;q=0.9,tr;q=0.8",
+        "--add-header",
+        "Sec-Fetch-Mode:navigate",
+        # --- speed knobs -----------------------------------------------------
+        # Pull several fragments of one file in parallel. Media served from
+        # DASH/HLS (i.e. most YouTube video) arrives in fragments; this is the
+        # single biggest throughput win.
+        "--concurrent-fragments",
+        "8",
+        # Retry transient CDN hiccups instead of failing the whole job.
+        "--retries",
+        "10",
+        "--fragment-retries",
+        "10",
+        # Smaller buffers + keep-alive avoid stalling on slow sockets.
+        "--http-chunk-size",
+        "10485760",
+        "--socket-timeout",
+        "15",
+        # Reuse one connection and prefer IPv4 (avoids happy-eyeballs stalls).
+        "--force-ipv4",
+    ]
+    if HAS_CURL_CFFI:
+        args += ["--impersonate", IMPERSONATE_TARGET]
+    if not allow_playlist_items:
+        args += ["--no-playlist"]
+    if FFMPEG_PATH:
+        args += ["--ffmpeg-location", FFMPEG_PATH]
+    return args
+
+
+def _run_json(
+    url: str,
+    kind: str,
+    timeout: int = 60,
+    *,
+    height: int | None = None,
+    formats: bool = False,
+) -> dict[str, Any]:
+    """Ask yt-dlp for metadata without downloading, as JSON.
+
+    For a `ytsearch:` pseudo-URL yt-dlp returns a *playlist* wrapper whose
+    `entries[0]` holds the actual video. We unwrap that here so the caller always
+    receives a flat video object with `url`/`formats`, exactly like a real URL.
+
+    ``formats=True`` asks for the *full* format list (used by the quality probe)
+    instead of the single format matching ``height``.
+    """
+    is_search = _is_search_source(url)
+    cmd = _base_args(allow_playlist_items=is_search) + ["-J", "--no-download"]
+    if not formats:
+        cmd += ["-f", _format_selector(kind, height)]
+    cmd += ["--", url]
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        message = (proc.stderr or proc.stdout or "yt-dlp failed").strip()
+        raise RuntimeError(_clean_error(message))
+    info = json.loads(proc.stdout)
+    if is_search:
+        info = _unwrap_search_result(info)
+    return info
+
+
+def _unwrap_search_result(info: dict[str, Any]) -> dict[str, Any]:
+    """Unwrap the playlist wrapper yt-dlp returns for a `ytsearch:` lookup.
+
+    A search resolves to ``{_type: "playlist", entries: [ {video}, ... ]}``; the
+    video we actually want is ``entries[0]``. Returning the flat video object
+    keeps `_pick_direct_format` and the rest of the pipeline unchanged, and lets
+    an empty search surface as an empty dict (handled as "no results").
+    """
+    if not isinstance(info, dict):
+        return {}
+    if info.get("_type") != "playlist":
+        return info
+    entries = info.get("entries") or []
+    for entry in entries:
+        if isinstance(entry, dict):
+            return entry
+    return {}
+
+
+_ERROR_MAP = (
+    (
+        re.compile(r"Sign in to confirm you'?re not a bot", re.I),
+        "Bu içerik kaynağın erişim kontrolü nedeniyle kullanılamıyor.",
+    ),
+    (
+        re.compile(r"Video unavailable|not available", re.I),
+        "Bu video kullanılamıyor veya kaldırılmış.",
+    ),
+    (
+        re.compile(r"Private video", re.I),
+        "Bu içerik gizli olduğu için indirilemiyor.",
+    ),
+    (
+        re.compile(r"age.restricted|age-gate", re.I),
+        "Yaş kısıtlaması olan içerik indirilemiyor.",
+    ),
+    (
+        re.compile(r"Unsupported URL", re.I),
+        "Bu bağlantı desteklenmiyor.",
+    ),
+    (
+        re.compile(r"geo.restrict|not available in your country", re.I),
+        "Bu içerik bölgenizde kullanılamıyor.",
+    ),
+    (
+        re.compile(r"Requested format is not available", re.I),
+        "İstenen kalitede bir akış bulunamadı.",
+    ),
+    (
+        re.compile(
+            r"No video results|no results|Incomplete YouTube ID|does not exist",
+            re.I,
+        ),
+        "Arama için sonuç bulunamadı, başka kelimeler deneyin.",
+    ),
+)
+
+
+def _clean_error(message: str) -> str:
+    lines = [line.strip() for line in message.strip().splitlines() if line.strip()]
+    if not lines:
+        return "Bilinmeyen bir hata oluştu."
+
+    # Look for known patterns across the entire message
+    for pattern, friendly in _ERROR_MAP:
+        if pattern.search(message):
+            return friendly
+
+    # Look for an explicit ERROR: line, skipping deprecations and warnings
+    for line in lines:
+        if line.startswith("ERROR:"):
+            return re.sub(r"^ERROR:\s*", "", line)[:300]
+
+    # Fall back to the first line that isn't a warning or deprecation notice
+    for line in lines:
+        if not re.search(r"^(WARNING|Deprecated Feature|DeprecationWarning):", line, re.I):
+            return re.sub(r"^ERROR:\s*", "", line)[:300]
+
+    return re.sub(r"^(ERROR|WARNING):\s*", "", lines[0])[:300]
+
+
+def _pick_direct_format(
+    info: dict[str, Any], kind: str
+) -> dict[str, Any] | None:
+    """Return a single-file format that can be streamed without transcoding.
+
+    yt-dlp fills `requested_formats` when the selection had to merge several
+    streams; in that case there is no single direct URL and we must download
+    server-side instead.
+
+    For audio mode we ONLY accept a true audio-only stream. A progressive
+    video+audio file is not a valid mp3 substitute, so we must not hand it over
+    as one just because ffmpeg is unavailable.
+    """
+    requested = info.get("requested_formats") or []
+    if len(requested) == 1 and requested[0].get("url"):
+        candidate = requested[0]
+        if kind == "audio" and (candidate.get("vcodec") or "none") != "none":
+            return None  # a video file cannot stand in for audio-only
+        return candidate
+    if not requested and info.get("url"):
+        has_video = (info.get("vcodec") or "none") != "none"
+        has_audio = (info.get("acodec") or "none") != "none"
+        if kind == "audio":
+            return info if has_audio and not has_video else None
+        # A progressive format: one URL already contains video + audio.
+        if has_video and has_audio:
+            return info
+    return None
+
+
+def _safe_filename(name: str, fallback: str, ext: str) -> str:
+    base = re.sub(r'[\\/:*?"<>|\r\n\t]+', "_", name or "").strip(" .")
+    base = base[:120] or fallback
+    if not base.lower().endswith("." + ext.lower()):
+        base = f"{base}.{ext}"
+    return base
+
+
+def _mime_for(ext: str, kind: str) -> str:
+    """Report the mime type of the file we are ACTUALLY delivering.
+
+    Labelling a video container as `audio/mpeg` makes players try to decode
+    video as mp3, so we derive the mime from the real extension first and only
+    fall back to the requested kind when the extension is unknown.
+    """
+    ext = (ext or "").lower().lstrip(".")
+    known = {
+        "mp4": "video/mp4",
+        "m4v": "video/mp4",
+        "webm": "video/webm",
+        "mov": "video/quicktime",
+        "mkv": "video/x-matroska",
+        "mp3": "audio/mpeg",
+        "m4a": "audio/mp4",
+        "aac": "audio/aac",
+        "opus": "audio/ogg",
+        "ogg": "audio/ogg",
+        "webma": "audio/webm",
+        "wav": "audio/wav",
+    }
+    if ext in known:
+        return known[ext]
+    return "audio/mpeg" if kind == "audio" else "video/mp4"
+
+
+# --- background worker -----------------------------------------------------
+
+
+def _work(job: Job) -> None:
+    try:
+        job.status = "running"
+        # The quality probe asks for the full format list so the app can show
+        # every resolution the link offers before anything is downloaded.
+        info = _run_json(
+            job.source,
+            job.kind,
+            formats=job.info_only,
+            height=job.height,
+        )
+        # A `ytsearch:` pseudo-URL resolves to a playlist-like result. When the
+        # query matches nothing yt-dlp returns an entry-less payload instead of
+        # raising, so surface that as a clear, retryable error.
+        if _is_search_source(job.source) and not _search_has_result(info):
+            raise RuntimeError(
+                _SEARCH_EMPTY_MESSAGE
+            )
+        job.title = info.get("title")
+        job.duration = (
+            info.get("duration") if isinstance(info.get("duration"), int) else None
+        )
+        job.uploader = info.get("uploader")
+
+        if job.info_only:
+            # Probe only: never download, just report the pickable qualities.
+            job.qualities = _available_qualities(info)
+            job.status = "info"
+            return
+
+        direct = _pick_direct_format(info, job.kind)
+        # Audio downloads are normalized to MP3 even when the source already
+        # offers a single-file M4A/AAC stream.
+        if direct is not None and job.kind != "audio":
+            # Validate before storing; the actual request revalidates every hop.
+            direct_url = direct.get("url")
+            validate_public_http_url(direct_url)
+            ext = direct.get("ext") or ("mp3" if job.kind == "audio" else "mp4")
+            job.direct_url = direct_url
+            job.filename = _safe_filename(
+                info.get("title") or "vidsave", "vidsave", ext
+            )
+            job.ext = ext
+            job.mime = _mime_for(ext, job.kind)
+            job.progress = 1.0
+            job.status = "ready"
+            return
+
+        # Slow path: merge/transcode on the server with yt-dlp + ffmpeg.
+        # Audio extraction to mp3 and merging separate streams BOTH need ffmpeg;
+        # fail loudly instead of shipping a mislabelled file.
+        if not FFMPEG_PATH:
+            if job.kind == "audio":
+                raise RuntimeError(
+                    "Ses (mp3) dönüştürmek için sunucuda ffmpeg kurulu olmalı."
+                )
+            raise RuntimeError(
+                "Bu video için ayrı akışları birleştirmek gerekiyor; "
+                "sunucuda ffmpeg kurulu olmalı."
+            )
+
+        out_tmpl = os.path.join(WORK_DIR, f"{job.id}.%(ext)s")
+        # If the job came from a search query, use the resolved video's direct
+        # webpage URL so yt-dlp does not have to re-search the query on download.
+        target_source = (
+            (info.get("webpage_url") or info.get("original_url"))
+            if _is_search_source(job.source)
+            else job.source
+        ) or job.source
+
+        cmd = _base_args(allow_playlist_items=_is_search_source(target_source)) + [
+            "-f",
+            _format_selector(job.kind, job.height),
+            "--merge-output-format",
+            "mp4",
+        ]
+        if job.kind == "audio":
+            cmd += ["-x", "--audio-format", "mp3", "--audio-quality", "0"]
+        cmd += ["-o", out_tmpl, "--", target_source]
+
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=1800,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(_clean_error(proc.stderr or proc.stdout or "yt-dlp failed"))
+
+        produced = [
+            os.path.join(WORK_DIR, name)
+            for name in os.listdir(WORK_DIR)
+            if name.startswith(f"{job.id}.")
+        ]
+        if not produced:
+            raise RuntimeError("yt-dlp çıktı dosyası oluşturamadı.")
+
+        path = max(produced, key=os.path.getsize)
+        ext = os.path.splitext(path)[1].lstrip(".").lower() or "mp4"
+        job.filepath = path
+        job.ext = ext
+        job.mime = _mime_for(ext, job.kind)
+        job.filename = _safe_filename(
+            info.get("title") or "vidsave", "vidsave", ext
+        )
+        job.progress = 1.0
+        job.status = "ready"
+    except subprocess.TimeoutExpired:
+        job.error = "İşlem zaman aşımına uğradı."
+        job.status = "error"
+    except Exception as exc:  # noqa: BLE001 - surface any failure to the client
+        job.error = _clean_error(str(exc))
+        job.status = "error"
+
+
+# --- http api --------------------------------------------------------------
+
+
+def _authorized() -> bool:
+    if not API_KEY:
+        return True
+    supplied = request.headers.get("X-Api-Key", "").strip().encode("utf-8")
+    return hmac.compare_digest(supplied, API_KEY.encode("utf-8"))
+
+
+# --- CORS ------------------------------------------------------------------
+#
+# The Flutter app talks to this backend from a different origin (the device),
+# so browsers/WebViews and Flutter web builds need permissive CORS headers.
+# Allow-all is safe here because access is gated by the optional X-Api-Key and
+# by the SSRF-safe URL validation in stream_proxy, not by the browser origin.
+# Set VIDSAVE_ALLOWED_ORIGINS to a comma-separated list to lock this down.
+
+_ALLOWED_ORIGINS = os.environ.get("VIDSAVE_ALLOWED_ORIGINS", "*").strip() or "*"
+
+
+@app.after_request
+def _apply_cors(response: Response) -> Response:
+    origin = request.headers.get("Origin")
+    if _ALLOWED_ORIGINS == "*":
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    elif origin and origin in {
+        o.strip() for o in _ALLOWED_ORIGINS.split(",") if o.strip()
+    }:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    response.headers["Access-Control-Allow-Methods"] = (
+        "GET, POST, OPTIONS, HEAD"
+    )
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, X-Api-Key, Range, Accept"
+    )
+    response.headers["Access-Control-Expose-Headers"] = (
+        "Content-Length, Content-Range, Content-Disposition, Accept-Ranges"
+    )
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return response
+
+
+@app.route("/<path:_any>", methods=["OPTIONS"])
+def _cors_preflight(_any: str) -> Response:  # noqa: ARG001 - path is unused
+    """Answer CORS preflight requests for any endpoint."""
+    return app.make_default_options_response()
+
+
+def _job_payload(job: Job) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "job": job.id,
+        "status": job.status,
+        "kind": job.kind,
+        "inputMode": job.mode,
+        "progress": round(job.progress, 3),
+        "title": job.title,
+        "filename": job.filename,
+        "ext": job.ext,
+        "mime": job.mime,
+    }
+    if job.height:
+        payload["height"] = job.height
+    if job.status == "info":
+        # Probe answer: the app shows this so the user can pick a resolution.
+        payload["info"] = True
+        payload["duration"] = job.duration
+        payload["uploader"] = job.uploader
+        payload["qualities"] = job.qualities
+        return payload
+    if job.status == "ready":
+        payload["url"] = f"/download?job={job.id}"
+        payload["mode"] = "proxy"
+        payload["fileSizeInBytes"] = (
+            os.path.getsize(job.filepath) if job.filepath else None
+        )
+    if job.status == "error":
+        payload["error"] = job.error
+    return payload
+
+
+def _seconds_to_time(val: Any) -> str:
+    """Format duration seconds to mm:ss."""
+    if not isinstance(val, (int, float)) or val <= 0:
+        return ""
+    m, s = divmod(int(val), 60)
+    return f"{m}:{s:02d}"
+
+
+@app.post("/api/ara")
+def api_ara() -> Response:
+    """Search endpoint returning multiple music/video results."""
+    _prune_jobs()
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    query = (body.get("query") or body.get("url") or body.get("q") or "").strip()
+    if not query:
+        return jsonify(status="error", error={"code": "query.missing", "message": "Arama kelimesi girin."}), 400
+
+    limit = 5
+    search_source = f"ytsearch{limit}:{query}" if not _is_search_source(query) else query
+
+    try:
+        cmd = _base_args(allow_playlist_items=True) + ["-J", "--no-download", "--", search_source]
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=35,
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            msg = (proc.stderr or proc.stdout or "Arama yapılamadı").strip()
+            raise RuntimeError(_clean_error(msg))
+
+        raw_info = json.loads(proc.stdout)
+        entries = []
+        if isinstance(raw_info, dict):
+            if raw_info.get("_type") == "playlist":
+                entries = [e for e in raw_info.get("entries", []) if isinstance(e, dict)]
+            else:
+                entries = [raw_info]
+
+        results = []
+        for e in entries[:limit]:
+            vid_id = str(e.get("id") or "")
+            web_url = (
+                e.get("webpage_url")
+                or e.get("url")
+                or (f"https://www.youtube.com/watch?v={vid_id}" if vid_id else "")
+            )
+            results.append({
+                "id": vid_id,
+                "baslik": e.get("title") or "Bilinmeyen Başlık",
+                "kanal": e.get("uploader") or e.get("channel") or "Bilinmeyen Kanal",
+                "sure": _seconds_to_time(e.get("duration")),
+                "url": web_url,
+            })
+
+        return jsonify(results)
+    except Exception as exc:
+        return jsonify(status="error", error={"message": str(exc)}), 500
+
+
+@app.post("/api/indir")
+def api_indir() -> Response:
+    """Direct MP3 download trigger endpoint."""
+    _prune_jobs()
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    url = (body.get("url") or body.get("query") or "").strip()
+    if not url:
+        return jsonify(status="error", error={"code": "url.missing", "message": "Bağlantı girin."}), 400
+
+    # Delegate to resolve logic as audio
+    request._cached_json = {"url": url, "kind": "audio"}
+    return resolve()
+
+
+@app.post("/api/toplu-indir")
+def api_toplu_indir() -> Response:
+    """Bulk download/resolve endpoint accepting a list of URLs."""
+    _prune_jobs()
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    raw_urls = body.get("urls") or []
+    if isinstance(raw_urls, str):
+        raw_urls = [u.strip() for u in raw_urls.splitlines() if u.strip()]
+    if not raw_urls or not isinstance(raw_urls, list):
+        return jsonify(status="error", error={"code": "urls.missing", "message": "Bağlantı listesi boş."}), 400
+
+    kind = "audio" if str(body.get("kind", "")).lower() == "audio" else "video"
+    results = []
+
+    for item in raw_urls:
+        url_str = str(item).strip()
+        if not url_str:
+            continue
+        try:
+            source, mode = resolve_source_input(url_str)
+            if mode == "url":
+                validate_public_http_url(source)
+            job = _new_job(kind, source)
+            job.mode = mode
+            threading.Thread(target=_work, args=(job,), daemon=True).start()
+            results.append({
+                "url": url_str,
+                "job": job.id,
+                "status": "pending",
+            })
+        except Exception as exc:
+            results.append({
+                "url": url_str,
+                "status": "error",
+                "error": str(exc),
+            })
+
+    return jsonify(status="ok", kind=kind, total=len(results), items=results)
+
+
+@app.post("/api/resolve")
+def resolve() -> Response:
+    _prune_jobs()
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+
+    # A request carrying a known job id is a progress poll: answer it immediately!
+    job_id = (body.get("job") or "").strip()
+    if job_id:
+        with _JOBS_LOCK:
+            existing = _JOBS.get(job_id)
+        if existing is not None:
+            return jsonify(_job_payload(existing))
+        if not (body.get("url") or body.get("query")):
+            return jsonify(status="error", error={"code": "job.not_found"}), 404
+
+    # The UI text box may hold either a pasted URL or a plain search phrase.
+    raw_input = (body.get("url") or body.get("query") or "").strip()
+    kind = "audio" if str(body.get("kind", "")).lower() == "audio" else "video"
+    if not raw_input:
+        return jsonify(status="error", error={"code": "url.missing"}), 400
+
+    try:
+        source, mode = resolve_source_input(raw_input)
+    except ValueError:
+        return jsonify(status="error", error={"code": "url.missing"}), 400
+
+    # Only real URLs go through the SSRF guard. A `ytsearch1:` query is not a
+    # network destination we fetch directly, so it must NOT be validated as one
+    # (its host part would be "ytsearch1" and would be rejected).
+    if mode == "url":
+        try:
+            validate_public_http_url(source)
+        except ValueError:
+            return jsonify(status="error", error={"code": "url.invalid"}), 400
+
+    # An explicit height (or the `info` probe) makes the request "quality aware".
+    try:
+        quality = _parse_height(body.get("height"))
+    except ValueError:
+        return jsonify(status="error", error={"code": "quality.invalid"}), 400
+
+    # Searches have to hit YouTube's index first, so they need more headroom
+    # than a direct URL resolution before we answer the client.
+    job = _new_job(kind, source)
+    job.mode = mode
+    job.height = quality
+    job.info_only = _truthy(body.get("info"))
+    threading.Thread(target=_work, args=(job,), daemon=True).start()
+
+    # Give fast resolutions a chance to finish before we answer. A probe is
+    # answered as soon as the metadata comes back.
+    deadline = time.time() + (35 if mode == "search" else 20)
+    while time.time() < deadline:
+        if job.status in ("ready", "error", "info"):
+            break
+        time.sleep(0.25)
+
+    code = 200 if job.status != "error" else 422
+    return jsonify(_job_payload(job)), code
+
+
+@app.get("/download")
+def download() -> Response | tuple[Response, int]:
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    job_id = request.args.get("job", "").strip()
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if job is None:
+        return jsonify(status="error", error={"code": "job.not_found"}), 404
+    if job.status != "ready":
+        return jsonify(status="error", error={"code": "job.not_ready"}), 409
+    if job.direct_url:
+        return stream_upstream_response(job, request.headers.get("Range"))
+    if not job.filepath or not os.path.exists(job.filepath):
+        return jsonify(status="error", error={"code": "job.not_ready"}), 409
+
+    response = send_file(
+        job.filepath,
+        mimetype=job.mime or "application/octet-stream",
+        as_attachment=True,
+        download_name=job.filename,
+        conditional=True,
+    )
+    response.headers["Accept-Ranges"] = "bytes"
+    return response
+
+
+@app.get("/api/health")
+def health() -> Response:
+    """Handy for the app to verify the backend and its capabilities."""
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+    return jsonify(
+        status="ok",
+        ytdlp=" ".join(_ytdlp_prefix()),
+        ffmpeg=FFMPEG_PATH or None,
+        canTranscode=bool(FFMPEG_PATH),
+        impersonate=IMPERSONATE_TARGET if HAS_CURL_CFFI else None,
+        authRequired=bool(API_KEY),
+        qualities=True,
+    )
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "8787"))
+    print(f"VidSave yt-dlp backend listening on 0.0.0.0:{port}")
+    print(f"  yt-dlp      : {' '.join(_ytdlp_prefix())}")
+    print(f"  ffmpeg      : {FFMPEG_PATH or 'NOT FOUND (mp3/merge disabled)'}")
+    print(f"  impersonate : {IMPERSONATE_TARGET if HAS_CURL_CFFI else 'DISABLED (curl-cffi missing)'}")
+    if os.environ.get("VIDSAVE_NO_AUTO_UPDATE", "").strip() != "1":
+        _auto_update_ytdlp_background()
+    app.run(host="0.0.0.0", port=port, threaded=True)

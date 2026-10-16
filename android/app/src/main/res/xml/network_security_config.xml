@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Allows plain-HTTP (cleartext) traffic ONLY to private/local network hosts:
+  your PC's LAN IP, localhost, the Android emulator host alias (10.0.2.2) and
+  the common private ranges. Every other domain must still use HTTPS, so the
+  app keeps working on secure networks without weakening global security.
+
+  Add your own PC's IPv4 address (the one `ipconfig` shows for Wi-Fi) below
+  next to the placeholders, then rebuild the app.
+-->
+<network-security-config>
+
+    <!-- Private-network cleartext: your LAN backend lives here. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Android emulator -> host machine -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <!-- Local device itself -->
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+
+        <!-- === REPLACE with your own PC IPv4 address (ipconfig -> Wi-Fi) === -->
+        <domain includeSubdomains="false">10.192.215.20</domain>
+
+        <!-- Typical home-router ranges. List the exact IP you use; ranges are
+             not supported, so add one <domain> line per address. -->
+        <domain includeSubdomains="false">192.168.0.1</domain>
+        <domain includeSubdomains="false">192.168.1.1</domain>
+        <domain includeSubdomains="false">192.168.1.100</domain>
+    </domain-config>
+
+    <!-- Everything else stays HTTPS-only. -->
+    <base-config cleartextTrafficPermitted="false" />
+
+</network-security-config>
