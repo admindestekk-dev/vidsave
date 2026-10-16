@@ -9,7 +9,7 @@ class BackendSettings {
   /// builds default to this machine's Wi-Fi IPv4 address instead.
   static const defaultBaseUrl = String.fromEnvironment(
     'VIDSAVE_BACKEND_URL',
-    defaultValue: 'http://10.192.215.20:8787',
+    defaultValue: 'https://vidsave-q7ut.onrender.com',
   );
 
   final String baseUrl;
