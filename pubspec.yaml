@@ -43,13 +43,11 @@ dependencies:
   record: 7.1.2
   cryptography: 2.9.0
   cryptography_flutter: 2.3.4
-  file_picker: 13.1.0
   flutter_local_notifications: ^22.3.2
   shared_preferences: ^2.5.6
   flutter_localizations:
     sdk: flutter
-  flutter_inappwebview: ^6.1.5
-
+  webview_flutter: ^4.14.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
