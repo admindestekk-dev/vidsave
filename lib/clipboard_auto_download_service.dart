@@ -7,12 +7,22 @@ class ClipboardAutoDownloadService {
 
   static String? _lastHandledUrl;
 
-  /// Desteklenen bağlantı desenleri.
+  /// Desteklenen bağlantı desenleri (FB, IG, TT, YT, VM, X, DM vb.).
   static final List<RegExp> _supportedUrlPatterns = [
     RegExp(r'https?://(?:www\.)?instagram\.com/[^\s]+', caseSensitive: false),
     RegExp(r'https?://(?:www\.)?instagr\.am/[^\s]+', caseSensitive: false),
     RegExp(r'https?://(?:www\.|vm\.|vt\.)?tiktok\.com/[^\s]+', caseSensitive: false),
     RegExp(r'https?://(?:www\.)?douyin\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:www\.)?youtube\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://youtu\.be/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:www\.)?facebook\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://fb\.watch/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:www\.)?fb\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:www\.)?twitter\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:www\.)?x\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:www\.)?vimeo\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:www\.)?dailymotion\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://dai\.ly/[^\s]+', caseSensitive: false),
   ];
 
   /// Verilen metnin bir Instagram veya TikTok video linki olup olmadığını kontrol eder.

@@ -19,6 +19,7 @@ import 'media_downloader.dart';
 import 'media_library.dart';
 import 'more_screen.dart';
 import 'music_player.dart';
+import 'quick_download_dialog.dart';
 import 'storage_service.dart';
 import 'theme_service.dart';
 import 'video_player_screen.dart';
@@ -138,7 +139,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     }
   }
 
-  /// Pano içeriğini kontrol edip Instagram / TikTok linki tespit edilirse dialog açar.
+  /// Pano içeriğini kontrol edip desteklenen video linki tespit edilirse QuickDownloadDialog açar.
   Future<void> _checkClipboard() async {
     final url = await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
     if (url != null && mounted) {
@@ -146,77 +147,38 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     }
   }
 
-  /// Kullanıcıya "Kopyalanan Link İndirilsin mi?" diye soran modern SnackBar/BottomSheet dialogu.
+  /// Kullanıcıya ekran ortasında açılan 'VidSave Algıladı' Quick Download Dialog penceresi.
   void _showClipboardPrompt(String url) {
     ClipboardAutoDownloadService.markAsHandled(url);
-    final isInstagram = url.contains('instagram.com') || url.contains('instagr.am');
-    final platformName = isInstagram ? 'Instagram' : 'TikTok';
-    final primaryColor = Theme.of(context).primaryColor;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 8),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: const Color(0xFF1E1E1E),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        content: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: primaryColor.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.link_rounded, color: primaryColor, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$platformName Linki Algılandı',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Kopyalanan link indirilsin mi?',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        action: SnackBarAction(
-          label: 'İNDİR',
-          textColor: primaryColor,
-          onPressed: () {
-            _triggerDirectDownload(url);
-          },
-        ),
-      ),
+    QuickDownloadDialog.show(
+      context: context,
+      videoTitle: url,
+      onDownloadVideo: () {
+        _triggerDirectDownload(url, kind: DownloadKind.video);
+      },
+      onDownloadMp3: () {
+        _triggerDirectDownload(url, kind: DownloadKind.audio);
+      },
     );
   }
 
-  /// Onaylanan linki doğrudan indirme akışına yönlendirir.
-  Future<void> _triggerDirectDownload(String url) async {
+  /// Onaylanan linki doğrudan indirme akışına (video veya MP3) yönlendirir.
+  Future<void> _triggerDirectDownload(
+    String url, {
+    DownloadKind kind = DownloadKind.video,
+  }) async {
     // İndir sekmesine geçiş yap
     _onDestinationSelected(2);
 
+    final isAudio = kind == DownloadKind.audio;
     final notificationId =
         DownloadNotificationService.instance.allocateNotificationId();
-    final notifTitle = 'Otomatik Pano İndirme';
+    final notifTitle = isAudio ? 'Otomatik MP3 İndirme' : 'Otomatik Video İndirme';
 
     try {
       final parsed = Uri.parse(url);
-      final media = await _mediaResolver.resolve(parsed, DownloadKind.video);
+      final media = await _mediaResolver.resolve(parsed, kind);
       if (!mounted) return;
 
       final displayTitle = media.fileName.trim().isNotEmpty
@@ -258,7 +220,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           DownloadItemModel(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
             name: fileName,
-            type: 'video',
+            type: isAudio ? 'audio' : 'video',
             sizeInBytes: fileSize,
             filePath: file.path,
             downloadedAt: DateTime.now(),
