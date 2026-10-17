@@ -63,6 +63,9 @@ class _MockResolver implements MediaResolver {
     Uri source,
     DownloadKind kind, {
     int? height,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
   }) async {
     resolvedCalls.add('${source.path}|height=$height');
     return ResolvedMedia(

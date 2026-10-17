@@ -10,9 +10,9 @@ import 'package:vid_downloader_app/media_downloader.dart';
 void main() {
   group('BackendSettings', () {
     test(
-      'uses the LAN backend default unless a build define overrides it',
+      'uses the default unless a build define overrides it',
       () {
-        expect(BackendSettings.defaultBaseUrl, 'http://10.192.215.20:8787');
+        expect(BackendSettings.defaultBaseUrl, 'https://vidsave-q7ut.onrender.com');
       },
     );
 

@@ -21,6 +21,9 @@ class _FakeMusicResolver implements MediaResolver {
     Uri source,
     DownloadKind kind, {
     int? height,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
   }) async {
     resolveCalls.add('${source.path}|${kind.name}');
     return ResolvedMedia(

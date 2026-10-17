@@ -24,6 +24,9 @@ class _FakeResolver implements MediaResolver {
     Uri source,
     DownloadKind kind, {
     int? height,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
   }) async {
     return ResolvedMedia(
       url: Uri.parse('http://10.0.2.2:8787/download?u=${source.path}'),

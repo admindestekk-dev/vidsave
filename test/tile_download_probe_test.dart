@@ -67,6 +67,9 @@ class _RecordingResolver implements MediaResolver {
     Uri source,
     DownloadKind kind, {
     int? height,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
   }) async {
     calls.add('${source.path}|${kind.name}');
     return ResolvedMedia(
