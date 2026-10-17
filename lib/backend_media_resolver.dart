@@ -28,6 +28,9 @@ class BackendMediaResolver implements MediaResolver {
     Uri source,
     DownloadKind kind, {
     int? height,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
   }) async {
     final settings = await settingsStore.load();
     if (!settings.isConfigured) {
@@ -53,6 +56,9 @@ class BackendMediaResolver implements MediaResolver {
       rawInput: rawInput,
       kind: kind,
       height: height,
+      startTime: startTime,
+      endTime: endTime,
+      audioEffect: audioEffect,
     );
 
     while (true) {
@@ -89,6 +95,9 @@ class BackendMediaResolver implements MediaResolver {
         kind: kind,
         height: height,
         jobId: jobId,
+        startTime: startTime,
+        endTime: endTime,
+        audioEffect: audioEffect,
       );
     }
   }
@@ -248,6 +257,9 @@ class BackendMediaResolver implements MediaResolver {
     String? jobId,
     int? height,
     bool info = false,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
   }) async {
     final body = <String, Object?>{
       'url': rawInput,
@@ -255,6 +267,9 @@ class BackendMediaResolver implements MediaResolver {
       'job': ?jobId,
       'height': ?height,
       if (info) 'info': true,
+      'start_time': ?startTime,
+      'end_time': ?endTime,
+      if (audioEffect != null && audioEffect.isNotEmpty) 'audio_effect': audioEffect,
     };
     final response = await _client
         .post(

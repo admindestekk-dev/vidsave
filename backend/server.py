@@ -30,16 +30,26 @@ import logging
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import urllib.parse
+import urllib.request
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from flask import Flask, Response, jsonify, request, send_file
+
+try:
+    import mutagen
+    from mutagen.id3 import ID3, USLT, ID3NoHeaderError
+    HAS_MUTAGEN = True
+except ImportError:
+    HAS_MUTAGEN = False
 
 try:
     from .stream_proxy import stream_upstream_response, validate_public_http_url
@@ -86,6 +96,132 @@ COOKIES_BROWSER = os.environ.get("VIDSAVE_COOKIES_BROWSER", "chrome").strip() or
 
 # YouTube player client extraction parameter ('ios', 'android', 'web')
 YT_PLAYER_CLIENT = os.environ.get("VIDSAVE_YT_PLAYER_CLIENT", "ios").strip() or "ios"
+
+# SQLite database for storing persistent user cookies (e.g. Instagram session)
+DB_PATH = os.environ.get("VIDSAVE_DB_PATH") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "vidsave_data.db"
+)
+
+
+def _init_db() -> None:
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_cookies (
+                    platform TEXT PRIMARY KEY,
+                    cookies TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.commit()
+    except Exception as exc:
+        logging.warning("Database init warning: %s", exc)
+
+
+_init_db()
+
+
+def _get_platform_cookie_file(platform: str) -> str | None:
+    """Return a temp netscape cookiefile path for the given platform, if saved in DB."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT cookies FROM user_cookies WHERE platform = ?", (platform.lower(),))
+            row = cur.fetchone()
+            if not row or not row[0]:
+                return None
+            raw = str(row[0]).strip()
+            if not raw:
+                return None
+
+            # Convert to Netscape cookie format if not already
+            if "# Netscape" not in raw:
+                lines = [
+                    "# Netscape HTTP Cookie File",
+                    "# http://curl.haxx.se/rfc/cookie_spec.html",
+                    "",
+                ]
+                default_domain = ".instagram.com" if platform.lower() == "instagram" else ""
+                for part in raw.split(";"):
+                    if "=" in part:
+                        k, v = part.strip().split("=", 1)
+                        if k.strip():
+                            lines.append(
+                                f"{default_domain}\tTRUE\t/\tTRUE\t2147483647\t{k.strip()}\t{v.strip()}"
+                            )
+                raw = "\n".join(lines)
+
+            temp_cookie_path = os.path.join(WORK_DIR, f"{platform.lower()}_cookie.txt")
+            with open(temp_cookie_path, "w", encoding="utf-8") as f:
+                f.write(raw)
+            return temp_cookie_path
+    except Exception as exc:
+        logging.warning("Could not read cookie from DB for %s: %s", platform, exc)
+        return None
+
+
+def _fetch_lyrics_online(title: str, uploader: str | None = None) -> str | None:
+    """Fetch song lyrics from free public API (lrclib.net) by track title and artist."""
+    try:
+        clean_title = re.sub(
+            r"(\[.*?\]|\(.*?\)|official video|video|clip|lyrics|ft\..*|feat\..*|prod\..*)",
+            "",
+            title or "",
+            flags=re.I,
+        ).strip()
+        search_query = f"{uploader or ''} {clean_title}".strip()
+        if not search_query:
+            return None
+
+        url = f"https://lrclib.net/api/search?q={urllib.parse.quote(search_query)}"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": BROWSER_UA,
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            if isinstance(data, list) and data:
+                best = data[0]
+                return best.get("syncedLyrics") or best.get("plainLyrics")
+    except Exception as exc:
+        logging.info("Lyrics fetch skipped/failed: %s", exc)
+    return None
+
+
+def _embed_lyrics_id3(mp3_path: str, lyrics_text: str) -> bool:
+    """Embed lyrics into MP3 file using mutagen ID3 USLT tag."""
+    if not HAS_MUTAGEN or not lyrics_text or not os.path.exists(mp3_path):
+        return False
+    try:
+        try:
+            audio = ID3(mp3_path)
+        except ID3NoHeaderError:
+            audio = ID3()
+        audio.add(USLT(encoding=3, lang="eng", desc="", text=lyrics_text))
+        audio.save(mp3_path)
+        return True
+    except Exception as exc:
+        logging.warning("Failed to embed ID3 lyrics into %s: %s", mp3_path, exc)
+        return False
+
+
+def _extract_lyrics_from_mp3(mp3_path: str) -> str | None:
+    """Read lyrics from MP3 ID3 tags."""
+    if not HAS_MUTAGEN or not os.path.exists(mp3_path):
+        return None
+    try:
+        audio = ID3(mp3_path)
+        for key in audio.keys():
+            if key.startswith("USLT"):
+                return audio[key].text
+    except Exception:
+        pass
+    return None
 
 # Universal options for direct yt_dlp Python API integration
 YTDLP_UNIVERSAL_OPTS: dict[str, Any] = {
@@ -241,6 +377,12 @@ class Job:
     duration: int | None = None
     uploader: str | None = None
     qualities: list[dict[str, Any]] = field(default_factory=list)
+    # Audio trimming (Nakarat / trim)
+    start_time: float | None = None
+    end_time: float | None = None
+    # Audio effect: "normal" | "nightcore" | "bassboost"
+    audio_effect: str = "normal"
+    lyrics: str | None = None
     created_at: float = field(default_factory=time.time)
 
 
@@ -267,6 +409,9 @@ def _new_job(
     *,
     height: int | None = None,
     info_only: bool = False,
+    start_time: float | None = None,
+    end_time: float | None = None,
+    audio_effect: str = "normal",
 ) -> Job:
     job = Job(
         id=uuid.uuid4().hex,
@@ -275,6 +420,9 @@ def _new_job(
         mode=mode,
         height=height,
         info_only=info_only,
+        start_time=start_time,
+        end_time=end_time,
+        audio_effect=audio_effect or "normal",
     )
     with _JOBS_LOCK:
         _JOBS[job.id] = job
@@ -398,11 +546,16 @@ def _format_selector(kind: str, height: int | None = None) -> str:
     )
 
 
-def _base_args(*, allow_playlist_items: bool = False) -> list[str]:
+def _base_args(
+    *,
+    allow_playlist_items: bool = False,
+    cookiefile: str | None = None,
+) -> list[str]:
     """Shared yt-dlp flags, tuned for universal bot-bypass and high throughput.
 
     Applies cookies-from-browser (chrome), impersonate (chrome) and youtube
     player-client (ios) universally across all platform extractions.
+    If custom cookiefile is provided (e.g. from user Instagram login), uses it.
     """
     args = _ytdlp_prefix() + [
         "--no-warnings",
@@ -415,7 +568,9 @@ def _base_args(*, allow_playlist_items: bool = False) -> list[str]:
         "--add-header",
         "Sec-Fetch-Mode:navigate",
     ]
-    if COOKIES_BROWSER:
+    if cookiefile and os.path.exists(cookiefile):
+        args += ["--cookies", cookiefile]
+    elif COOKIES_BROWSER:
         args += ["--cookies-from-browser", COOKIES_BROWSER]
     if IMPERSONATE_TARGET:
         args += ["--impersonate", IMPERSONATE_TARGET]
@@ -770,7 +925,15 @@ def _work(job: Job) -> None:
             else job.source
         ) or job.source
 
-        cmd = _base_args(allow_playlist_items=_is_search_source(target_source)) + [
+        # Check for user-provided platform cookies (e.g. Instagram private profile / story)
+        cookiefile = None
+        if "instagram.com" in target_source.lower() or "instagr.am" in target_source.lower():
+            cookiefile = _get_platform_cookie_file("instagram")
+
+        cmd = _base_args(
+            allow_playlist_items=_is_search_source(target_source),
+            cookiefile=cookiefile,
+        ) + [
             "-f",
             _format_selector(job.kind, job.height),
             "--merge-output-format",
@@ -794,6 +957,53 @@ def _work(job: Job) -> None:
 
         path = max(produced, key=os.path.getsize)
         ext = os.path.splitext(path)[1].lstrip(".").lower() or "mp4"
+
+        # Apply Audio Post-Processing (Feature 1: Trimming & Feature 4: Audio Effects)
+        if job.kind == "audio" and ext == "mp3" and FFMPEG_PATH:
+            needs_trim = job.start_time is not None or job.end_time is not None
+            effect = (job.audio_effect or "normal").lower()
+            needs_effect = effect in ("nightcore", "bassboost")
+
+            if needs_trim or needs_effect:
+                processed_path = os.path.join(WORK_DIR, f"{job.id}_fx.mp3")
+                ff_cmd = [FFMPEG_PATH, "-y"]
+                if job.start_time is not None and job.start_time >= 0:
+                    ff_cmd += ["-ss", str(job.start_time)]
+                if job.end_time is not None and job.end_time > (job.start_time or 0):
+                    ff_cmd += ["-to", str(job.end_time)]
+                ff_cmd += ["-i", path]
+
+                if effect == "nightcore":
+                    ff_cmd += ["-af", "atempo=1.3,asetrate=44100*1.3"]
+                elif effect == "bassboost":
+                    ff_cmd += ["-af", "bass=g=10"]
+
+                ff_cmd += ["-c:a", "libmp3lame", "-q:a", "0", processed_path]
+                res_fx = subprocess.run(
+                    ff_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                if res_fx.returncode == 0 and os.path.exists(processed_path):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                    path = processed_path
+
+        # Feature 2: Auto Lyrics Sync (Fetch & embed into ID3)
+        if job.kind == "audio" and ext == "mp3":
+            try:
+                title = info.get("title") or job.title or ""
+                uploader = info.get("uploader") or info.get("channel") or job.uploader
+                lyrics_text = _fetch_lyrics_online(title, uploader)
+                if lyrics_text:
+                    _embed_lyrics_id3(path, lyrics_text)
+                    job.lyrics = lyrics_text
+            except Exception as lyrics_err:
+                logging.info("Lyrics embedding skipped: %s", lyrics_err)
+
         job.filepath = path
         job.ext = ext
         job.mime = _mime_for(ext, job.kind)
@@ -871,9 +1081,16 @@ def _job_payload(job: Job) -> dict[str, Any]:
         "filename": job.filename,
         "ext": job.ext,
         "mime": job.mime,
+        "lyrics": job.lyrics,
     }
     if job.height:
         payload["height"] = job.height
+    if job.start_time is not None:
+        payload["startTime"] = job.start_time
+    if job.end_time is not None:
+        payload["endTime"] = job.end_time
+    if job.audio_effect != "normal":
+        payload["audioEffect"] = job.audio_effect
     if job.status == "info":
         # Probe answer: the app shows this so the user can pick a resolution.
         payload["info"] = True
@@ -953,7 +1170,7 @@ def api_ara() -> Response:
 
 @app.post("/api/indir")
 def api_indir() -> Response:
-    """Direct MP3 download trigger endpoint."""
+    """Direct MP3 download trigger endpoint with trimming and audio effect options."""
     _prune_jobs()
     if not _authorized():
         return jsonify(status="error", error={"code": "unauthorized"}), 401
@@ -963,8 +1180,18 @@ def api_indir() -> Response:
     if not url:
         return jsonify(status="error", error={"code": "url.missing", "message": "Bağlantı girin."}), 400
 
-    # Delegate to resolve logic as audio
-    request._cached_json = {"url": url, "kind": "audio"}
+    start_time = body.get("start_time")
+    end_time = body.get("end_time")
+    audio_effect = body.get("audio_effect") or "normal"
+
+    # Forward parameters into resolve call
+    request._cached_json = {
+        "url": url,
+        "kind": "audio",
+        "start_time": start_time,
+        "end_time": end_time,
+        "audio_effect": audio_effect,
+    }
     return resolve()
 
 
@@ -1055,12 +1282,35 @@ def resolve() -> Response:
     except ValueError:
         return jsonify(status="error", error={"code": "quality.invalid"}), 400
 
+    # Parse trimming and audio effect options
+    start_time: float | None = None
+    end_time: float | None = None
+    raw_start = body.get("start_time")
+    raw_end = body.get("end_time")
+    if raw_start is not None and str(raw_start).strip() != "":
+        try:
+            start_time = float(raw_start)
+        except (ValueError, TypeError):
+            pass
+    if raw_end is not None and str(raw_end).strip() != "":
+        try:
+            end_time = float(raw_end)
+        except (ValueError, TypeError):
+            pass
+    audio_effect = str(body.get("audio_effect") or "normal").strip().lower()
+
     # Searches have to hit YouTube's index first, so they need more headroom
     # than a direct URL resolution before we answer the client.
-    job = _new_job(kind, source)
+    job = _new_job(
+        kind,
+        source,
+        height=quality,
+        info_only=_truthy(body.get("info")),
+        start_time=start_time,
+        end_time=end_time,
+        audio_effect=audio_effect,
+    )
     job.mode = mode
-    job.height = quality
-    job.info_only = _truthy(body.get("info"))
     threading.Thread(target=_work, args=(job,), daemon=True).start()
 
     # Give fast resolutions a chance to finish before we answer. A probe is
@@ -1073,6 +1323,85 @@ def resolve() -> Response:
 
     code = 200 if job.status != "error" else 422
     return jsonify(_job_payload(job)), code
+
+
+@app.post("/api/cookies")
+def api_save_cookies() -> Response:
+    """Endpoint for receiving user-session cookies from Flutter InAppWebView (e.g. Instagram)."""
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    platform = (body.get("platform") or "instagram").strip().lower()
+    raw_cookies = body.get("cookies")
+    if not raw_cookies:
+        return jsonify(status="error", error={"code": "cookies.missing", "message": "Çerez verisi bulunamadı."}), 400
+
+    cookie_str = ""
+    if isinstance(raw_cookies, str):
+        cookie_str = raw_cookies.strip()
+    elif isinstance(raw_cookies, dict):
+        cookie_str = "; ".join(f"{k}={v}" for k, v in raw_cookies.items())
+    elif isinstance(raw_cookies, list):
+        # List of cookie objects from InAppWebView
+        parts = []
+        for c in raw_cookies:
+            if isinstance(c, dict) and c.get("name") and c.get("value"):
+                parts.append(f"{c['name']}={c['value']}")
+        cookie_str = "; ".join(parts)
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute(
+                "INSERT INTO user_cookies (platform, cookies, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(platform) DO UPDATE SET cookies=excluded.cookies, updated_at=CURRENT_TIMESTAMP",
+                (platform, cookie_str),
+            )
+            conn.commit()
+        return jsonify(status="ok", message=f"{platform} çerezleri başarıyla kaydedildi.")
+    except Exception as exc:
+        return jsonify(status="error", error={"message": str(exc)}), 500
+
+
+@app.get("/api/cookies/<platform>")
+def api_get_cookies(platform: str) -> Response:
+    """Check if valid cookies exist for the requested platform."""
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT updated_at FROM user_cookies WHERE platform = ?", (platform.lower(),))
+            row = cur.fetchone()
+            if row:
+                return jsonify(status="ok", platform=platform, connected=True, updatedAt=row[0])
+            return jsonify(status="ok", platform=platform, connected=False)
+    except Exception as exc:
+        return jsonify(status="error", error={"message": str(exc)}), 500
+
+
+@app.get("/api/lyrics")
+def api_get_lyrics() -> Response:
+    """Fetch lyrics by query or inspect downloaded MP3 job lyrics."""
+    job_id = request.args.get("job", "").strip()
+    if job_id:
+        with _JOBS_LOCK:
+            job = _JOBS.get(job_id)
+        if job and job.lyrics:
+            return jsonify(status="ok", lyrics=job.lyrics)
+        if job and job.filepath and job.ext == "mp3":
+            embedded = _extract_lyrics_from_mp3(job.filepath)
+            if embedded:
+                return jsonify(status="ok", lyrics=embedded)
+
+    query = request.args.get("q", "").strip()
+    if query:
+        lyrics = _fetch_lyrics_online(query)
+        if lyrics:
+            return jsonify(status="ok", lyrics=lyrics)
+        return jsonify(status="error", message="Sözler bulunamadı"), 404
+
+    return jsonify(status="error", message="Parametre eksik"), 400
 
 
 @app.get("/download")

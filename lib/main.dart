@@ -157,8 +157,14 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       onDownloadVideo: () {
         _triggerDirectDownload(url, kind: DownloadKind.video);
       },
-      onDownloadMp3: () {
-        _triggerDirectDownload(url, kind: DownloadKind.audio);
+      onDownloadMp3: ({startTime, endTime, audioEffect}) {
+        _triggerDirectDownload(
+          url,
+          kind: DownloadKind.audio,
+          startTime: startTime,
+          endTime: endTime,
+          audioEffect: audioEffect,
+        );
       },
     );
   }
@@ -167,6 +173,9 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   Future<void> _triggerDirectDownload(
     String url, {
     DownloadKind kind = DownloadKind.video,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
   }) async {
     // İndir sekmesine geçiş yap
     _onDestinationSelected(2);
@@ -178,7 +187,13 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
 
     try {
       final parsed = Uri.parse(url);
-      final media = await _mediaResolver.resolve(parsed, kind);
+      final media = await _mediaResolver.resolve(
+        parsed,
+        kind,
+        startTime: startTime,
+        endTime: endTime,
+        audioEffect: audioEffect,
+      );
       if (!mounted) return;
 
       final displayTitle = media.fileName.trim().isNotEmpty

@@ -14,7 +14,16 @@ import 'package:photo_manager/photo_manager.dart';
 abstract class MediaResolver {
   /// [height] pins the requested video resolution in pixels (480/720/...);
   /// null lets the backend pick its usual best quality.
-  Future<ResolvedMedia> resolve(Uri source, DownloadKind kind, {int? height});
+  /// [startTime] and [endTime] trim audio/video in seconds.
+  /// [audioEffect] specifies audio post-processing: "normal", "nightcore", "bassboost".
+  Future<ResolvedMedia> resolve(
+    Uri source,
+    DownloadKind kind, {
+    int? height,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
+  });
 
   /// Probes the link without downloading anything, so the UI can show the
   /// title and the resolutions the user may pick from.
@@ -270,6 +279,9 @@ class RemoteMediaResolver implements MediaResolver {
     Uri source,
     DownloadKind kind, {
     int? height,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
   }) async {
     final errors = <String>[];
     for (final endpoint in _endpoints) {

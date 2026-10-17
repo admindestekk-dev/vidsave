@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'app_localizations.dart';
 import 'download_item_model.dart';
+import 'lyrics_bottom_sheet.dart';
 import 'music_player.dart';
 import 'storage_service.dart';
 import 'video_player_screen.dart';
@@ -433,7 +434,23 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                 ),
               ),
 
-              // Sağ İşlem Butonları (Oynat ve Sil)
+              // Sağ İşlem Butonları (Şarkı Sözü, Oynat ve Sil)
+              if (isAudio)
+                IconButton(
+                  icon: const Icon(
+                    Icons.lyrics_rounded,
+                    color: Color(0xFFFF5436),
+                    size: 24,
+                  ),
+                  tooltip: 'Şarkı Sözleri (Karaoke)',
+                  onPressed: () {
+                    LyricsBottomSheet.show(
+                      context: context,
+                      songTitle: item.name,
+                      filePath: item.filePath,
+                    );
+                  },
+                ),
               IconButton(
                 icon: Icon(
                   Icons.play_circle_fill_rounded,

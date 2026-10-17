@@ -5,6 +5,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import 'lyrics_bottom_sheet.dart';
+
 /// Small playback contract that keeps the UI testable without native audio.
 abstract interface class MusicPlayerController {
   Stream<PlayerState> get onPlayerStateChanged;
@@ -391,7 +393,21 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 48),
+        IconButton(
+          tooltip: 'Şarkı Sözleri (Karaoke)',
+          style: IconButton.styleFrom(
+            backgroundColor: const Color(0xFFFF5436).withValues(alpha: 0.15),
+            foregroundColor: const Color(0xFFFF5436),
+          ),
+          icon: const Icon(Icons.lyrics_rounded),
+          onPressed: () {
+            final title = widget.title ?? widget.asset?.title ?? 'Müzik';
+            LyricsBottomSheet.show(
+              context: context,
+              songTitle: title,
+            );
+          },
+        ),
       ],
     );
   }

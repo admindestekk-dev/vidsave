@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
+import 'instagram_login_webview_screen.dart';
 import 'media_downloader.dart';
 import 'theme_service.dart';
 
@@ -128,6 +129,42 @@ class _MoreScreenState extends State<MoreScreen> {
                 leading: const Icon(Icons.info_outline, color: _accent),
                 title: const Text('Hakkında'),
                 onTap: () => _showAboutDialog(),
+              ),
+              const Divider(),
+
+              // =============================================================
+              // ÖZELLİK 3: INSTAGRAM GİZLİ PROFİL VE STORY İNDİRME YETKİSİ
+              // =============================================================
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [Color(0xFFF58529), Color(0xFFDD2A7B), Color(0xFF8134AF)],
+                    ),
+                  ),
+                  child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18),
+                ),
+                title: const Text(
+                  'Instagram Hesabını Bağla (Gizli Hesaplar İçin)',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+                subtitle: const Text(
+                  'Gizli profil ve hikayeleri sorunsuz indirebilmek için güvenli giriş yapın.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<bool>(
+                      builder: (context) => InstagramLoginWebViewScreen(
+                        store: widget.store,
+                      ),
+                    ),
+                  );
+                },
               ),
 
               // =============================================================

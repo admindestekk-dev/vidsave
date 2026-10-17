@@ -38,3 +38,5 @@ work/
 *.wav
 *.part
 *.ytdl
+*.db
+vidsave_data.db
