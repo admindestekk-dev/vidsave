@@ -24,3 +24,17 @@ venv.bak/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Temporary / Output & Downloaded Media files
+downloads/
+output/
+temp/
+work/
+*.mp4
+*.mp3
+*.m4a
+*.webm
+*.mkv
+*.wav
+*.part
+*.ytdl

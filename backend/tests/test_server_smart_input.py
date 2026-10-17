@@ -140,6 +140,15 @@ class SearchDownloadArgsTests(unittest.TestCase):
         args = server._base_args()
         self.assertIn("--no-playlist", args)
 
+    def test_universal_bypass_options_present(self):
+        args = server._base_args()
+        self.assertIn("--cookies-from-browser", args)
+        self.assertEqual(args[args.index("--cookies-from-browser") + 1], "chrome")
+        self.assertIn("--impersonate", args)
+        self.assertEqual(args[args.index("--impersonate") + 1], "chrome")
+        self.assertIn("--extractor-args", args)
+        self.assertEqual(args[args.index("--extractor-args") + 1], "youtube:player_client=ios")
+
     def test_is_search_source_detection(self):
         self.assertTrue(server._is_search_source("ytsearch1:Sagopa"))
         self.assertTrue(server._is_search_source("ytsearch5:test"))

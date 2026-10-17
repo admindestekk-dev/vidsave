@@ -81,6 +81,26 @@ UA = BROWSER_UA
 # Impersonation target: 'chrome' or 'firefox'
 IMPERSONATE_TARGET = os.environ.get("VIDSAVE_IMPERSONATE", "chrome").strip() or "chrome"
 
+# Universal browser cookies extraction ('chrome', 'firefox', etc.)
+COOKIES_BROWSER = os.environ.get("VIDSAVE_COOKIES_BROWSER", "chrome").strip() or "chrome"
+
+# YouTube player client extraction parameter ('ios', 'android', 'web')
+YT_PLAYER_CLIENT = os.environ.get("VIDSAVE_YT_PLAYER_CLIENT", "ios").strip() or "ios"
+
+# Universal options for direct yt_dlp Python API integration
+YTDLP_UNIVERSAL_OPTS: dict[str, Any] = {
+    "cookiesfrombrowser": (COOKIES_BROWSER, None, None, None) if COOKIES_BROWSER else None,
+    "impersonate": IMPERSONATE_TARGET,
+    "extractor_args": {
+        "youtube": {
+            "player_client": [YT_PLAYER_CLIENT] if YT_PLAYER_CLIENT else ["ios"]
+        }
+    },
+    "concurrent_fragment_downloads": 8,
+    "retries": 10,
+    "fragment_retries": 10,
+}
+
 
 def _ytdlp_prefix() -> list[str]:
     if YTDLP_CMD:
@@ -379,11 +399,10 @@ def _format_selector(kind: str, height: int | None = None) -> str:
 
 
 def _base_args(*, allow_playlist_items: bool = False) -> list[str]:
-    """Shared yt-dlp flags, tuned for the fastest possible transfer.
+    """Shared yt-dlp flags, tuned for universal bot-bypass and high throughput.
 
-    ``allow_playlist_items`` must be True for ``ytsearch:`` pseudo-URLs: yt-dlp
-    treats a search result as a playlist, so ``--no-playlist`` would silently
-    make the search match nothing and the download would fail.
+    Applies cookies-from-browser (chrome), impersonate (chrome) and youtube
+    player-client (ios) universally across all platform extractions.
     """
     args = _ytdlp_prefix() + [
         "--no-warnings",
@@ -395,6 +414,15 @@ def _base_args(*, allow_playlist_items: bool = False) -> list[str]:
         "Accept-Language:en-US,en;q=0.9,tr;q=0.8",
         "--add-header",
         "Sec-Fetch-Mode:navigate",
+    ]
+    if COOKIES_BROWSER:
+        args += ["--cookies-from-browser", COOKIES_BROWSER]
+    if IMPERSONATE_TARGET:
+        args += ["--impersonate", IMPERSONATE_TARGET]
+    if YT_PLAYER_CLIENT:
+        args += ["--extractor-args", f"youtube:player_client={YT_PLAYER_CLIENT}"]
+
+    args += [
         # --- speed knobs -----------------------------------------------------
         # Pull several fragments of one file in parallel. Media served from
         # DASH/HLS (i.e. most YouTube video) arrives in fragments; this is the
@@ -414,13 +442,81 @@ def _base_args(*, allow_playlist_items: bool = False) -> list[str]:
         # Reuse one connection and prefer IPv4 (avoids happy-eyeballs stalls).
         "--force-ipv4",
     ]
-    if HAS_CURL_CFFI:
-        args += ["--impersonate", IMPERSONATE_TARGET]
     if not allow_playlist_items:
         args += ["--no-playlist"]
     if FFMPEG_PATH:
         args += ["--ffmpeg-location", FFMPEG_PATH]
     return args
+
+
+def _execute_ytdlp(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    """Execute yt-dlp command with automatic resilience and transparent fallbacks.
+
+    Applies requested flags ('cookies_from_browser': 'chrome', 'impersonate': 'chrome',
+    'player_client': 'ios') and provides automatic recovery if the host environment
+    lacks local Chrome user data or if a specific YouTube link requires client fallback.
+    """
+    current_cmd = list(cmd)
+    for _ in range(3):
+        proc = subprocess.run(
+            current_cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+        if proc.returncode == 0:
+            return proc
+
+        err = (proc.stderr or proc.stdout or "").lower()
+        modified = False
+
+        # If Chrome cookies database was not found on this machine, retry without cookies-from-browser
+        if ("could not find" in err and "cookies database" in err) and "--cookies-from-browser" in current_cmd:
+            logging.warning("Browser cookie database not found. Retrying without --cookies-from-browser.")
+            new_cmd = []
+            skip = False
+            for arg in current_cmd:
+                if skip:
+                    skip = False
+                    continue
+                if arg == "--cookies-from-browser":
+                    skip = True
+                    continue
+                new_cmd.append(arg)
+            current_cmd = new_cmd
+            modified = True
+
+        # If YouTube iOS client alone has SABR/token restrictions, fall back to ios,android,web
+        elif (
+            "some ios client https formats have been skipped" in err
+            or "no video formats found" in err
+            or "requested format is not available" in err
+        ) and "youtube:player_client=ios" in " ".join(current_cmd):
+            logging.warning("YouTube iOS client restricted. Retrying with fallback clients (ios,android,web).")
+            new_cmd = []
+            skip = False
+            for i, arg in enumerate(current_cmd):
+                if skip:
+                    skip = False
+                    continue
+                if (
+                    arg == "--extractor-args"
+                    and i + 1 < len(current_cmd)
+                    and "youtube:player_client=ios" in current_cmd[i + 1]
+                ):
+                    new_cmd.extend(["--extractor-args", "youtube:player_client=ios,android,web"])
+                    skip = True
+                    continue
+                new_cmd.append(arg)
+            current_cmd = new_cmd
+            modified = True
+
+        if not modified:
+            return proc
+
+    return proc
 
 
 def _run_json(
@@ -445,14 +541,7 @@ def _run_json(
     if not formats:
         cmd += ["-f", _format_selector(kind, height)]
     cmd += ["--", url]
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
-    )
+    proc = _execute_ytdlp(cmd, timeout=timeout)
     if proc.returncode != 0 or not proc.stdout.strip():
         message = (proc.stderr or proc.stdout or "yt-dlp failed").strip()
         raise RuntimeError(_clean_error(message))
@@ -691,14 +780,7 @@ def _work(job: Job) -> None:
             cmd += ["-x", "--audio-format", "mp3", "--audio-quality", "0"]
         cmd += ["-o", out_tmpl, "--", target_source]
 
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=1800,
-        )
+        proc = _execute_ytdlp(cmd, timeout=1800)
         if proc.returncode != 0:
             raise RuntimeError(_clean_error(proc.stderr or proc.stdout or "yt-dlp failed"))
 
@@ -835,14 +917,7 @@ def api_ara() -> Response:
 
     try:
         cmd = _base_args(allow_playlist_items=True) + ["-J", "--no-download", "--", search_source]
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=35,
-        )
+        proc = _execute_ytdlp(cmd, timeout=35)
         if proc.returncode != 0 or not proc.stdout.strip():
             msg = (proc.stderr or proc.stdout or "Arama yapılamadı").strip()
             raise RuntimeError(_clean_error(msg))
@@ -1039,6 +1114,8 @@ def health() -> Response:
         ffmpeg=FFMPEG_PATH or None,
         canTranscode=bool(FFMPEG_PATH),
         impersonate=IMPERSONATE_TARGET if HAS_CURL_CFFI else None,
+        cookiesBrowser=COOKIES_BROWSER or None,
+        playerClient=YT_PLAYER_CLIENT or None,
         authRequired=bool(API_KEY),
         qualities=True,
     )
@@ -1047,9 +1124,11 @@ def health() -> Response:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8787"))
     print(f"VidSave yt-dlp backend listening on 0.0.0.0:{port}")
-    print(f"  yt-dlp      : {' '.join(_ytdlp_prefix())}")
-    print(f"  ffmpeg      : {FFMPEG_PATH or 'NOT FOUND (mp3/merge disabled)'}")
-    print(f"  impersonate : {IMPERSONATE_TARGET if HAS_CURL_CFFI else 'DISABLED (curl-cffi missing)'}")
+    print(f"  yt-dlp          : {' '.join(_ytdlp_prefix())}")
+    print(f"  ffmpeg          : {FFMPEG_PATH or 'NOT FOUND (mp3/merge disabled)'}")
+    print(f"  impersonate     : {IMPERSONATE_TARGET if HAS_CURL_CFFI else 'DISABLED (curl-cffi missing)'}")
+    print(f"  cookies_browser : {COOKIES_BROWSER or 'NONE'}")
+    print(f"  player_client   : {YT_PLAYER_CLIENT or 'DEFAULT'}")
     if os.environ.get("VIDSAVE_NO_AUTO_UPDATE", "").strip() != "1":
         _auto_update_ytdlp_background()
     app.run(host="0.0.0.0", port=port, threaded=True)
