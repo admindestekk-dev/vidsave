@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:metadata_god/metadata_god.dart';
 
 /// Spotify benzeri yukarı kayan (Swipe up / DraggableScrollableSheet)
 /// Şık Karaoke / Şarkı Sözleri (Lyrics) Paneli
@@ -57,18 +56,7 @@ class _LyricsBottomSheetState extends State<LyricsBottomSheet> {
     final file = File(path);
     if (!file.existsSync()) return;
 
-    // 1. Try reading with MetadataGod
-    try {
-      final metadata = await MetadataGod.readMetadata(file: file.path);
-      // If a song title/artist was parsed by MetadataGod, use it to improve UI context
-      if (metadata.title != null && metadata.title!.isNotEmpty && widget.songTitle == 'Müzik') {
-        // song title detected
-      }
-    } catch (_) {
-      // In case native MetadataGod bindings are not available in current runner
-    }
-
-    // 2. Extract embedded ID3 USLT lyrics directly from MP3 frame bytes
+    // Extract embedded ID3 USLT lyrics directly from MP3 frame bytes
     try {
       final text = _extractUsltFromMp3(file);
       if (text != null && text.isNotEmpty) {

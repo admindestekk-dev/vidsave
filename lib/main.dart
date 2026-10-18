@@ -24,13 +24,9 @@ import 'storage_service.dart';
 import 'theme_service.dart';
 import 'locale_service.dart';
 import 'video_player_screen.dart';
-import 'package:metadata_god/metadata_god.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    MetadataGod.initialize();
-  } catch (_) {}
   unawaited(DownloadNotificationService.instance.initialize());
   unawaited(StorageService.getItems());
   unawaited(ThemeService.initialize());
