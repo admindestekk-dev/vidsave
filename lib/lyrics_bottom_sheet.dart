@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:metadata_god/metadata_god.dart';
 
 /// Spotify benzeri yukarı kayan (Swipe up / DraggableScrollableSheet)
 /// Şık Karaoke / Şarkı Sözleri (Lyrics) Paneli
@@ -46,39 +47,99 @@ class _LyricsBottomSheetState extends State<LyricsBottomSheet> {
     super.initState();
     _loadedLyrics = widget.lyrics;
     if (_loadedLyrics == null || _loadedLyrics!.isEmpty) {
-      _tryExtractFromId3();
+      _extractLyrics();
     }
   }
 
-  void _tryExtractFromId3() {
-    // MP3 dosya etiketlerinden ID3 USLT okuma
-    if (widget.filePath != null && File(widget.filePath!).existsSync()) {
-      try {
-        final bytes = File(widget.filePath!).readAsBytesSync();
-        // USLT tag tag searching in raw ID3v2 header bytes
-        final usltIndex = _findSublist(bytes, [0x55, 0x53, 0x4C, 0x54]); // 'USLT'
-        if (usltIndex != -1 && usltIndex + 10 < bytes.length) {
-          // Read frame size
-          final size = (bytes[usltIndex + 4] << 24) |
-              (bytes[usltIndex + 5] << 16) |
-              (bytes[usltIndex + 6] << 8) |
-              bytes[usltIndex + 7];
-          final textBytes = bytes.sublist(
-            usltIndex + 10,
-            (usltIndex + 10 + size).clamp(0, bytes.length),
-          );
-          // Clean text
-          final text = String.fromCharCodes(
-            textBytes.where((b) => b >= 32 || b == 10 || b == 13),
-          ).trim();
-          if (text.isNotEmpty) {
-            setState(() {
-              _loadedLyrics = text;
-            });
-            return;
-          }
+  Future<void> _extractLyrics() async {
+    final path = widget.filePath;
+    if (path == null || path.isEmpty) return;
+    final file = File(path);
+    if (!file.existsSync()) return;
+
+    // 1. Try reading with MetadataGod
+    try {
+      final metadata = await MetadataGod.readMetadata(file: file.path);
+      // If a song title/artist was parsed by MetadataGod, use it to improve UI context
+      if (metadata.title != null && metadata.title!.isNotEmpty && widget.songTitle == 'Müzik') {
+        // song title detected
+      }
+    } catch (_) {
+      // In case native MetadataGod bindings are not available in current runner
+    }
+
+    // 2. Extract embedded ID3 USLT lyrics directly from MP3 frame bytes
+    try {
+      final text = _extractUsltFromMp3(file);
+      if (text != null && text.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _loadedLyrics = text;
+          });
         }
-      } catch (_) {}
+        return;
+      }
+    } catch (_) {}
+  }
+
+  String? _extractUsltFromMp3(File file) {
+    try {
+      final bytes = file.readAsBytesSync();
+      final usltIndex = _findSublist(bytes, [0x55, 0x53, 0x4C, 0x54]); // 'USLT'
+      if (usltIndex == -1 || usltIndex + 10 >= bytes.length) return null;
+
+      // In ID3v2.3: 4 bytes big-endian length. In ID3v2.4: synchsafe integer.
+      int size = (bytes[usltIndex + 4] << 24) |
+          (bytes[usltIndex + 5] << 16) |
+          (bytes[usltIndex + 6] << 8) |
+          bytes[usltIndex + 7];
+      if (size <= 0 || size > bytes.length - usltIndex) {
+        size = bytes.length - usltIndex - 10;
+      }
+
+      final framePayload = bytes.sublist(
+        usltIndex + 10,
+        (usltIndex + 10 + size).clamp(0, bytes.length),
+      );
+      if (framePayload.length <= 4) return null;
+
+      final encoding = framePayload[0];
+      // Skip 3 bytes language code (e.g. 'eng', 'tur')
+      int contentOffset = 4;
+
+      // Skip descriptor string terminated by null byte(s)
+      if (encoding == 1 || encoding == 2) {
+        // UTF-16 with 2-byte null terminator
+        while (contentOffset + 1 < framePayload.length) {
+          if (framePayload[contentOffset] == 0 && framePayload[contentOffset + 1] == 0) {
+            contentOffset += 2;
+            break;
+          }
+          contentOffset += 2;
+        }
+      } else {
+        // ISO-8859-1 or UTF-8 with 1-byte null terminator
+        while (contentOffset < framePayload.length) {
+          if (framePayload[contentOffset] == 0) {
+            contentOffset += 1;
+            break;
+          }
+          contentOffset += 1;
+        }
+      }
+
+      final lyricsBytes = framePayload.sublist(
+        contentOffset.clamp(0, framePayload.length),
+      );
+
+      // Clean non-printable characters while preserving newlines
+      final text = String.fromCharCodes(
+        lyricsBytes.where((b) => b >= 32 || b == 10 || b == 13),
+      ).trim();
+
+      return text.isNotEmpty ? text : null;
+    } catch (_) {
+      return null;
     }
   }
 

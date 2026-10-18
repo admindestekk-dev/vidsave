@@ -400,11 +400,20 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
             foregroundColor: const Color(0xFFFF5436),
           ),
           icon: const Icon(Icons.lyrics_rounded),
-          onPressed: () {
+          onPressed: () async {
             final title = widget.title ?? widget.asset?.title ?? 'Müzik';
+            String? resolvedPath = widget.file?.path;
+            if (resolvedPath == null && widget.asset != null) {
+              try {
+                final f = await widget.asset!.file;
+                resolvedPath = f?.path;
+              } catch (_) {}
+            }
+            if (!mounted) return;
             LyricsBottomSheet.show(
               context: context,
               songTitle: title,
+              filePath: resolvedPath,
             );
           },
         ),

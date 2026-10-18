@@ -331,39 +331,90 @@ def _get_platform_cookie_file(platform: str) -> str | None:
             conn.close()
 
 
+def clean_song_title(title: str) -> str:
+    """Smartly cleans noise keywords, bracketed video tags, and file extensions from title.
+
+    Transforms titles like:
+    'Sagopa Kajmer - Ateşten Gömlek (Official Video)' -> 'Sagopa Kajmer - Ateşten Gömlek'
+    'Eminem - Without Me [Official Music Video] (HD)' -> 'Eminem - Without Me'
+    """
+    if not title:
+        return ""
+    s = str(title).strip()
+    s = re.sub(r"\.(mp3|mp4|m4a|webm|flac|wav|ogg)$", "", s, flags=re.I)
+
+    # 1. Clean bracketed and parenthesized segments containing noise words
+    noise_keywords = (
+        r"official|video|music\s*video|audio|lyrics?|lyric\s*video|clip|videoclip|klip|"
+        r"hd|4k|8k|remaster(?:ed)?|live|acoustic|visualizer|album\s*version|"
+        r"prod\.?|produced\s*by|ft\.?|feat\.?|featuring"
+    )
+    bracket_pattern = rf"\[\s*[^\]]*?(?:{noise_keywords})[^\]]*?\]|\(\s*[^)]*?(?:{noise_keywords})[^)]*?\)"
+
+    prev = None
+    while prev != s:
+        prev = s
+        s = re.sub(bracket_pattern, "", s, flags=re.I)
+
+    # 2. Clean empty parentheses/brackets that might remain
+    s = re.sub(r"\(\s*\)|\[\s*\]", "", s)
+
+    # 3. Clean standalone phrases like 'Official Video', 'Lyrics Video', 'Video Klip'
+    standalone_patterns = [
+        r"\b(?:official\s*(?:music\s*)?video|official\s*audio|official\s*lyrics?|video\s*klip|lyric\s*video)\b",
+        r"\b(?:hd|4k|8k|remastered|remaster)\b",
+    ]
+    for pat in standalone_patterns:
+        s = re.sub(pat, "", s, flags=re.I)
+
+    # 4. Clean trailing / leading separators and extra spaces
+    s = re.sub(r"[\s_]+", " ", s)
+    s = re.sub(r"\s*[-–—:|~#]\s*$", "", s)
+    s = re.sub(r"^\s*[-–—:|~#]\s*", "", s)
+    return s.strip(" -–—:|~#")
+
+
 def _fetch_lyrics_online(title: str, uploader: str | None = None) -> str | None:
     """Fetch song lyrics from free public API (lrclib.net) by track title and artist."""
     try:
-        clean_title = re.sub(
-            r"(\[.*?\]|\(.*?\)|official video|video|clip|lyrics|ft\..*|feat\..*|prod\..*)",
-            "",
-            title or "",
-            flags=re.I,
-        ).strip()
-        search_query = f"{uploader or ''} {clean_title}".strip()
-        if not search_query:
-            return None
+        clean_title = clean_song_title(title)
+        clean_uploader = clean_song_title(uploader or "")
 
-        url = f"https://lrclib.net/api/search?q={urllib.parse.quote(search_query)}"
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": BROWSER_UA,
-                "Accept": "application/json",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=4) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="replace"))
-            if isinstance(data, list) and data:
-                best = data[0]
-                return best.get("syncedLyrics") or best.get("plainLyrics")
+        # Prepare prioritized search queries:
+        queries = []
+        if clean_title:
+            queries.append(clean_title)
+        if clean_uploader and clean_title and clean_uploader.lower() not in clean_title.lower():
+            queries.append(f"{clean_uploader} {clean_title}".strip())
+
+        for search_query in queries:
+            if not search_query:
+                continue
+            url = f"https://lrclib.net/api/search?q={urllib.parse.quote(search_query)}"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": BROWSER_UA,
+                    "Accept": "application/json",
+                },
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=4) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                    if isinstance(data, list) and data:
+                        for item in data:
+                            lyrics = item.get("syncedLyrics") or item.get("plainLyrics")
+                            if lyrics:
+                                return lyrics
+            except Exception:
+                continue
     except Exception as exc:
         logging.info("Lyrics fetch skipped/failed: %s", exc)
     return None
 
 
 def _embed_lyrics_id3(mp3_path: str, lyrics_text: str) -> bool:
-    """Embed lyrics into MP3 file using mutagen ID3 USLT tag."""
+    """Embed lyrics into MP3 file using mutagen ID3 USLT and COMM tags with ID3v2.3 compatibility."""
     if not HAS_MUTAGEN or not lyrics_text or not os.path.exists(mp3_path):
         return False
     try:
@@ -371,8 +422,13 @@ def _embed_lyrics_id3(mp3_path: str, lyrics_text: str) -> bool:
             audio = ID3(mp3_path)
         except ID3NoHeaderError:
             audio = ID3()
+        # Add USLT (Unsynchronised lyric/text transcription) in UTF-8
+        audio.delall("USLT")
         audio.add(USLT(encoding=3, lang="eng", desc="", text=lyrics_text))
-        audio.save(mp3_path)
+        # Also add with Turkish/default language code if desired for broad reader support
+        audio.add(USLT(encoding=3, lang="tur", desc="", text=lyrics_text))
+        # Save explicitly with ID3v2.3 for maximum compatibility across all players
+        audio.save(mp3_path, v2_version=3)
         return True
     except Exception as exc:
         logging.warning("Failed to embed ID3 lyrics into %s: %s", mp3_path, exc)

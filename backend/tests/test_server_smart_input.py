@@ -177,3 +177,15 @@ if __name__ == "__main__":
         args = server._base_args(source_url="https://www.pinterest.com/pin/123456789")
         self.assertIn(server.PINTEREST_UA, args)
         self.assertIn("https://www.pinterest.com/", args)
+
+
+    def test_clean_song_title_removes_noise_tags(self):
+        cases = [
+            ("Sagopa Kajmer - Ateşten Gömlek (Official Video)", "Sagopa Kajmer - Ateşten Gömlek"),
+            ("Eminem - Without Me [Official Music Video] (HD)", "Eminem - Without Me"),
+            ("Dua Lipa - Levitating (feat. DaBaby) [Official Lyrics Video]", "Dua Lipa - Levitating"),
+            ("BLOK3 - BAYBAY (Official Video)", "BLOK3 - BAYBAY"),
+            ("Sefo - Bilmem Mi? (prod. Aerro) [Official Video]", "Sefo - Bilmem Mi?"),
+        ]
+        for raw, expected in cases:
+            self.assertEqual(server.clean_song_title(raw), expected)
