@@ -194,12 +194,20 @@ def _init_db() -> None:
                 id TEXT PRIMARY KEY,
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
+                name TEXT,
+                avatar_url TEXT,
                 failed_logins INTEGER NOT NULL DEFAULT 0,
                 locked_until REAL,
                 created_at REAL NOT NULL
             )
             """
         )
+        # Ensure migration columns exist for previously created SQLite databases
+        for col_def in ("name TEXT", "avatar_url TEXT"):
+            try:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {col_def}")
+            except sqlite3.OperationalError:
+                pass
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -1423,7 +1431,7 @@ def _current_user() -> dict[str, str] | None:
         with closing(sqlite3.connect(DB_PATH)) as conn:
             row = conn.execute(
                 """
-                SELECT users.id, users.email
+                SELECT users.id, users.email, users.name, users.avatar_url
                 FROM auth_sessions
                 JOIN users ON users.id = auth_sessions.user_id
                 WHERE auth_sessions.token_hash = ?
@@ -1438,7 +1446,12 @@ def _current_user() -> dict[str, str] | None:
 
     if row is None:
         return None
-    return {"id": row[0], "email": row[1]}
+    return {
+        "id": row[0],
+        "email": row[1],
+        "name": row[2] or "",
+        "avatarUrl": row[3] or "",
+    }
 
 
 def _auth_user_id(
@@ -1919,7 +1932,11 @@ def api_register() -> Response | tuple[Response, int]:
         if conn:
             conn.close()
 
-    return jsonify(status="ok", token=token, user={"id": user_id, "email": email}), 201
+    return jsonify(
+        status="ok",
+        token=token,
+        user={"id": user_id, "email": email, "name": "", "avatarUrl": ""},
+    ), 201
 
 
 _DUMMY_PASSWORD_HASH = generate_password_hash(
@@ -1986,7 +2003,110 @@ def api_login() -> Response | tuple[Response, int]:
     return jsonify(
         status="ok",
         token=token,
-        user={"id": user_id, "email": normalized_email},
+        user={
+            "id": user_id,
+            "email": normalized_email,
+            "name": row[2] if len(row) > 2 and row[2] else "",
+            "avatarUrl": row[3] if len(row) > 3 and row[3] else "",
+        },
+    )
+
+
+@app.post("/api/auth/google")
+def api_auth_google() -> Response | tuple[Response, int]:
+    """Google Sign-In endpoint.
+
+    Authenticates or automatically registers the user with their Google profile
+    (email, name, avatarUrl). Returns a secure session token and subscription status.
+    """
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    email = str(body.get("email") or "").strip().lower()
+    name = str(body.get("name") or body.get("displayName") or "").strip()
+    avatar_url = str(body.get("avatarUrl") or body.get("photoUrl") or "").strip()
+
+    if not email or len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return jsonify(status="error", error={"code": "auth.email_invalid"}), 400
+
+    now = time.time()
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute(
+            "SELECT id, email, name, avatar_url FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+
+        if row is None:
+            user_id = str(uuid.uuid4())
+            conn.execute(
+                """
+                INSERT INTO users (id, email, password_hash, name, avatar_url, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, email, "google_oauth_no_password", name, avatar_url, now),
+            )
+        else:
+            user_id = row[0]
+            existing_name = row[2] or ""
+            existing_avatar = row[3] or ""
+            # Update name / avatar if newly provided
+            update_name = name or existing_name
+            update_avatar = avatar_url or existing_avatar
+            if update_name != existing_name or update_avatar != existing_avatar:
+                conn.execute(
+                    "UPDATE users SET name = ?, avatar_url = ? WHERE id = ?",
+                    (update_name, update_avatar, user_id),
+                )
+                name = update_name
+                avatar_url = update_avatar
+            else:
+                name = existing_name
+                avatar_url = existing_avatar
+
+        token = _issue_auth_session(conn, user_id)
+
+        # Check premium subscription status
+        cur = conn.cursor()
+        cur.execute("SELECT premium_until, is_premium FROM user_subscriptions WHERE user_id = ?", (user_id,))
+        sub_row = cur.fetchone()
+        is_premium = False
+        if sub_row:
+            prem_until_str, is_prem_flag = sub_row[0], sub_row[1]
+            if is_prem_flag:
+                if prem_until_str:
+                    try:
+                        p_dt = datetime.datetime.fromisoformat(str(prem_until_str).replace("Z", "+00:00"))
+                        if p_dt > datetime.datetime.now(datetime.timezone.utc):
+                            is_premium = True
+                    except Exception:
+                        is_premium = bool(is_prem_flag)
+                else:
+                    is_premium = bool(is_prem_flag)
+
+        conn.commit()
+    except sqlite3.Error:
+        logging.exception("Google auth DB error")
+        if conn:
+            conn.close()
+        return jsonify(status="error", error={"code": "auth.google_failed"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    return jsonify(
+        status="ok",
+        success=True,
+        token=token,
+        is_premium=is_premium,
+        user={
+            "id": user_id,
+            "email": email,
+            "name": name,
+            "avatarUrl": avatar_url,
+        },
     )
 
 

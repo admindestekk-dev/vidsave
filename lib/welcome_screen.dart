@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_localizations.dart';
@@ -10,8 +12,7 @@ import 'main.dart';
 /// VidSave İsteğe Bağlı Giriş ve Karşılama Ekranı (Welcome Screen)
 ///
 /// Google Play Store Giriş Duvarı (Login Wall) politikasına %100 uyumludur.
-/// Kullanıcılara zorunlu üyelik dayatılmaz:
-/// 1. E-posta / Şifre ile 'Giriş Yap / Üye Ol' butonu
+/// 1. 'Google ile Devam Et' tek tıkla oturum açma mekanizması
 /// 2. Sistemi bypass edip doğrudan indirme merkezine yönlendiren 'Giriş Yapmadan Ücretsiz Devam Et' butonu
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({
@@ -19,11 +20,13 @@ class WelcomeScreen extends StatefulWidget {
     this.homeBuilder,
     this.animate = true,
     this.authService,
+    this.googleSignInClient,
   });
 
   final WidgetBuilder? homeBuilder;
   final bool animate;
   final AuthService? authService;
+  final GoogleSignIn? googleSignInClient;
 
   static const String prefKeyHasSeenWelcome = 'vidsave_has_seen_welcome';
 
@@ -36,6 +39,8 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   late final AnimationController _animController;
   late final Animation<double> _fadeAnim;
   late final Animation<Offset> _slideAnim;
+
+  bool _isGoogleSigningIn = false;
 
   static const Color _brandColor = Color(0xFFFF5436);
   static const Color _brandDark = Color(0xFF14191F);
@@ -91,268 +96,42 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     );
   }
 
-  void _showAuthModal() {
-    final emailController = TextEditingController();
-    final passwordController = TextEditingController();
+  Future<void> _handleGoogleSignIn() async {
+    if (_isGoogleSigningIn) return;
+    setState(() => _isGoogleSigningIn = true);
+
     final isTurkish =
         AppLocalizations.of(context).locale.languageCode.toLowerCase() == 'tr';
-    bool isRegister = false;
-    bool isSubmitting = false;
-    bool obscurePassword = true;
-    String? errorMessage;
 
-    Future<void> showAuthSheet() async {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) {
-          return StatefulBuilder(
-            builder: (modalContext, setModalState) {
-              final bottomInset = MediaQuery.of(modalContext).viewInsets.bottom;
-              Future<void> submit() async {
-                if (isSubmitting) return;
-                final email = emailController.text.trim();
-                final password = passwordController.text;
-                if (email.isEmpty || password.isEmpty) {
-                  setModalState(() {
-                    errorMessage = isTurkish
-                        ? 'E-posta ve şifre alanlarını doldurun.'
-                        : 'Enter your email and password.';
-                  });
-                  return;
-                }
-
-                setModalState(() {
-                  isSubmitting = true;
-                  errorMessage = null;
-                });
-                try {
-                  final service = widget.authService ?? AuthService.instance;
-                  if (isRegister) {
-                    await service.register(email: email, password: password);
-                  } else {
-                    await service.login(email: email, password: password);
-                  }
-                  if (!modalContext.mounted) return;
-                  Navigator.of(modalContext).pop();
-                  await _proceedToApp();
-                } catch (error) {
-                  if (!modalContext.mounted) return;
-                  setModalState(() {
-                    errorMessage = error is AuthException
-                        ? error.message
-                        : isTurkish
-                        ? 'Bağlantı kurulamadı. Lütfen tekrar deneyin.'
-                        : 'Could not connect. Please try again.';
-                  });
-                } finally {
-                  if (modalContext.mounted) {
-                    setModalState(() => isSubmitting = false);
-                  }
-                }
-              }
-
-              InputDecoration fieldDecoration(String label, IconData icon) {
-                return InputDecoration(
-                  labelText: label,
-                  prefixIcon: Icon(icon, color: _brandColor),
-                  filled: true,
-                  fillColor: const Color(0xFFF6F8F9),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                );
-              }
-
-              return Container(
-                padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottomInset),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 44,
-                          height: 4.5,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        isRegister
-                            ? (isTurkish
-                                  ? 'Üye Ol / Kayıt Ol'
-                                  : 'Create account')
-                            : (isTurkish
-                                  ? 'Hesabınıza Giriş Yapın'
-                                  : 'Sign in'),
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF172B3A),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isRegister
-                            ? (isTurkish
-                                  ? 'İndirmelerinizi ve tercihlerinizi senkronize edin'
-                                  : 'Sync your downloads and preferences')
-                            : (isTurkish
-                                  ? 'Kayıtlı oturumunuzu açarak devam edin'
-                                  : 'Sign in to continue'),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF87949D),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: emailController,
-                        enabled: !isSubmitting,
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.next,
-                        autofillHints: const [AutofillHints.email],
-                        decoration: fieldDecoration(
-                          isTurkish ? 'E-posta Adresi' : 'Email address',
-                          Icons.email_outlined,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      TextField(
-                        controller: passwordController,
-                        enabled: !isSubmitting,
-                        obscureText: obscurePassword,
-                        maxLength: 128,
-                        textInputAction: TextInputAction.done,
-                        autofillHints: [
-                          isRegister
-                              ? AutofillHints.newPassword
-                              : AutofillHints.password,
-                        ],
-                        onSubmitted: (_) => submit(),
-                        decoration:
-                            fieldDecoration(
-                              isTurkish ? 'Şifre' : 'Password',
-                              Icons.lock_outline_rounded,
-                            ).copyWith(
-                              counterText: '',
-                              suffixIcon: IconButton(
-                                onPressed: isSubmitting
-                                    ? null
-                                    : () => setModalState(
-                                        () =>
-                                            obscurePassword = !obscurePassword,
-                                      ),
-                                tooltip: obscurePassword
-                                    ? (isTurkish
-                                          ? 'Şifreyi göster'
-                                          : 'Show password')
-                                    : (isTurkish
-                                          ? 'Şifreyi gizle'
-                                          : 'Hide password'),
-                                icon: Icon(
-                                  obscurePassword
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                ),
-                              ),
-                            ),
-                      ),
-                      if (errorMessage != null) ...[
-                        const SizedBox(height: 8),
-                        Semantics(
-                          liveRegion: true,
-                          child: Text(
-                            errorMessage!,
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        height: 52,
-                        child: FilledButton(
-                          onPressed: isSubmitting ? null : submit,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _brandColor,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: isSubmitting
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : Text(
-                                  isRegister
-                                      ? (isTurkish
-                                            ? 'Kayıt Ol ve Başla'
-                                            : 'Create account')
-                                      : (isTurkish
-                                            ? 'Giriş Yap ve Başla'
-                                            : 'Sign in'),
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextButton(
-                        onPressed: isSubmitting
-                            ? null
-                            : () => setModalState(() {
-                                isRegister = !isRegister;
-                                errorMessage = null;
-                              }),
-                        child: Text(
-                          isRegister
-                              ? (isTurkish
-                                    ? 'Zaten hesabınız var mı? Giriş Yapın'
-                                    : 'Already have an account? Sign in')
-                              : (isTurkish
-                                    ? 'Hesabınız yok mu? Hemen Üye Olun'
-                                    : 'No account? Create one'),
-                          style: const TextStyle(
-                            color: _brandColor,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+    try {
+      final auth = widget.authService ?? AuthService.instance;
+      await auth.loginWithGoogle(
+        googleSignInClient: widget.googleSignInClient,
       );
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      emailController.dispose();
-      passwordController.dispose();
+      if (!mounted) return;
+      await _proceedToApp();
+    } catch (error) {
+      if (!mounted) return;
+      if (error is AuthException && error.code == 'auth.cancelled') {
+        return;
+      }
+      final msg = error is AuthException
+          ? error.message
+          : isTurkish
+              ? 'Google ile giriş başarısız oldu. Lütfen tekrar deneyin.'
+              : 'Google sign in failed. Please try again.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleSigningIn = false);
+      }
     }
-
-    unawaited(showAuthSheet());
   }
 
   @override
@@ -422,29 +201,50 @@ class _WelcomeScreenState extends State<WelcomeScreen>
 
           const Spacer(),
 
-          // 1. BUTON: E-posta/Şifre ile Giriş Yap / Üye Ol
+          // 1. BUTON: Beyaz renkli, ortasında Google logolu şık 'Google ile Devam Et' butonu
           SizedBox(
             height: 54,
-            child: FilledButton.icon(
-              onPressed: _showAuthModal,
-              style: FilledButton.styleFrom(
-                backgroundColor: _brandColor,
-                foregroundColor: Colors.white,
+            child: ElevatedButton(
+              onPressed: _isGoogleSigningIn ? null : _handleGoogleSignIn,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF1F1F1F),
+                elevation: 3,
+                shadowColor: Colors.black.withValues(alpha: 0.3),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                elevation: 4,
-                shadowColor: _brandColor.withValues(alpha: 0.4),
               ),
-              icon: const Icon(Icons.login_rounded, size: 20),
-              label: Text(
-                isTurkish ? 'Giriş Yap / Üye Ol' : 'Sign In / Register',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.3,
-                ),
-              ),
+              child: _isGoogleSigningIn
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: _brandColor,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const FaIcon(
+                          FontAwesomeIcons.google,
+                          size: 20,
+                          color: Color(0xFFEA4335),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          isTurkish
+                              ? 'Google ile Devam Et'
+                              : 'Continue with Google',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ),
           const SizedBox(height: 14),

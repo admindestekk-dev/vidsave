@@ -296,7 +296,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Giriş Yap / Üye Ol'), findsOneWidget);
+    expect(find.text('Google ile Devam Et'), findsOneWidget);
     final guestButton = find.text('Giriş Yapmadan Ücretsiz Devam Et');
     expect(guestButton, findsOneWidget);
 

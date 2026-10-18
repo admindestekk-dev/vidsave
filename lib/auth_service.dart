@@ -1,19 +1,34 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'backend_settings.dart';
+import 'subscription_screen.dart';
 import 'user_identity_service.dart';
 
 class AuthUser {
-  const AuthUser({required this.id, required this.email});
+  const AuthUser({
+    required this.id,
+    required this.email,
+    this.name = '',
+    this.avatarUrl = '',
+  });
 
   final String id;
   final String email;
+  final String name;
+  final String avatarUrl;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
-    return AuthUser(id: json['id'] as String, email: json['email'] as String);
+    return AuthUser(
+      id: json['id'] as String,
+      email: json['email'] as String,
+      name: (json['name'] as String?) ?? '',
+      avatarUrl: (json['avatarUrl'] as String?) ?? '',
+    );
   }
 }
 
@@ -41,6 +56,10 @@ class SecureAuthTokenStore implements AuthTokenStore {
 
   static const _tokenKey = 'vidsave.auth.session_token';
   static const _userIdKey = 'vidsave.auth.user_id';
+  static const prefKeyUserName = 'vidsave_user_name';
+  static const prefKeyUserEmail = 'vidsave_user_email';
+  static const prefKeyUserAvatarUrl = 'vidsave_user_avatar_url';
+
   final FlutterSecureStorage _storage;
 
   @override
@@ -89,6 +108,80 @@ class AuthService {
 
   Future<AuthUser> login({required String email, required String password}) =>
       _authenticate('login', email: email, password: password);
+
+  /// Authenticates using Google Sign-In and persists the session and user profile.
+  Future<AuthUser> loginWithGoogle({
+    String? email,
+    String? name,
+    String? avatarUrl,
+    String? idToken,
+    GoogleSignIn? googleSignInClient,
+  }) async {
+    String? userEmail = email;
+    String? userName = name;
+    String? userAvatar = avatarUrl;
+    String? tokenId = idToken;
+
+    if (userEmail == null || userEmail.isEmpty) {
+      final googleSignIn = googleSignInClient ?? GoogleSignIn.instance;
+      GoogleSignInAccount? account;
+      try {
+        account = await googleSignIn.authenticate();
+      } catch (e) {
+        if (e is GoogleSignInException &&
+            e.code == GoogleSignInExceptionCode.canceled) {
+          throw const AuthException('auth.cancelled', 'Google ile giriş iptal edildi.');
+        }
+        throw AuthException('auth.failed', 'Google ile giriş yapılamadı: $e');
+      }
+      userEmail = account.email;
+      userName = account.displayName ?? '';
+      userAvatar = account.photoUrl ?? '';
+      final auth = account.authentication;
+      tokenId = auth.idToken;
+    }
+
+    final response = await _send(
+      'google',
+      body: {
+        'email': userEmail,
+        'name': userName,
+        'avatarUrl': userAvatar,
+        if (tokenId != null && tokenId.isNotEmpty) 'idToken': tokenId,
+      },
+    );
+
+    final data = _decodeResponse(response);
+    final token = data['token'];
+    final userJson = data['user'];
+    if (token is! String || userJson is! Map<String, dynamic>) {
+      throw const AuthException(
+        'response.invalid',
+        'Sunucudan geçersiz yanıt alındı.',
+      );
+    }
+
+    final user = AuthUser.fromJson(userJson);
+    await _tokenStore.saveToken(token);
+    await _tokenStore.saveUserId(user.id);
+
+    // Persist profile details to SharedPreferences for offline & display
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(SecureAuthTokenStore.prefKeyUserEmail, user.email);
+    if (user.name.isNotEmpty) {
+      await prefs.setString(SecureAuthTokenStore.prefKeyUserName, user.name);
+    }
+    if (user.avatarUrl.isNotEmpty) {
+      await prefs.setString(SecureAuthTokenStore.prefKeyUserAvatarUrl, user.avatarUrl);
+    }
+
+    // If server reports active subscription, sync local premium flag
+    if (data['is_premium'] == true) {
+      await prefs.setBool(SubscriptionScreen.prefKeyIsPremium, true);
+    }
+
+    return user;
+  }
 
   Future<AuthUser> _authenticate(
     String action, {
@@ -183,6 +276,13 @@ class AuthService {
       // Always clear the local session so the user can leave the account.
     } finally {
       await _tokenStore.clearToken();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(SecureAuthTokenStore.prefKeyUserName);
+      await prefs.remove(SecureAuthTokenStore.prefKeyUserEmail);
+      await prefs.remove(SecureAuthTokenStore.prefKeyUserAvatarUrl);
+      try {
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {}
     }
   }
 

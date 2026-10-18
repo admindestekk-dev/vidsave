@@ -180,3 +180,47 @@ class AuthEndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_google_auth_creates_or_finds_user_and_returns_session(self):
+        # 1. New Google user registration
+        res1 = self.client.post(
+            "/api/auth/google",
+            json={
+                "email": "googleuser@gmail.com",
+                "name": "Google User",
+                "avatarUrl": "https://lh3.googleusercontent.com/photo.jpg",
+            },
+        )
+        self.assertEqual(res1.status_code, 200)
+        data1 = res1.get_json()
+        self.assertTrue(data1["success"])
+        self.assertTrue(data1["token"])
+        self.assertFalse(data1["is_premium"])
+        self.assertEqual(data1["user"]["email"], "googleuser@gmail.com")
+        self.assertEqual(data1["user"]["name"], "Google User")
+        self.assertEqual(data1["user"]["avatarUrl"], "https://lh3.googleusercontent.com/photo.jpg")
+
+        # 2. Same Google user logging in again
+        res2 = self.client.post(
+            "/api/auth/google",
+            json={
+                "email": "googleuser@gmail.com",
+                "name": "Google User Updated",
+                "avatarUrl": "https://lh3.googleusercontent.com/photo2.jpg",
+            },
+        )
+        self.assertEqual(res2.status_code, 200)
+        data2 = res2.get_json()
+        self.assertEqual(data2["user"]["id"], data1["user"]["id"])
+        self.assertEqual(data2["user"]["name"], "Google User Updated")
+        self.assertEqual(data2["user"]["avatarUrl"], "https://lh3.googleusercontent.com/photo2.jpg")
+
+        # 3. Check me endpoint works with returned token
+        me = self.client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {data2['token']}"},
+        )
+        self.assertEqual(me.status_code, 200)
+        me_user = me.get_json()["user"]
+        self.assertEqual(me_user["email"], "googleuser@gmail.com")
+        self.assertEqual(me_user["name"], "Google User Updated")

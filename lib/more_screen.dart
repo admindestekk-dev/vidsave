@@ -6,6 +6,7 @@ import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
 import 'locale_service.dart';
 import 'media_downloader.dart';
+import 'profile_screen.dart';
 import 'storage_service.dart';
 import 'subscription_screen.dart';
 import 'theme_service.dart';
@@ -37,7 +38,7 @@ class _MoreScreenState extends State<MoreScreen> {
   static const _accent = Color(0xFF006673);
 
   AuthService get _authService => widget.authService ?? AuthService.instance;
-  late final Future<bool> _hasStoredSession = _authService.hasStoredSession;
+  late Future<bool> _hasStoredSession = _authService.hasStoredSession;
 
   /// Kaç kez başlığa dokunulduğunu sayar.
   int _clickCount = 0;
@@ -288,12 +289,39 @@ class _MoreScreenState extends State<MoreScreen> {
                           Icons.account_circle_outlined,
                           color: _accent,
                         ),
-                        title: const Text('Hesap oturumu açık'),
-                        trailing: TextButton.icon(
-                          onPressed: _logout,
-                          icon: const Icon(Icons.logout_rounded, size: 18),
-                          label: const Text('Çıkış Yap'),
+                        title: const Text('Profilim ve Hesap'),
+                        subtitle: const Text('Google hesabı ve üyelik bilgileri'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.logout_rounded, size: 20),
+                              tooltip: 'Çıkış Yap',
+                              onPressed: _logout,
+                            ),
+                            const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                          ],
                         ),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ProfileScreen(
+                                authService: _authService,
+                                onLoggedOut: () {
+                                  setState(() {
+                                    _hasStoredSession = _authService.hasStoredSession;
+                                  });
+                                },
+                              ),
+                            ),
+                          ).then((_) {
+                            if (mounted) {
+                              setState(() {
+                                _hasStoredSession = _authService.hasStoredSession;
+                              });
+                            }
+                          });
+                        },
                       ),
                       const Divider(),
                     ],
