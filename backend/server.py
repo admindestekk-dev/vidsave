@@ -156,6 +156,21 @@ def _init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                lang TEXT NOT NULL,
+                amount REAL NOT NULL,
+                currency TEXT NOT NULL,
+                vat_included INTEGER DEFAULT 1,
+                status TEXT NOT NULL,
+                invoice_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         conn.commit()
     except Exception as exc:
         logging.warning("Database init warning: %s", exc)
@@ -1727,6 +1742,67 @@ def api_get_lyrics() -> Response:
         return jsonify(status="error", message="Sözler bulunamadı"), 404
 
     return jsonify(status="error", message="Parametre eksik"), 400
+
+
+@app.post("/api/auth/subscribe-monthly")
+def api_subscribe_monthly() -> Response:
+    """Monthly subscription accounting endpoint with psychological pricing (9.99 TRY vs 0.99 USD)."""
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    lang = str(body.get("lang") or request.args.get("lang") or "tr").strip().lower()
+    user_id = str(body.get("user_id") or body.get("userId") or "guest").strip()
+
+    # Psychological pricing based on language / region
+    is_tr = lang == "tr"
+    amount = 9.99 if is_tr else 0.99
+    currency = "TRY" if is_tr else "USD"
+
+    subscription_id = f"sub_{uuid.uuid4().hex[:12]}"
+    invoice_id = f"inv_{uuid.uuid4().hex[:12]}"
+
+    # Accounting record persistence in SQLite
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            """
+            INSERT INTO subscriptions (
+                id, user_id, lang, amount, currency, vat_included, status, invoice_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (subscription_id, user_id, lang, amount, currency, 1, "active", invoice_id),
+        )
+        conn.commit()
+    except Exception as exc:
+        logging.warning("Subscription accounting recording error: %s", exc)
+    finally:
+        if conn:
+            conn.close()
+
+    receipt_message = (
+        "Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!"
+        if is_tr
+        else "Invoice generated: $0.99 (All taxes included) charged. Premium active!"
+    )
+
+    return jsonify(
+        status="ok",
+        success=True,
+        subscription={
+            "id": subscription_id,
+            "userId": user_id,
+            "status": "active",
+            "tier": "premium_monthly",
+            "amount": amount,
+            "currency": currency,
+            "lang": lang,
+            "vatIncluded": True,
+            "invoiceId": invoice_id,
+            "receiptMessage": receipt_message,
+        },
+    )
 
 
 @app.get("/download")

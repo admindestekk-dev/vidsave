@@ -4,6 +4,7 @@ import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
 import 'instagram_login_webview_screen.dart';
 import 'media_downloader.dart';
+import 'subscription_screen.dart';
 import 'theme_service.dart';
 
 /// "Ayarlar" sekmesi.
@@ -37,12 +38,7 @@ class _MoreScreenState extends State<MoreScreen> {
       // Üst üste 5 kez dokunulunca gizli ayarlar açılır.
       if (_clickCount >= 5) {
         _isDeveloperModeActive = true;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Geliştirici Seçenekleri Aktif Edildi!'),
-            backgroundColor: _accent,
-          ),
-        );
+        ScaffoldMessenger.of(context).clearSnackBars();
       }
     });
   }
@@ -83,6 +79,89 @@ class _MoreScreenState extends State<MoreScreen> {
               ),
               const SizedBox(height: 10),
 
+              // PREMIUM ABONELİK KARTI
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF5436), Color(0xFFFF7E40)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF5436).withValues(alpha: 0.3),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (context) => SubscriptionScreen(
+                            store: widget.store,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.workspace_premium_rounded,
+                              color: Colors.white,
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Premium Abonelik',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                SizedBox(height: 3),
+                                Text(
+                                  'Sınırsız hız, 4K indirme ve reklamsız deneyim',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.language, color: _accent),

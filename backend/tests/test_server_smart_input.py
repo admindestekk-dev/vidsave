@@ -189,3 +189,30 @@ if __name__ == "__main__":
         ]
         for raw, expected in cases:
             self.assertEqual(server.clean_song_title(raw), expected)
+
+
+class SubscriptionMonthlyTests(unittest.TestCase):
+    def setUp(self):
+        self.client = server.app.test_client()
+
+    def test_turkish_subscription_accounting_is_9_99_try(self):
+        res = self.client.post("/api/auth/subscribe-monthly", json={"lang": "tr", "userId": "user_123"})
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["success"])
+        sub = data["subscription"]
+        self.assertEqual(sub["amount"], 9.99)
+        self.assertEqual(sub["currency"], "TRY")
+        self.assertEqual(sub["lang"], "tr")
+        self.assertIn("9,99 TL (KDV Dahil)", sub["receiptMessage"])
+
+    def test_english_subscription_accounting_is_0_99_usd(self):
+        res = self.client.post("/api/auth/subscribe-monthly", json={"lang": "en", "userId": "user_456"})
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["success"])
+        sub = data["subscription"]
+        self.assertEqual(sub["amount"], 0.99)
+        self.assertEqual(sub["currency"], "USD")
+        self.assertEqual(sub["lang"], "en")
+        self.assertIn("$0.99 (All taxes included)", sub["receiptMessage"])
