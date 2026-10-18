@@ -165,3 +165,15 @@ class SearchDownloadArgsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_pinterest_url_is_cleaned(self):
+        raw = "https://www.pinterest.com/pin/123456789/?inviter_user_id=98765&sender=54321"
+        source, mode = server.resolve_source_input(raw)
+        self.assertEqual(source, "https://www.pinterest.com/pin/123456789")
+        self.assertEqual(mode, "url")
+
+    def test_pinterest_args_include_specialized_ua_and_referer(self):
+        args = server._base_args(source_url="https://www.pinterest.com/pin/123456789")
+        self.assertIn(server.PINTEREST_UA, args)
+        self.assertIn("https://www.pinterest.com/", args)

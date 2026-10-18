@@ -85,3 +85,6 @@ work/
 *.ytdl
 *.db
 vidsave_data.db
+
+# Flutter test failures
+test/failures/

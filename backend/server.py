@@ -89,6 +89,13 @@ BROWSER_UA = (
 )
 UA = BROWSER_UA
 
+# Pinterest-specific modern User-Agent mask for bot-bypass (avoid 403 Forbidden / Access Denied)
+PINTEREST_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/133.0.0.0 Safari/537.36"
+)
+
 # Impersonation target: 'chrome' or 'firefox'
 IMPERSONATE_TARGET = os.environ.get("VIDSAVE_IMPERSONATE", "chrome").strip() or "chrome"
 
@@ -459,6 +466,39 @@ def _looks_like_url(value: str) -> bool:
     )
 
 
+def _is_pinterest_url(url: str) -> bool:
+    """True when the URL points to a Pinterest domain or shortener."""
+    u = url.strip().lower()
+    return any(d in u for d in ("pinterest.", "pin.it"))
+
+
+def clean_pinterest_url(url: str) -> str:
+    """Clean tracking and affiliate query parameters from a Pinterest URL.
+
+    Strips parameters like ?inviter_user_id=..., ?sender=..., ?invite_code=...
+    leaving a canonical pin or board link for yt-dlp to process cleanly.
+    """
+    if not _is_pinterest_url(url):
+        return url
+
+    u = url.strip()
+    # If scheme is missing, prepend https:// for proper parsing
+    has_scheme = bool(re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", u))
+    parse_target = u if has_scheme else f"https://{u}"
+
+    try:
+        parts = urllib.parse.urlsplit(parse_target)
+        # Keep path, remove trailing query and fragment entirely for pin URLs
+        cleaned = urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+        # If original didn't have scheme, preserve the original format style
+        if not has_scheme and cleaned.startswith("https://"):
+            cleaned = cleaned[len("https://"):]
+        return cleaned
+    except Exception:
+        # Fallback regex query stripper if urlsplit fails
+        return re.sub(r"\?.*$", "", u)
+
+
 def resolve_source_input(raw: str) -> tuple[str, str]:
     """Turn user input into the `source` string yt-dlp should receive.
 
@@ -466,10 +506,14 @@ def resolve_source_input(raw: str) -> tuple[str, str]:
     was recognised as a URL and ``"search"`` when it was treated as a search
     query. Plain text is wrapped as ``ytsearch1:<query>`` so yt-dlp finds the top
     YouTube match; anything already looking like a URL is passed through intact.
+    For Pinterest URLs, tracking query parameters are automatically cleaned.
     """
     value = (raw or "").strip()
     if not value:
         raise ValueError("empty")
+    # Clean Pinterest link if detected
+    if _is_pinterest_url(value):
+        value = clean_pinterest_url(value)
     # Already a ytsearch/ytplaylist pseudo-URL: respect the caller's choice.
     if _YTSEARCH_PREFIX_RE.match(value):
         return value, "search"
@@ -715,17 +759,23 @@ def _base_args(
     *,
     allow_playlist_items: bool = False,
     cookiefile: str | None = None,
+    source_url: str | None = None,
 ) -> list[str]:
     """Shared yt-dlp flags, tuned for universal bot-bypass and high throughput.
 
     Applies cookies-from-browser (chrome), impersonate (chrome) and youtube
     player-client (ios) universally across all platform extractions.
     If custom cookiefile is provided (e.g. from user Instagram login), uses it.
+    If Pinterest URL is detected, applies Pinterest-optimized User-Agent and referer.
     """
+    is_pinterest = source_url and _is_pinterest_url(source_url)
+    ua = PINTEREST_UA if is_pinterest else BROWSER_UA
+    referer = "https://www.pinterest.com/" if is_pinterest else None
+
     args = _ytdlp_prefix() + [
         "--no-warnings",
         "--user-agent",
-        BROWSER_UA,
+        ua,
         "--add-header",
         "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "--add-header",
@@ -733,6 +783,8 @@ def _base_args(
         "--add-header",
         "Sec-Fetch-Mode:navigate",
     ]
+    if referer:
+        args += ["--referer", referer]
     if cookiefile and os.path.exists(cookiefile):
         args += ["--cookies", cookiefile]
     elif COOKIES_BROWSER:
@@ -870,7 +922,7 @@ def _run_json(
     instead of the single format matching ``height``.
     """
     is_search = _is_search_source(url)
-    cmd = _base_args(allow_playlist_items=is_search) + ["-J", "--no-download"]
+    cmd = _base_args(allow_playlist_items=is_search, source_url=url) + ["-J", "--no-download"]
     if not formats:
         cmd += ["-f", _format_selector(kind, height)]
     cmd += ["--", url]
@@ -1076,6 +1128,7 @@ def _download_job_to_disk(job: Job, target_source: str | None = None) -> str:
     cmd = _base_args(
         allow_playlist_items=_is_search_source(src),
         cookiefile=cookiefile,
+        source_url=src,
     ) + [
         "-f",
         _format_selector(job.kind, job.height),

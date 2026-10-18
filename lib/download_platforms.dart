@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 /// One of the social platforms the home screen offers as a shortcut.
 ///
@@ -15,6 +16,7 @@ class DownloadPlatform {
     required this.gradient,
     this.isAudio = false,
     this.allowedDomains = const [],
+    this.icon,
   });
 
   final String label;
@@ -22,6 +24,7 @@ class DownloadPlatform {
   final String assetPath;
   final String letter;
   final List<Color> gradient;
+  final dynamic icon;
 
   /// When true the tile represents the standalone "MP3 İNDİR" shortcut: its
   /// download button resolves [DownloadKind.audio] so the resulting file lands
@@ -97,6 +100,15 @@ const List<DownloadPlatform> kDownloadPlatforms = [
     letter: 'd',
     gradient: [Color(0xFF00AFF0), Color(0xFF0066CC)],
     allowedDomains: ['dailymotion.com', 'dai.ly'],
+  ),
+  DownloadPlatform(
+    label: 'PINTEREST İNDİRİCİ',
+    hint: 'pinterest.com veya pin.it',
+    assetPath: 'assets/logos/pinterest.png',
+    letter: 'P',
+    gradient: [Color(0xFFE60023), Color(0xFFBD081C)],
+    icon: FontAwesomeIcons.pinterest,
+    allowedDomains: ['pinterest.com', 'pin.it', 'pinterest.co.uk', 'pinterest.fr', 'pinterest.de'],
   ),
   DownloadPlatform(
     label: 'MP3 İNDİR',
@@ -403,6 +415,40 @@ class PlatformLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = platform.gradient;
+    if (platform.icon != null) {
+      return Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: colors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(size * 0.28),
+          boxShadow: [
+            BoxShadow(
+              color: colors.last.withValues(alpha: 0.35),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: platform.icon is IconData
+            ? Icon(
+                platform.icon as IconData,
+                size: size * 0.55,
+                color: Colors.white,
+              )
+            : FaIcon(
+                platform.icon,
+                size: size * 0.55,
+                color: Colors.white,
+              ),
+      );
+    }
+
     final fallback = Container(
       width: size,
       height: size,

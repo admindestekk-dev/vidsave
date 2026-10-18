@@ -182,4 +182,48 @@ void main() {
     // Confirm that 720 was resolved
     expect(resolver.resolvedCalls.any((call) => call.contains('height=720')), isTrue);
   });
+
+  testWidgets('tapping Pinterest platform tile opens search modal with correct styling and allowed domains', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final resolver = _MockResolver();
+    final downloader = _MockDownloader();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VidSaveHomePage(
+          library: const _MockMediaLibrary(),
+          backendSettingsStore: _MockSettingsStore(),
+          mediaResolver: resolver,
+          mediaDownloader: downloader,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify Pinterest card is present on grid
+    final pinterestTile = find.text('PINTEREST İNDİRİCİ');
+    expect(pinterestTile, findsOneWidget);
+    await tester.ensureVisible(pinterestTile);
+    await tester.tap(pinterestTile);
+    await tester.pumpAndSettle();
+
+    // Verify Pinterest search modal opened with appropriate hints
+    expect(find.text('PINTEREST İNDİRİCİ'), findsWidgets);
+    expect(find.text('pinterest.com veya pin.it linki yapıştırın veya arayın'), findsOneWidget);
+
+    final searchInput = find.byType(TextField);
+    await tester.enterText(searchInput, 'https://www.pinterest.com/pin/123456789/');
+    await tester.pump();
+
+    await tester.tap(find.text('ARA'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Örnek FB Eğlenceli Video'), findsOneWidget);
+  });
 }
