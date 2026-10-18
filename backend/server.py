@@ -94,8 +94,11 @@ IMPERSONATE_TARGET = os.environ.get("VIDSAVE_IMPERSONATE", "chrome").strip() or 
 # Universal browser cookies extraction ('chrome', 'firefox', etc.)
 COOKIES_BROWSER = os.environ.get("VIDSAVE_COOKIES_BROWSER", "chrome").strip() or "chrome"
 
-# YouTube player client extraction parameter ('ios', 'android', 'web')
-YT_PLAYER_CLIENT = os.environ.get("VIDSAVE_YT_PLAYER_CLIENT", "ios").strip() or "ios"
+# YouTube player client extraction parameter ('ios,android,web', 'ios', 'android', 'web')
+YT_PLAYER_CLIENT = (
+    os.environ.get("VIDSAVE_YT_PLAYER_CLIENT", "ios,android,web").strip()
+    or "ios,android,web"
+)
 
 # SQLite database for storing persistent user cookies (e.g. Instagram session)
 DB_PATH = os.environ.get("VIDSAVE_DB_PATH") or os.path.join(
@@ -608,11 +611,11 @@ def _execute_ytdlp(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[
     """Execute yt-dlp command with automatic resilience and transparent fallbacks.
 
     Applies requested flags ('cookies_from_browser': 'chrome', 'impersonate': 'chrome',
-    'player_client': 'ios') and provides automatic recovery if the host environment
+    'player_client': 'ios,android,web') and provides automatic recovery if the host environment
     lacks local Chrome user data or if a specific YouTube link requires client fallback.
     """
     current_cmd = list(cmd)
-    for _ in range(3):
+    for _ in range(4):
         proc = subprocess.run(
             current_cmd,
             capture_output=True,
@@ -627,7 +630,7 @@ def _execute_ytdlp(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[
         err = (proc.stderr or proc.stdout or "").lower()
         modified = False
 
-        # If Chrome cookies database was not found on this machine, retry without cookies-from-browser
+        # 1. If Chrome cookies database was not found on this machine, retry without cookies-from-browser
         if ("could not find" in err and "cookies database" in err) and "--cookies-from-browser" in current_cmd:
             logging.warning("Browser cookie database not found. Retrying without --cookies-from-browser.")
             new_cmd = []
@@ -643,30 +646,43 @@ def _execute_ytdlp(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[
             current_cmd = new_cmd
             modified = True
 
-        # If YouTube iOS client alone has SABR/token restrictions, fall back to ios,android,web
-        elif (
-            "some ios client https formats have been skipped" in err
-            or "no video formats found" in err
-            or "requested format is not available" in err
-        ) and "youtube:player_client=ios" in " ".join(current_cmd):
-            logging.warning("YouTube iOS client restricted. Retrying with fallback clients (ios,android,web).")
-            new_cmd = []
-            skip = False
-            for i, arg in enumerate(current_cmd):
-                if skip:
+        # 2. If YouTube bot check / format unavailable / SABR token restriction: fallback player clients
+        elif any(
+            k in err
+            for k in [
+                "sign in to confirm you're not a bot",
+                "sign in to confirm you’re not a bot",
+                "some ios client https formats have been skipped",
+                "requested format is not available",
+                "no video formats found",
+                "bot",
+            ]
+        ):
+            for alt in ["android,web", "android", "mweb,tv"]:
+                if f"youtube:player_client={alt}" not in " ".join(current_cmd):
+                    logging.warning("Retrying YouTube with player_client=%s", alt)
+                    new_cmd = []
                     skip = False
-                    continue
-                if (
-                    arg == "--extractor-args"
-                    and i + 1 < len(current_cmd)
-                    and "youtube:player_client=ios" in current_cmd[i + 1]
-                ):
-                    new_cmd.extend(["--extractor-args", "youtube:player_client=ios,android,web"])
-                    skip = True
-                    continue
-                new_cmd.append(arg)
-            current_cmd = new_cmd
-            modified = True
+                    found_client = False
+                    for i, a in enumerate(current_cmd):
+                        if skip:
+                            skip = False
+                            continue
+                        if (
+                            a == "--extractor-args"
+                            and i + 1 < len(current_cmd)
+                            and "youtube:player_client=" in current_cmd[i + 1]
+                        ):
+                            new_cmd.extend(["--extractor-args", f"youtube:player_client={alt}"])
+                            skip = True
+                            found_client = True
+                            continue
+                        new_cmd.append(a)
+                    if not found_client:
+                        new_cmd.extend(["--extractor-args", f"youtube:player_client={alt}"])
+                    current_cmd = new_cmd
+                    modified = True
+                    break
 
         if not modified:
             return proc
@@ -729,6 +745,10 @@ _ERROR_MAP = (
     (
         re.compile(r"Sign in to confirm you'?re not a bot", re.I),
         "Bu içerik kaynağın erişim kontrolü nedeniyle kullanılamıyor.",
+    ),
+    (
+        re.compile(r"Instagram sent an empty media response|not granting access", re.I),
+        "Instagram içeriklerini indirebilmek için 'Daha Fazlası' sekmesinden 'Instagram Hesabını Bağla' seçeneğini kullanarak bir kez giriş yapın.",
     ),
     (
         re.compile(r"Video unavailable|not available", re.I),

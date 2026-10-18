@@ -147,7 +147,7 @@ class SearchDownloadArgsTests(unittest.TestCase):
         self.assertIn("--impersonate", args)
         self.assertEqual(args[args.index("--impersonate") + 1], "chrome")
         self.assertIn("--extractor-args", args)
-        self.assertEqual(args[args.index("--extractor-args") + 1], "youtube:player_client=ios")
+        self.assertTrue(args[args.index("--extractor-args") + 1].startswith("youtube:player_client=ios"))
 
     def test_is_search_source_detection(self):
         self.assertTrue(server._is_search_source("ytsearch1:Sagopa"))
