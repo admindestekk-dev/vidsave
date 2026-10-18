@@ -14,8 +14,16 @@ import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/more_screen.dart';
 import 'package:vid_downloader_app/music_player.dart';
 import 'package:vid_downloader_app/video_player_screen.dart';
+import 'package:vid_downloader_app/welcome_screen.dart';
+import 'package:vid_downloader_app/app_localizations.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('VidSave opens on the download tab', (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -170,10 +178,7 @@ void main() {
       find.byType(TextFormField).at(0),
       'http://10.0.2.2:8787',
     );
-    await tester.enterText(
-      find.byType(TextFormField).at(1),
-      'test-secret',
-    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'test-secret');
     final saveButton = find.widgetWithText(OutlinedButton, 'Sadece Kaydet');
     await tester.ensureVisible(saveButton);
     await tester.pumpAndSettle();
@@ -262,6 +267,45 @@ void main() {
 
     await tester.tap(find.byTooltip('Geri'));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('WelcomeScreen renders guest bypass button and proceeds to app', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('tr'),
+        home: WelcomeScreen(
+          animate: false,
+          homeBuilder: (_) =>
+              const Scaffold(body: Center(child: Text('VidSave'))),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Giriş Yap / Üye Ol'), findsOneWidget);
+    final guestButton = find.text('Giriş Yapmadan Ücretsiz Devam Et');
+    expect(guestButton, findsOneWidget);
+
+    await tester.tap(guestButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('VidSave'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(WelcomeScreen.prefKeyHasSeenWelcome), isTrue);
   });
 }
 

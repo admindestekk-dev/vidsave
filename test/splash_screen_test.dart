@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/splash_screen.dart';
+import 'package:vid_downloader_app/welcome_screen.dart';
 
 void main() {
   testWidgets('splash shows the brand mark and a progress indicator', (
@@ -26,6 +28,10 @@ void main() {
   testWidgets('splash hands over to the home page after its duration', (
     WidgetTester tester,
   ) async {
+    SharedPreferences.setMockInitialValues({
+      WelcomeScreen.prefKeyHasSeenWelcome: true,
+    });
+
     await tester.pumpWidget(const MaterialApp(home: SplashScreen()));
 
     expect(find.byType(VidSaveHomePage), findsNothing);

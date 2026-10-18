@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auth_service.dart';
 import 'backend_settings.dart';
 import 'locale_service.dart';
 
@@ -21,12 +23,14 @@ class SubscriptionScreen extends StatefulWidget {
     this.inAppPurchase,
     this.store,
     this.httpClient,
+    this.authService,
     this.onSubscribed,
   });
 
   final InAppPurchase? inAppPurchase;
   final BackendSettingsStore? store;
   final http.Client? httpClient;
+  final AuthService? authService;
   final VoidCallback? onSubscribed;
 
   static const String productId = 'vidsave_premium_monthly';
@@ -87,7 +91,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   Future<void> _checkCurrentPremiumStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    final isPremium = prefs.getBool(SubscriptionScreen.prefKeyIsPremium) ?? false;
+    final isPremium =
+        prefs.getBool(SubscriptionScreen.prefKeyIsPremium) ?? false;
     if (mounted) {
       setState(() {
         _isPremiumActive = isPremium;
@@ -130,11 +135,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         return loc.languageCode.toLowerCase() == 'tr';
       }
     } catch (_) {}
-    return (LocaleService.localeNotifier.value?.languageCode.toLowerCase() ?? 'tr') == 'tr';
+    return (LocaleService.localeNotifier.value?.languageCode.toLowerCase() ??
+            'tr') ==
+        'tr';
   }
 
   /// In-App Purchase akışından gelen satın alma durumlarını işler
-  Future<void> _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) async {
+  Future<void> _listenToPurchaseUpdated(
+    List<PurchaseDetails> purchaseDetailsList,
+  ) async {
     for (final purchaseDetails in purchaseDetailsList) {
       if (purchaseDetails.status == PurchaseStatus.pending) {
         if (mounted) setState(() => _loading = true);
@@ -144,7 +153,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             setState(() => _loading = false);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(purchaseDetails.error?.message ?? 'Ödeme iptal edildi veya başarısız oldu.'),
+                content: Text(
+                  purchaseDetails.error?.message ??
+                      'Ödeme iptal edildi veya başarısız oldu.',
+                ),
                 backgroundColor: Colors.redAccent,
               ),
             );
@@ -168,7 +180,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   /// Backend'deki `/api/auth/verify-purchase` endpoint'ine makbuzu gönderir
   Future<bool> _verifyPurchaseOnBackend(PurchaseDetails purchaseDetails) async {
-    final token = purchaseDetails.verificationData.serverVerificationData.isNotEmpty
+    final token =
+        purchaseDetails.verificationData.serverVerificationData.isNotEmpty
         ? purchaseDetails.verificationData.serverVerificationData
         : purchaseDetails.verificationData.localVerificationData;
 
@@ -190,28 +203,37 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
       final uri = Uri.parse(baseUrl).resolve('/api/auth/verify-purchase');
       final client = widget.httpClient ?? http.Client();
+      final authService = widget.authService ?? AuthService.instance;
 
-      final response = await client.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          if (apiKey.isNotEmpty) 'X-Api-Key': apiKey,
-        },
-        body: jsonEncode({
-          'token': token.isNotEmpty ? token : 'token_${purchaseDetails.purchaseID}',
-          'productId': purchaseDetails.productID,
-          'userId': 'device_user',
-          'lang': langCode,
-        }),
-      ).timeout(const Duration(seconds: 15));
+      final response = await client
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              if (apiKey.isNotEmpty) 'X-Api-Key': apiKey,
+              ...await authService.authorizationHeaders(),
+            },
+            body: jsonEncode({
+              'token': token.isNotEmpty
+                  ? token
+                  : 'token_${purchaseDetails.purchaseID}',
+              'productId': purchaseDetails.productID,
+              'userId': await authService.userIdForRequests(),
+              'lang': langCode,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final isSuccess = response.statusCode == 200 &&
+      final isSuccess =
+          response.statusCode == 200 &&
           (data['success'] == true || data['verified'] == true);
 
       if (!isSuccess) {
-        throw StateError(data['message']?.toString() ?? 'Makbuz doğrulanamadı.');
+        throw StateError(
+          data['message']?.toString() ?? 'Makbuz doğrulanamadı.',
+        );
       }
 
       final serverReceipt = data['receiptMessage']?.toString();
@@ -318,6 +340,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
       final uri = Uri.parse(baseUrl).resolve('/api/auth/subscribe-monthly');
       final client = widget.httpClient ?? http.Client();
+      final authService = widget.authService ?? AuthService.instance;
 
       final response = await client
           .post(
@@ -326,10 +349,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
               if (apiKey.isNotEmpty) 'X-Api-Key': apiKey,
+              ...await authService.authorizationHeaders(),
             },
             body: jsonEncode({
               'lang': langCode,
-              'userId': 'device_user',
+              'userId': await authService.userIdForRequests(),
             }),
           )
           .timeout(const Duration(seconds: 15));
@@ -399,7 +423,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final isTurkish = _isTurkish(context);
 
     // Fiyat etiketleri
-    final priceTitle = isTurkish ? 'Aylık Sadece 9,99 TL' : 'Only \$0.99 / Month';
+    final priceTitle = isTurkish
+        ? '9,99 TL / Ay - KDV Dahil'
+        : '\$0.99 / Month - All Taxes Included';
     final taxFootnote = isTurkish
         ? 'Tüm vergiler ve KDV dahildir.'
         : 'All taxes and VAT included.';
@@ -507,23 +533,39 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   // Avantajlar Listesi
                   _buildFeatureRow(
                     icon: Icons.bolt_rounded,
-                    title: isTurkish ? 'Maksimum İndirme Hızı' : 'Maximum Download Speed',
-                    subtitle: isTurkish ? 'Bant genişliği kısıtlaması olmadan ultra hızlı' : 'Ultra-fast without bandwidth caps',
+                    title: isTurkish
+                        ? 'Maksimum İndirme Hızı'
+                        : 'Maximum Download Speed',
+                    subtitle: isTurkish
+                        ? 'Bant genişliği kısıtlaması olmadan ultra hızlı'
+                        : 'Ultra-fast without bandwidth caps',
                   ),
                   _buildFeatureRow(
                     icon: Icons.high_quality_rounded,
-                    title: isTurkish ? '4K & 1080p Ultra HD Video' : '4K & 1080p Ultra HD Video',
-                    subtitle: isTurkish ? 'Tüm platformlardan kristal netliğinde indirin' : 'Download crystal-clear from all platforms',
+                    title: isTurkish
+                        ? '4K & 1080p Ultra HD Video'
+                        : '4K & 1080p Ultra HD Video',
+                    subtitle: isTurkish
+                        ? 'Tüm platformlardan kristal netliğinde indirin'
+                        : 'Download crystal-clear from all platforms',
                   ),
                   _buildFeatureRow(
                     icon: Icons.music_note_rounded,
-                    title: isTurkish ? '320 kbps Stüdyo Kalitesinde MP3' : '320 kbps Studio Quality MP3',
-                    subtitle: isTurkish ? 'Otomatik şarkı sözü ve kapak resmi gömme' : 'Automatic lyrics and cover artwork embedding',
+                    title: isTurkish
+                        ? '320 kbps Stüdyo Kalitesinde MP3'
+                        : '320 kbps Studio Quality MP3',
+                    subtitle: isTurkish
+                        ? 'Otomatik şarkı sözü ve kapak resmi gömme'
+                        : 'Automatic lyrics and cover artwork embedding',
                   ),
                   _buildFeatureRow(
                     icon: Icons.block_rounded,
-                    title: isTurkish ? 'Tamamen Reklamsız' : 'Completely Ad-Free',
-                    subtitle: isTurkish ? 'Kesintisiz, sade ve akıcı kullanım' : 'Seamless, clean, uninterrupted usage',
+                    title: isTurkish
+                        ? 'Tamamen Reklamsız'
+                        : 'Completely Ad-Free',
+                    subtitle: isTurkish
+                        ? 'Kesintisiz, sade ve akıcı kullanım'
+                        : 'Seamless, clean, uninterrupted usage',
                   ),
 
                   const SizedBox(height: 30),
@@ -558,7 +600,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0E7C4B).withValues(alpha: 0.2),
+                              color: const Color(0xFF0E7C4B)
+                                  .withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Row(
@@ -571,7 +614,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  isTurkish ? 'PREMIUM AKTİF' : 'PREMIUM ACTIVE',
+                                  isTurkish
+                                      ? 'PREMIUM AKTİF'
+                                      : 'PREMIUM ACTIVE',
                                   style: const TextStyle(
                                     color: Color(0xFF1DB954),
                                     fontSize: 12,
@@ -645,7 +690,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       style: FilledButton.styleFrom(
                         backgroundColor: _accentColor,
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: _accentColor.withValues(alpha: 0.4),
+                        disabledBackgroundColor: _accentColor.withValues(
+                          alpha: 0.4,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -683,7 +730,110 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       fontSize: 12,
                     ),
                   ),
+                  const SizedBox(height: 20),
+
+                  // Yasal Zorunluluk: Terms of Service & Privacy Policy linkleri
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      TextButton(
+                        onPressed: () => _showLegalDocDialog(
+                          title: isTurkish
+                              ? 'Kullanım Koşulları'
+                              : 'Terms of Service',
+                          content: isTurkish
+                              ? 'VidSave Kullanım Koşulları (Terms of Service)\n\n'
+                                    '1. Hizmet Kapsamı: VidSave, kullanıcıların açık bağlantılardan medya dönüştürmelerine aracılık eder.\n'
+                                    '2. Abonelik: Aylık 9,99 TL tutarındaki abonelik Google Play üzerinden tahsil edilir ve iptal edilmediği sürece otomatik yenilenir.\n'
+                                    '3. İptal ve İade: Aboneliğinizi istediğiniz zaman Google Play Abonelikler menüsünden iptal edebilirsiniz.'
+                              : 'VidSave Terms of Service\n\n'
+                                    '1. Scope of Service: VidSave assists users in converting media from open URLs.\n'
+                                    '2. Subscription: The monthly \$0.99 subscription is billed via Google Play and renews automatically unless cancelled.\n'
+                                    '3. Cancellation & Refunds: You may cancel anytime from your Google Play Subscriptions settings.',
+                        ),
+                        child: Text(
+                          isTurkish ? 'Kullanım Koşulları' : 'Terms of Service',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF8B9BA7),
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                      const Text(
+                        ' • ',
+                        style: TextStyle(
+                          color: Color(0xFF6C7C89),
+                          fontSize: 12,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _showLegalDocDialog(
+                          title: isTurkish
+                              ? 'Gizlilik Politikası'
+                              : 'Privacy Policy',
+                          content: isTurkish
+                              ? 'VidSave Gizlilik Sözleşmesi (Privacy Policy)\n\n'
+                                    '1. Veri Toplama: VidSave, kişisel bilgilerinizi satmaz veya üçüncü taraflarla paylaşmaz.\n'
+                                    '2. Ödeme Verileri: Tüm faturalandırma işlemleri Google Play Güvenli Ödeme Altyapısı tarafından yönetilir; kredi kartı verileriniz sunucularımızda saklanmaz.\n'
+                                    '3. Hesap Silme: Ayarlar menüsünden dilediğiniz zaman hesabınızı ve tüm verilerinizi silebilirsiniz.'
+                              : 'VidSave Privacy Policy\n\n'
+                                    '1. Data Collection: VidSave does not sell or share personal information with third parties.\n'
+                                    '2. Billing Data: All billing is processed through Google Play Secure Billing; payment credentials are never stored on our servers.\n'
+                                    '3. Account Deletion: You can permanently delete your account and data anytime in the Settings menu.',
+                        ),
+                        child: Text(
+                          isTurkish ? 'Gizlilik Politikası' : 'Privacy Policy',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF8B9BA7),
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLegalDocDialog({required String title, required String content}) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Text(
+            content,
+            style: const TextStyle(
+              color: Color(0xFFB0BEC5),
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text(
+              'Kapat',
+              style: TextStyle(
+                color: _accentColor,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),

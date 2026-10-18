@@ -1,6 +1,8 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'download_item_model.dart';
 
 /// İndirilen dosyaların SharedPreferences üzerinden kalıcı olarak saklanmasını
@@ -65,8 +67,9 @@ class StorageService {
       // Listenin en başına ekle
       items.insert(0, item);
 
-      final List<String> rawList =
-          items.map((it) => jsonEncode(it.toJson())).toList();
+      final List<String> rawList = items
+          .map((it) => jsonEncode(it.toJson()))
+          .toList();
 
       await prefs.setStringList(_storageKey, rawList);
       downloadsNotifier.value = List.unmodifiable(items);
@@ -86,8 +89,9 @@ class StorageService {
 
       items.removeWhere((item) => item.id == id);
 
-      final List<String> rawList =
-          items.map((it) => jsonEncode(it.toJson())).toList();
+      final List<String> rawList = items
+          .map((it) => jsonEncode(it.toJson()))
+          .toList();
 
       await prefs.setStringList(_storageKey, rawList);
       downloadsNotifier.value = List.unmodifiable(items);

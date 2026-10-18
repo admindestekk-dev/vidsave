@@ -104,4 +104,38 @@ void main() {
     expect(LocaleService.currentLanguageCode, 'tr');
     expect(find.text('🇹🇷 Türkçe'), findsOneWidget);
   });
+
+  testWidgets('MoreScreen renders Delete Account and confirms dialog', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final store = _FakeSettingsStore();
+    final resolver = _FakeResolver();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        child: MoreScreen(store: store, resolver: resolver),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final deleteAccountTile = find.text('Hesabımı Sil');
+    expect(deleteAccountTile, findsOneWidget);
+    await tester.ensureVisible(deleteAccountTile);
+    await tester.tap(deleteAccountTile);
+    await tester.pumpAndSettle();
+
+    // Verify warning dialog appeared
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('Hesabınızı ve tüm indirme geçmişinizi kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'), findsOneWidget);
+
+    final cancelButton = find.text('Vazgeç');
+    expect(cancelButton, findsOneWidget);
+    await tester.tap(cancelButton);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+  });
 }

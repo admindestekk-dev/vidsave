@@ -35,8 +35,10 @@ void main() {
       expect(restored.formattedSize, '5.0 MB');
       expect(restored.filePath, '/storage/emulated/0/Download/sarki.mp3');
       expect(restored.sourceUrl, 'https://youtube.com/watch?v=abc');
-      expect(restored.downloadedAt.millisecondsSinceEpoch,
-          now.millisecondsSinceEpoch);
+      expect(
+        restored.downloadedAt.millisecondsSinceEpoch,
+        now.millisecondsSinceEpoch,
+      );
     });
 
     test('formattedSize handles various sizes', () {

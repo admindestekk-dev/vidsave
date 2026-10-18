@@ -43,7 +43,10 @@ void main() {
     });
 
     test('Dailymotion matches dailymotion.com and dai.ly URLs', () {
-      expect(dm.matchesUrl('https://www.dailymotion.com/video/xanjbk6'), isTrue);
+      expect(
+        dm.matchesUrl('https://www.dailymotion.com/video/xanjbk6'),
+        isTrue,
+      );
       expect(dm.matchesUrl('https://dai.ly/xanjbk6'), isTrue);
       expect(dm.matchesUrl('https://youtube.com/watch?v=123'), isFalse);
     });

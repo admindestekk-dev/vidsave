@@ -43,7 +43,8 @@ class DownloadItemModel {
   /// JSON haritasından model nesnesi üretir.
   factory DownloadItemModel.fromJson(Map<String, dynamic> json) {
     return DownloadItemModel(
-      id: json['id'] as String? ??
+      id:
+          json['id'] as String? ??
           DateTime.now().millisecondsSinceEpoch.toString(),
       name: json['name'] as String? ?? 'Bilinmeyen Dosya',
       type: json['type'] as String? ?? 'video',

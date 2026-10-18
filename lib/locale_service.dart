@@ -9,8 +9,9 @@ class LocaleService {
   static const String _localePrefKey = 'vidsave_selected_locale';
 
   /// Dil durumunu tüm ekranlarda anlık tetikleyen ValueNotifier
-  static final ValueNotifier<Locale?> localeNotifier =
-      ValueNotifier<Locale?>(null);
+  static final ValueNotifier<Locale?> localeNotifier = ValueNotifier<Locale?>(
+    null,
+  );
 
   /// Geçerli dil kodu (varsayılan 'tr')
   static String get currentLanguageCode =>

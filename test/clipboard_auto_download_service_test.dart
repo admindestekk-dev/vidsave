@@ -9,30 +9,42 @@ void main() {
   group('ClipboardAutoDownloadService', () {
     test('detects Instagram URLs correctly', () {
       expect(
-        ClipboardAutoDownloadService.isSupportedUrl('https://www.instagram.com/reel/C123456/'),
+        ClipboardAutoDownloadService.isSupportedUrl(
+          'https://www.instagram.com/reel/C123456/',
+        ),
         isTrue,
       );
       expect(
-        ClipboardAutoDownloadService.isSupportedUrl('https://instagr.am/p/xyz123'),
+        ClipboardAutoDownloadService.isSupportedUrl(
+          'https://instagr.am/p/xyz123',
+        ),
         isTrue,
       );
       expect(
-        ClipboardAutoDownloadService.extractUrl('Arkadaşım bak: https://instagram.com/reel/abc/ çok iyi'),
+        ClipboardAutoDownloadService.extractUrl(
+          'Arkadaşım bak: https://instagram.com/reel/abc/ çok iyi',
+        ),
         'https://instagram.com/reel/abc/',
       );
     });
 
     test('detects TikTok URLs correctly', () {
       expect(
-        ClipboardAutoDownloadService.isSupportedUrl('https://www.tiktok.com/@user/video/123456789'),
+        ClipboardAutoDownloadService.isSupportedUrl(
+          'https://www.tiktok.com/@user/video/123456789',
+        ),
         isTrue,
       );
       expect(
-        ClipboardAutoDownloadService.isSupportedUrl('https://vm.tiktok.com/ZM812345/'),
+        ClipboardAutoDownloadService.isSupportedUrl(
+          'https://vm.tiktok.com/ZM812345/',
+        ),
         isTrue,
       );
       expect(
-        ClipboardAutoDownloadService.extractUrl('İzle: https://vt.tiktok.com/ZS123/ süper'),
+        ClipboardAutoDownloadService.extractUrl(
+          'İzle: https://vt.tiktok.com/ZS123/ süper',
+        ),
         'https://vt.tiktok.com/ZS123/',
       );
     });
@@ -46,10 +58,7 @@ void main() {
         ClipboardAutoDownloadService.isSupportedUrl('Merhaba nasılsın?'),
         isFalse,
       );
-      expect(
-        ClipboardAutoDownloadService.isSupportedUrl(null),
-        isFalse,
-      );
+      expect(ClipboardAutoDownloadService.isSupportedUrl(null), isFalse);
     });
 
     test('markAsHandled prevents duplicate processing', () {

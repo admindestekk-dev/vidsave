@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import 'app_localizations.dart';
+import 'auth_service.dart';
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
 import 'bulk_download_screen.dart';
@@ -24,6 +25,8 @@ import 'storage_service.dart';
 import 'theme_service.dart';
 import 'locale_service.dart';
 import 'video_player_screen.dart';
+import 'auth_gate.dart';
+import 'welcome_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,7 +38,9 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.authService});
+
+  final AuthService? authService;
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +75,11 @@ class MyApp extends StatelessWidget {
                 // Eğer tam eşleşme yoksa cihaz dilini kabul et (AppLocalizations dünyadaki tüm dilleri karşılar)
                 return deviceLocale;
               },
-              home: const VidSaveHomePage(),
+              home: AuthGate(
+                authService: authService,
+                authenticatedBuilder: (_) => const VidSaveHomePage(),
+                guestBuilder: (_) => const WelcomeScreen(),
+              ),
             );
           },
         );
@@ -150,7 +159,8 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
 
   /// Pano içeriğini kontrol edip desteklenen video linki tespit edilirse QuickDownloadDialog açar.
   Future<void> _checkClipboard() async {
-    final url = await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
+    final url =
+        await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
     if (url != null && mounted) {
       _showClipboardPrompt(url);
     }
@@ -190,9 +200,11 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     _onDestinationSelected(2);
 
     final isAudio = kind == DownloadKind.audio;
-    final notificationId =
-        DownloadNotificationService.instance.allocateNotificationId();
-    final notifTitle = isAudio ? 'Otomatik MP3 İndirme' : 'Otomatik Video İndirme';
+    final notificationId = DownloadNotificationService.instance
+        .allocateNotificationId();
+    final notifTitle = isAudio
+        ? 'Otomatik MP3 İndirme'
+        : 'Otomatik Video İndirme';
 
     try {
       final parsed = Uri.parse(url);
@@ -416,10 +428,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
             },
             onOpenLibrary: _openLibrary,
           ),
-          MoreScreen(
-            store: _backendSettingsStore,
-            resolver: _backendResolver,
-          ),
+          MoreScreen(store: _backendSettingsStore, resolver: _backendResolver),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -545,7 +554,8 @@ class _DownloadPageState extends State<_DownloadPage> {
     // Platform doğrulama kontrolü: Her platform yalnızca kendi linkini indirebilir
     if (looksLikeUrl && !platform.matchesUrl(text)) {
       setState(() {
-        _stateOf(platform).status = '${platform.label} sadece kendi bağlantılarını destekler!';
+        _stateOf(platform).status =
+            '${platform.label} sadece kendi bağlantılarını destekler!';
       });
       _tileFocusNodes[platform.label]?.requestFocus();
       return;
@@ -562,8 +572,8 @@ class _DownloadPageState extends State<_DownloadPage> {
         ..status = 'Çözülüyor…';
     });
 
-    final notificationId =
-        DownloadNotificationService.instance.allocateNotificationId();
+    final notificationId = DownloadNotificationService.instance
+        .allocateNotificationId();
     final notifTitle = '${platform.label} İndirme';
     int lastNotifPercent = -1;
 
@@ -1732,7 +1742,6 @@ class _PlatformTile extends StatelessWidget {
   }
 }
 
-
 /// Platform search & download bottom sheet modal:
 /// Opens when a platform card (FB, IG, TT, etc.) is tapped.
 /// Users can search or paste a link specifically for that platform,
@@ -1787,7 +1796,10 @@ class _PlatformSearchDownloadModalState
   List<VideoQuality> _qualitiesFor(MediaPreview preview) {
     if (widget.platform.isAudio) {
       return const [
-        VideoQuality(height: 0, label: 'MP3 Ses Dosyası (320 kbps - En Yüksek Kalite)'),
+        VideoQuality(
+          height: 0,
+          label: 'MP3 Ses Dosyası (320 kbps - En Yüksek Kalite)',
+        ),
         VideoQuality(height: 192, label: 'MP3 Standart Kalite (192 kbps)'),
         VideoQuality(height: 128, label: 'MP3 Hızlı İndir (128 kbps)'),
       ];
@@ -1818,7 +1830,8 @@ class _PlatformSearchDownloadModalState
     }
 
     final parsed = Uri.tryParse(text);
-    final isUrl = parsed != null &&
+    final isUrl =
+        parsed != null &&
         parsed.host.isNotEmpty &&
         (parsed.isScheme('http') || parsed.isScheme('https'));
 
@@ -1828,8 +1841,8 @@ class _PlatformSearchDownloadModalState
       _statusMessage = isUrl
           ? 'Bağlantı inceleniyor…'
           : (widget.platform.isAudio
-              ? 'Şarkılar aranıyor…'
-              : 'İçerik ve çözünürlük seçenekleri aranıyor…');
+                ? 'Şarkılar aranıyor…'
+                : 'İçerik ve çözünürlük seçenekleri aranıyor…');
       _statusIsError = false;
       _preview = null;
       _searchResults = [];
@@ -1847,8 +1860,9 @@ class _PlatformSearchDownloadModalState
     }
 
     final source = isUrl ? parsed : Uri(path: text);
-    final kind =
-        widget.platform.isAudio ? DownloadKind.audio : DownloadKind.video;
+    final kind = widget.platform.isAudio
+        ? DownloadKind.audio
+        : DownloadKind.video;
 
     // MP3 aramasında bir URL değilse önce /api/ara üzerinden liste araması yap
     if (widget.platform.isAudio && !isUrl) {
@@ -1894,8 +1908,14 @@ class _PlatformSearchDownloadModalState
           _preview = MediaPreview(
             title: text,
             qualities: const [
-              VideoQuality(height: 0, label: 'MP3 Ses Dosyası (320 kbps - En Yüksek Kalite)'),
-              VideoQuality(height: 192, label: 'MP3 Standart Kalite (192 kbps)'),
+              VideoQuality(
+                height: 0,
+                label: 'MP3 Ses Dosyası (320 kbps - En Yüksek Kalite)',
+              ),
+              VideoQuality(
+                height: 192,
+                label: 'MP3 Standart Kalite (192 kbps)',
+              ),
               VideoQuality(height: 128, label: 'MP3 Hızlı İndir (128 kbps)'),
             ],
           );
@@ -1906,10 +1926,13 @@ class _PlatformSearchDownloadModalState
 
   Future<void> _startDownloadMusicItem(SearchResultItem item) async {
     final parsed = Uri.tryParse(item.url);
-    final isUrl = parsed != null &&
+    final isUrl =
+        parsed != null &&
         parsed.host.isNotEmpty &&
         (parsed.isScheme('http') || parsed.isScheme('https'));
-    final source = isUrl ? parsed : Uri(path: item.url.isNotEmpty ? item.url : item.baslik);
+    final source = isUrl
+        ? parsed
+        : Uri(path: item.url.isNotEmpty ? item.url : item.baslik);
 
     setState(() {
       _downloading = true;
@@ -1919,8 +1942,8 @@ class _PlatformSearchDownloadModalState
       _statusIsError = false;
     });
 
-    final notificationId =
-        DownloadNotificationService.instance.allocateNotificationId();
+    final notificationId = DownloadNotificationService.instance
+        .allocateNotificationId();
     final itemTitle = item.baslik.isNotEmpty ? item.baslik : 'MP3 İndirme';
     int lastNotifPercent = -1;
 
@@ -2028,7 +2051,8 @@ class _PlatformSearchDownloadModalState
     if (text.isEmpty) return;
 
     final parsed = Uri.tryParse(text);
-    final isUrl = parsed != null &&
+    final isUrl =
+        parsed != null &&
         parsed.host.isNotEmpty &&
         (parsed.isScheme('http') || parsed.isScheme('https'));
 
@@ -2043,8 +2067,9 @@ class _PlatformSearchDownloadModalState
     }
 
     final source = isUrl ? parsed : Uri(path: text);
-    final kind =
-        widget.platform.isAudio ? DownloadKind.audio : DownloadKind.video;
+    final kind = widget.platform.isAudio
+        ? DownloadKind.audio
+        : DownloadKind.video;
 
     setState(() {
       _downloading = true;
@@ -2054,8 +2079,8 @@ class _PlatformSearchDownloadModalState
       _statusIsError = false;
     });
 
-    final notificationId =
-        DownloadNotificationService.instance.allocateNotificationId();
+    final notificationId = DownloadNotificationService.instance
+        .allocateNotificationId();
     final modalDisplayTitle = _preview?.title.trim().isNotEmpty == true
         ? _preview!.title.trim()
         : '${widget.platform.label} (${quality.label})';
@@ -2063,8 +2088,7 @@ class _PlatformSearchDownloadModalState
 
     try {
       final height = quality.height > 0 ? quality.height : null;
-      final media =
-          await widget.resolver.resolve(source, kind, height: height);
+      final media = await widget.resolver.resolve(source, kind, height: height);
       if (!mounted) return;
       setState(() {
         _statusMessage = '${quality.label} indiriliyor…';
@@ -2226,7 +2250,10 @@ class _PlatformSearchDownloadModalState
                 ),
                 IconButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded, color: Color(0xFF87949D)),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: Color(0xFF87949D),
+                  ),
                 ),
               ],
             ),
@@ -2240,7 +2267,8 @@ class _PlatformSearchDownloadModalState
               textInputAction: TextInputAction.search,
               autocorrect: false,
               enableSuggestions: true,
-              onSubmitted: (_) => _searching || _downloading ? null : _handleSearch(),
+              onSubmitted: (_) =>
+                  _searching || _downloading ? null : _handleSearch(),
               decoration: InputDecoration(
                 labelText: widget.platform.isAudio
                     ? 'Müzik ara veya Video linki yapıştırın (YouTube, TikTok, IG vb.)'
@@ -2248,10 +2276,7 @@ class _PlatformSearchDownloadModalState
                 hintText: widget.platform.isAudio
                     ? 'Şarkı adı veya video linki yapıştırın'
                     : widget.platform.hint,
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: primaryColor,
-                ),
+                prefixIcon: Icon(Icons.search_rounded, color: primaryColor),
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -2269,10 +2294,15 @@ class _PlatformSearchDownloadModalState
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: FilledButton(
-                        onPressed: _searching || _downloading ? null : _handleSearch,
+                        onPressed: _searching || _downloading
+                            ? null
+                            : _handleSearch,
                         style: FilledButton.styleFrom(
                           backgroundColor: primaryColor,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -2421,8 +2451,10 @@ class _PlatformSearchDownloadModalState
                 itemCount: _searchResults.length,
                 itemBuilder: (context, index) {
                   final item = _searchResults[index];
-                  final isItemDownloading = _downloading &&
-                      (_downloadingUrl == item.id || _downloadingUrl == item.url);
+                  final isItemDownloading =
+                      _downloading &&
+                      (_downloadingUrl == item.id ||
+                          _downloadingUrl == item.url);
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
@@ -2445,9 +2477,14 @@ class _PlatformSearchDownloadModalState
                     ),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
-                      onTap: _downloading ? null : () => _startDownloadMusicItem(item),
+                      onTap: _downloading
+                          ? null
+                          : () => _startDownloadMusicItem(item),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
                         child: Row(
                           children: [
                             Container(
@@ -2558,7 +2595,10 @@ class _PlatformSearchDownloadModalState
                                         color: Colors.white,
                                       ),
                                     )
-                                  : const Icon(Icons.download_rounded, size: 16),
+                                  : const Icon(
+                                      Icons.download_rounded,
+                                      size: 16,
+                                    ),
                               label: Text(
                                 isItemDownloading ? 'İNDİRİLİYOR' : 'İNDİR',
                                 style: const TextStyle(
@@ -2590,7 +2630,9 @@ class _PlatformSearchDownloadModalState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _preview!.title.isEmpty ? 'İçerik bulundu' : _preview!.title,
+                      _preview!.title.isEmpty
+                          ? 'İçerik bulundu'
+                          : _preview!.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -2599,28 +2641,43 @@ class _PlatformSearchDownloadModalState
                         color: Color(0xFF172B3A),
                       ),
                     ),
-                    if (_preview!.duration != null || _preview!.uploader != null) ...[
+                    if (_preview!.duration != null ||
+                        _preview!.uploader != null) ...[
                       const SizedBox(height: 6),
                       Row(
                         children: [
                           if (_preview!.duration != null) ...[
-                            const Icon(Icons.timer_outlined, size: 14, color: Color(0xFF87949D)),
+                            const Icon(
+                              Icons.timer_outlined,
+                              size: 14,
+                              color: Color(0xFF87949D),
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               _formatDuration(_preview!.duration),
-                              style: const TextStyle(fontSize: 12, color: Color(0xFF87949D)),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF87949D),
+                              ),
                             ),
                             const SizedBox(width: 12),
                           ],
                           if (_preview!.uploader != null) ...[
-                            const Icon(Icons.person_outline, size: 14, color: Color(0xFF87949D)),
+                            const Icon(
+                              Icons.person_outline,
+                              size: 14,
+                              color: Color(0xFF87949D),
+                            ),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 _preview!.uploader!,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12, color: Color(0xFF87949D)),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF87949D),
+                                ),
                               ),
                             ),
                           ],
@@ -2630,14 +2687,22 @@ class _PlatformSearchDownloadModalState
                     if (widget.platform.isAudio) ...[
                       const SizedBox(height: 10),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1DB954).withValues(alpha: 0.12),
+                          color: const Color(0xFF1DB954)
+                              .withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Row(
                           children: [
-                            Icon(Icons.audiotrack_rounded, size: 15, color: Color(0xFF0E7C4B)),
+                            Icon(
+                              Icons.audiotrack_rounded,
+                              size: 15,
+                              color: Color(0xFF0E7C4B),
+                            ),
                             SizedBox(width: 6),
                             Expanded(
                               child: Text(
@@ -2673,24 +2738,33 @@ class _PlatformSearchDownloadModalState
                 widget.platform.isAudio
                     ? 'Video içeriği doğrudan MP3 ses dosyası olarak dönüştürülüp indirilir'
                     : 'İstediğiniz kalitenin yanındaki İNDİR butonuna basarak indirebilirsiniz',
-                style: const TextStyle(fontSize: 11.5, color: Color(0xFF87949D)),
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: Color(0xFF87949D),
+                ),
               ),
               const SizedBox(height: 12),
               ..._qualitiesFor(_preview!).map((quality) {
-                final isCurrentDownloading = _downloading &&
-                    _downloadingHeight == quality.height;
-                final sizeStr = quality.sizeInBytes != null && quality.sizeInBytes! > 0
+                final isCurrentDownloading =
+                    _downloading && _downloadingHeight == quality.height;
+                final sizeStr =
+                    quality.sizeInBytes != null && quality.sizeInBytes! > 0
                     ? ' · ${formatBytes(quality.sizeInBytes!)}'
                     : '';
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: isCurrentDownloading ? primaryColor : const Color(0xFFE2E8EC),
+                      color: isCurrentDownloading
+                          ? primaryColor
+                          : const Color(0xFFE2E8EC),
                       width: isCurrentDownloading ? 1.5 : 1.0,
                     ),
                     boxShadow: [
@@ -2713,8 +2787,8 @@ class _PlatformSearchDownloadModalState
                           widget.platform.isAudio
                               ? Icons.music_note_rounded
                               : (quality.isBest
-                                  ? Icons.star_rounded
-                                  : Icons.video_settings_rounded),
+                                    ? Icons.star_rounded
+                                    : Icons.video_settings_rounded),
                           size: 20,
                           color: primaryColor,
                         ),
@@ -2800,7 +2874,9 @@ class _PlatformSearchDownloadModalState
                         label: Text(
                           isCurrentDownloading
                               ? 'DÖNÜŞTÜRÜLÜYOR'
-                              : (widget.platform.isAudio ? 'MP3 İNDİR' : 'İNDİR'),
+                              : (widget.platform.isAudio
+                                    ? 'MP3 İNDİR'
+                                    : 'İNDİR'),
                           style: const TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w800,

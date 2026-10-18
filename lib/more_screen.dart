@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auth_service.dart';
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
 import 'instagram_login_webview_screen.dart';
 import 'locale_service.dart';
 import 'media_downloader.dart';
+import 'storage_service.dart';
 import 'subscription_screen.dart';
 import 'theme_service.dart';
+import 'user_identity_service.dart';
+import 'welcome_screen.dart';
 
 /// "Ayarlar" sekmesi.
 ///
@@ -14,10 +19,16 @@ import 'theme_service.dart';
 /// Başlığa arka arkaya 5 kez dokunulduğunda gizli geliştirici bölümü açılır ve
 /// backend bağlantı ayarları görünür hâle gelir.
 class MoreScreen extends StatefulWidget {
-  const MoreScreen({super.key, required this.store, required this.resolver});
+  const MoreScreen({
+    super.key,
+    required this.store,
+    required this.resolver,
+    this.authService,
+  });
 
   final BackendSettingsStore store;
   final BackendMediaResolver resolver;
+  final AuthService? authService;
 
   @override
   State<MoreScreen> createState() => _MoreScreenState();
@@ -25,6 +36,9 @@ class MoreScreen extends StatefulWidget {
 
 class _MoreScreenState extends State<MoreScreen> {
   static const _accent = Color(0xFF006673);
+
+  AuthService get _authService => widget.authService ?? AuthService.instance;
+  late final Future<bool> _hasStoredSession = _authService.hasStoredSession;
 
   /// Kaç kez başlığa dokunulduğunu sayar.
   int _clickCount = 0;
@@ -77,7 +91,11 @@ class _MoreScreenState extends State<MoreScreen> {
                           color: _accent.withValues(alpha: 0.12),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.language_rounded, color: _accent, size: 22),
+                        child: const Icon(
+                          Icons.language_rounded,
+                          color: _accent,
+                          size: 22,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
@@ -203,9 +221,8 @@ class _MoreScreenState extends State<MoreScreen> {
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (context) => SubscriptionScreen(
-                            store: widget.store,
-                          ),
+                          builder: (context) =>
+                              SubscriptionScreen(store: widget.store),
                         ),
                       );
                     },
@@ -260,11 +277,36 @@ class _MoreScreenState extends State<MoreScreen> {
                   ),
                 ),
               ),
-              const Divider(),
+              FutureBuilder<bool>(
+                future: _hasStoredSession,
+                builder: (context, snapshot) {
+                  if (snapshot.data != true) return const SizedBox.shrink();
+                  return Column(
+                    children: [
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(
+                          Icons.account_circle_outlined,
+                          color: _accent,
+                        ),
+                        title: const Text('Hesap oturumu açık'),
+                        trailing: TextButton.icon(
+                          onPressed: _logout,
+                          icon: const Icon(Icons.logout_rounded, size: 18),
+                          label: const Text('Çıkış Yap'),
+                        ),
+                      ),
+                      const Divider(),
+                    ],
+                  );
+                },
+              ),
               ValueListenableBuilder<Locale?>(
                 valueListenable: LocaleService.localeNotifier,
                 builder: (context, currentLocale, _) {
-                  final isTr = (currentLocale?.languageCode.toLowerCase() ?? 'tr') == 'tr';
+                  final isTr =
+                      (currentLocale?.languageCode.toLowerCase() ?? 'tr') ==
+                      'tr';
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.language, color: _accent),
@@ -288,7 +330,9 @@ class _MoreScreenState extends State<MoreScreen> {
                       color: ThemeService.primaryColor,
                     ),
                     title: const Text('Koyu Tema'),
-                    subtitle: Text(isDark ? 'Açık (Karanlık Mod)' : 'Kapalı (Aydınlık Mod)'),
+                    subtitle: Text(
+                      isDark ? 'Açık (Karanlık Mod)' : 'Kapalı (Aydınlık Mod)',
+                    ),
                     trailing: Switch(
                       value: isDark,
                       activeThumbColor: Colors.white,
@@ -320,10 +364,18 @@ class _MoreScreenState extends State<MoreScreen> {
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
-                      colors: [Color(0xFFF58529), Color(0xFFDD2A7B), Color(0xFF8134AF)],
+                      colors: [
+                        Color(0xFFF58529),
+                        Color(0xFFDD2A7B),
+                        Color(0xFF8134AF),
+                      ],
                     ),
                   ),
-                  child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18),
+                  child: const Icon(
+                    Icons.camera_alt_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ),
                 title: const Text(
                   'Instagram Hesabını Bağla (Gizli Hesaplar İçin)',
@@ -337,13 +389,51 @@ class _MoreScreenState extends State<MoreScreen> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute<bool>(
-                      builder: (context) => InstagramLoginWebViewScreen(
-                        store: widget.store,
-                      ),
+                      builder: (context) =>
+                          InstagramLoginWebViewScreen(store: widget.store),
                     ),
                   );
                 },
               ),
+              const Divider(),
+
+              // =============================================================
+              // GOOGLE PLAY YASAL ZORUNLULUĞU: HESABIMI SİL (DELETE ACCOUNT)
+              // =============================================================
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.red.shade50,
+                  ),
+                  child: const Icon(
+                    Icons.delete_forever_rounded,
+                    color: Colors.redAccent,
+                    size: 20,
+                  ),
+                ),
+                title: const Text(
+                  'Hesabımı Sil',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: Colors.redAccent,
+                  ),
+                ),
+                subtitle: const Text(
+                  'Hesabınızı, indirme geçmişinizi ve tüm kayıtlarınızı kalıcı olarak silin.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: Colors.redAccent,
+                ),
+                onTap: () => _confirmDeleteAccount(context),
+              ),
+              const Divider(),
 
               // =============================================================
               // 2. GİZLİ TEKNİK AYARLAR (yalnızca 5 dokunuştan sonra görünür)
@@ -381,6 +471,98 @@ class _MoreScreenState extends State<MoreScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _logout() async {
+    try {
+      await _authService.logout();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Çıkış yapılamadı. Lütfen tekrar deneyin.'),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const WelcomeScreen()),
+      (route) => false,
+    );
+  }
+
+  void _confirmDeleteAccount(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Hesabımı Sil'),
+          ],
+        ),
+        content: const Text(
+          'Hesabınızı ve tüm indirme geçmişinizi kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+          style: TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () async {
+              Navigator.of(dialogCtx).pop();
+              await _executeDeleteAccount();
+            },
+            child: const Text('Evet, Kalıcı Olarak Sil'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _executeDeleteAccount() async {
+    try {
+      final guestUserId = await UserIdentityService.getOrCreateUserId();
+      await _authService.deleteAccount(guestUserId: guestUserId);
+
+      await StorageService.clearAll();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(SubscriptionScreen.prefKeyIsPremium);
+      await prefs.remove(SubscriptionScreen.prefKeySubscribedAt);
+      await prefs.remove(WelcomeScreen.prefKeyHasSeenWelcome);
+      await UserIdentityService.clearUserId();
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const WelcomeScreen()),
+        (route) => false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      final isTurkish = LocaleService.currentLanguageCode == 'tr';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isTurkish
+                ? 'Hesap silinemedi. Bağlantınızı kontrol edip tekrar deneyin.'
+                : 'Account deletion failed. Check your connection and try again.',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
   }
 
   void _showAboutDialog() {

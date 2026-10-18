@@ -12,15 +12,18 @@ void main() {
   });
 
   group('ThemeService Dark / Light Mode', () {
-    test('default theme is light with correct background and primary colors', () {
-      expect(ThemeService.themeModeNotifier.value, ThemeMode.light);
-      expect(ThemeService.isDarkMode, isFalse);
+    test(
+      'default theme is light with correct background and primary colors',
+      () {
+        expect(ThemeService.themeModeNotifier.value, ThemeMode.light);
+        expect(ThemeService.isDarkMode, isFalse);
 
-      final lightTheme = ThemeService.lightTheme;
-      expect(lightTheme.brightness, Brightness.light);
-      expect(lightTheme.primaryColor, const Color(0xFFFF5436));
-      expect(lightTheme.scaffoldBackgroundColor, const Color(0xFFF8F9FA));
-    });
+        final lightTheme = ThemeService.lightTheme;
+        expect(lightTheme.brightness, Brightness.light);
+        expect(lightTheme.primaryColor, const Color(0xFFFF5436));
+        expect(lightTheme.scaffoldBackgroundColor, const Color(0xFFF8F9FA));
+      },
+    );
 
     test('dark theme has correct background and primary colors', () {
       final darkTheme = ThemeService.darkTheme;

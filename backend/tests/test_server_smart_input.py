@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
 import sys
+import tempfile
+from contextlib import closing
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -163,10 +166,7 @@ class SearchDownloadArgsTests(unittest.TestCase):
         self.assertTrue(server._search_has_result(single))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
+class PlatformSpecificTests(unittest.TestCase):
     def test_pinterest_url_is_cleaned(self):
         raw = "https://www.pinterest.com/pin/123456789/?inviter_user_id=98765&sender=54321"
         source, mode = server.resolve_source_input(raw)
@@ -178,7 +178,6 @@ if __name__ == "__main__":
         self.assertIn(server.PINTEREST_UA, args)
         self.assertIn("https://www.pinterest.com/", args)
 
-
     def test_clean_song_title_removes_noise_tags(self):
         cases = [
             ("Sagopa Kajmer - Ateşten Gömlek (Official Video)", "Sagopa Kajmer - Ateşten Gömlek"),
@@ -188,15 +187,28 @@ if __name__ == "__main__":
             ("Sefo - Bilmem Mi? (prod. Aerro) [Official Video]", "Sefo - Bilmem Mi?"),
         ]
         for raw, expected in cases:
-            self.assertEqual(server.clean_song_title(raw), expected)
+            with self.subTest(raw=raw):
+                self.assertEqual(server.clean_song_title(raw), expected)
 
 
 class SubscriptionMonthlyTests(unittest.TestCase):
     def setUp(self):
         self.client = server.app.test_client()
+        self._temporary_directory = tempfile.TemporaryDirectory()
+        self._original_db_path = server.DB_PATH
+        self._original_api_key = server.API_KEY
+        server.DB_PATH = str(Path(self._temporary_directory.name) / "test.db")
+        server.API_KEY = ""
+        server._init_db()
+
+    def tearDown(self):
+        server.DB_PATH = self._original_db_path
+        server.API_KEY = self._original_api_key
+        server._JOBS.clear()
+        self._temporary_directory.cleanup()
 
     def test_turkish_subscription_accounting_is_9_99_try(self):
-        res = self.client.post("/api/auth/subscribe-monthly", json={"lang": "tr", "userId": "user_123"})
+        res = self.client.post("/api/auth/subscribe-monthly", json={"lang": "tr", "userId": "11111111-1111-4111-8111-111111111111"})
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         self.assertTrue(data["success"])
@@ -207,7 +219,7 @@ class SubscriptionMonthlyTests(unittest.TestCase):
         self.assertIn("9,99 TL (KDV Dahil)", sub["receiptMessage"])
 
     def test_english_subscription_accounting_is_0_99_usd(self):
-        res = self.client.post("/api/auth/subscribe-monthly", json={"lang": "en", "userId": "user_456"})
+        res = self.client.post("/api/auth/subscribe-monthly", json={"lang": "en", "userId": "22222222-2222-4222-8222-222222222222"})
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         self.assertTrue(data["success"])
@@ -222,22 +234,99 @@ class SubscriptionMonthlyTests(unittest.TestCase):
         res = self.client.post("/api/auth/verify-purchase", json={
             "token": "google_play_purchase_token_xyz_123",
             "productId": "vidsave_premium_monthly",
-            "userId": "test_google_user",
+            "userId": "33333333-3333-4333-8333-333333333333",
             "lang": "tr",
         })
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         self.assertTrue(data["success"])
         self.assertTrue(data["verified"])
-        self.assertEqual(data["userId"], "test_google_user")
+        self.assertEqual(data["userId"], "33333333-3333-4333-8333-333333333333")
         self.assertIn("premiumUntil", data)
         self.assertIn("30 gün uzatıldı", data["receiptMessage"])
 
     def test_verify_purchase_missing_token_returns_bad_request(self):
         res = self.client.post("/api/auth/verify-purchase", json={
             "productId": "vidsave_premium_monthly",
-            "userId": "test_google_user",
+            "userId": "33333333-3333-4333-8333-333333333333",
         })
         self.assertEqual(res.status_code, 400)
         data = res.get_json()
         self.assertEqual(data["error"]["code"], "token.missing")
+
+
+    def test_delete_account_only_deletes_the_requested_installation(self):
+        user_a = "11111111-1111-4111-8111-111111111111"
+        user_b = "22222222-2222-4222-8222-222222222222"
+        with closing(sqlite3.connect(server.DB_PATH)) as conn:
+            for user_id in (user_a, user_b):
+                conn.execute(
+                    "INSERT INTO user_subscriptions (user_id) VALUES (?)",
+                    (user_id,),
+                )
+                conn.execute(
+                    "INSERT INTO subscriptions (id, user_id, lang, amount, currency, status) "
+                    "VALUES (?, ?, 'tr', 9.99, 'TRY', 'active')",
+                    (f"sub_{user_id}", user_id),
+                )
+            conn.execute(
+                "INSERT INTO user_cookies (platform, cookies) VALUES ('instagram', 'session=shared')"
+            )
+            conn.commit()
+
+        job = server._new_job("video", "https://example.com/video")
+        response = self.client.post(
+            "/api/auth/delete-account", json={"userId": user_a}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["success"])
+        with closing(sqlite3.connect(server.DB_PATH)) as conn:
+            subscriptions = conn.execute(
+                "SELECT user_id FROM user_subscriptions ORDER BY user_id"
+            ).fetchall()
+            invoices = conn.execute(
+                "SELECT user_id FROM subscriptions ORDER BY user_id"
+            ).fetchall()
+            cookies = conn.execute("SELECT cookies FROM user_cookies").fetchall()
+            jobs = conn.execute("SELECT id FROM jobs WHERE id = ?", (job.id,)).fetchall()
+
+        self.assertEqual(subscriptions, [(user_b,)])
+        self.assertEqual(invoices, [(user_b,)])
+        self.assertEqual(cookies, [("session=shared",)])
+        self.assertEqual(jobs, [(job.id,)])
+        self.assertIn(job.id, server._JOBS)
+
+    def test_delete_account_rejects_missing_or_invalid_user_id(self):
+        for user_id in (None, "device_user", "guest", "not-a-uuid"):
+            with self.subTest(user_id=user_id):
+                payload = {} if user_id is None else {"userId": user_id}
+                response = self.client.post("/api/auth/delete-account", json=payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.get_json()["error"]["code"], "user.id_invalid"
+                )
+
+    def test_delete_account_requires_configured_api_key(self):
+        user_id = "11111111-1111-4111-8111-111111111111"
+        with closing(sqlite3.connect(server.DB_PATH)) as conn:
+            conn.execute(
+                "INSERT INTO user_subscriptions (user_id) VALUES (?)", (user_id,)
+            )
+            conn.commit()
+
+        server.API_KEY = "test-api-key"
+        response = self.client.post(
+            "/api/auth/delete-account", json={"userId": user_id}
+        )
+        self.assertEqual(response.status_code, 401)
+        with closing(sqlite3.connect(server.DB_PATH)) as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()[0]
+        self.assertEqual(count, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,8 +21,10 @@ void main() {
     WidgetTester tester,
   ) async {
     final tempDir = Directory.systemTemp.createTempSync('vidsave_test');
-    final videoFile = File('${tempDir.path}/test_video.mp4')..writeAsStringSync('dummy video');
-    final audioFile = File('${tempDir.path}/test_song.mp3')..writeAsStringSync('dummy audio');
+    final videoFile = File('${tempDir.path}/test_video.mp4')
+      ..writeAsStringSync('dummy video');
+    final audioFile = File('${tempDir.path}/test_song.mp3')
+      ..writeAsStringSync('dummy audio');
 
     await StorageService.addItem(
       DownloadItemModel(
@@ -45,11 +48,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: DownloadsScreen(),
-      ),
-    );
+    await tester.pumpWidget(const MaterialApp(home: DownloadsScreen()));
     await tester.pumpAndSettle();
 
     expect(find.text('İndirilenler'), findsOneWidget);
@@ -77,18 +76,23 @@ void main() {
     } catch (_) {}
   });
 
-  testWidgets('VideoPlayerScreen and MusicPlayerScreen can be instantiated with file', (
-    WidgetTester tester,
-  ) async {
-    final tempDir = Directory.systemTemp.createTempSync('vidsave_player_test');
-    final videoFile = File('${tempDir.path}/vid.mp4')..writeAsStringSync('data');
-    final audioFile = File('${tempDir.path}/aud.mp3')..writeAsStringSync('data');
+  testWidgets(
+    'VideoPlayerScreen and MusicPlayerScreen can be instantiated with file',
+    (WidgetTester tester) async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'vidsave_player_test',
+      );
+      final videoFile = File('${tempDir.path}/vid.mp4')
+        ..writeAsStringSync('data');
+      final audioFile = File('${tempDir.path}/aud.mp3')
+        ..writeAsStringSync('data');
 
-    expect(VideoPlayerScreen(file: videoFile, title: 'vid.mp4'), isNotNull);
-    expect(MusicPlayerScreen(file: audioFile, title: 'aud.mp3'), isNotNull);
+      expect(VideoPlayerScreen(file: videoFile, title: 'vid.mp4'), isNotNull);
+      expect(MusicPlayerScreen(file: audioFile, title: 'aud.mp3'), isNotNull);
 
-    try {
-      tempDir.deleteSync(recursive: true);
-    } catch (_) {}
-  });
+      try {
+        tempDir.deleteSync(recursive: true);
+      } catch (_) {}
+    },
+  );
 }

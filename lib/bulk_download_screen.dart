@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'backend_settings.dart';
 import 'bulk_download_service.dart';
 import 'download_item_model.dart';
@@ -83,7 +85,9 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
     final text = data?.text;
     if (text != null && text.trim().isNotEmpty) {
       final current = _urlsController.text.trim();
-      final newContent = current.isEmpty ? text.trim() : '$current\n${text.trim()}';
+      final newContent = current.isEmpty
+          ? text.trim()
+          : '$current\n${text.trim()}';
       _urlsController.text = newContent;
     }
   }
@@ -138,13 +142,13 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
       setState(() {
         _currentIndex = currentNum;
         currentItem.status = BulkItemStatus.downloading;
-        _overallStatusText =
-            '$currentNum/$_totalCount $typeLabel İndiriliyor…';
+        _overallStatusText = '$currentNum/$_totalCount $typeLabel İndiriliyor…';
       });
 
-      final notificationId =
-          DownloadNotificationService.instance.allocateNotificationId();
-      final defaultNotifTitle = 'Toplu $typeLabel İndirme ($currentNum/$_totalCount)';
+      final notificationId = DownloadNotificationService.instance
+          .allocateNotificationId();
+      final defaultNotifTitle =
+          'Toplu $typeLabel İndirme ($currentNum/$_totalCount)';
 
       try {
         final uri = Uri.parse(currentItem.url);
@@ -245,8 +249,9 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
     }
 
     if (!mounted) return;
-    final successCount =
-        _items.where((it) => it.status == BulkItemStatus.completed).length;
+    final successCount = _items
+        .where((it) => it.status == BulkItemStatus.completed)
+        .length;
 
     setState(() {
       _isProcessing = false;
@@ -314,7 +319,9 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
                         ? null
                         : (val) {
                             if (val) {
-                              setState(() => _selectedKind = DownloadKind.video);
+                              setState(
+                                () => _selectedKind = DownloadKind.video,
+                              );
                             }
                           },
                     selectedColor: primaryColor,
@@ -333,7 +340,9 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
                         ? null
                         : (val) {
                             if (val) {
-                              setState(() => _selectedKind = DownloadKind.audio);
+                              setState(
+                                () => _selectedKind = DownloadKind.audio,
+                              );
                             }
                           },
                     selectedColor: primaryColor,
@@ -357,8 +366,7 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
                 style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
                 decoration: InputDecoration(
                   labelText: 'İndirilecek Bağlantılar (Her Satıra Bir Link)',
-                  hintText:
-                      'https://www.instagram.com/reel/...\nhttps://www.tiktok.com/@user/...\nhttps://youtube.com/watch?v=...',
+                  hintText: 'https://www.instagram.com/reel/...\nhttps://www.tiktok.com/@user/...\nhttps://youtube.com/watch?v=...',
                   alignLabelWithHint: true,
                   filled: true,
                   fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -436,7 +444,10 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
                   _isProcessing
                       ? 'Toplu İndirme Devam Ediyor…'
                       : 'Toplu İndirmeyi Başlat (${detected.length} Link)',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -481,10 +492,14 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: LinearProgressIndicator(
-                          value: _totalCount > 0 ? _currentIndex / _totalCount : 0,
+                          value: _totalCount > 0
+                              ? _currentIndex / _totalCount
+                              : 0,
                           minHeight: 8,
                           backgroundColor: primaryColor.withValues(alpha: 0.15),
-                          valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            primaryColor,
+                          ),
                         ),
                       ),
                     ],

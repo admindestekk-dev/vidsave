@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'main.dart';
+import 'welcome_screen.dart';
 
 /// The first screen the user sees: an animated brand mark that fades and scales
 /// in, then hands control to [VidSaveHomePage].
@@ -56,12 +58,17 @@ class _SplashScreenState extends State<SplashScreen>
     _navigationTimer = Timer(SplashScreen.duration, _goToHome);
   }
 
-  void _goToHome() {
+  Future<void> _goToHome() async {
     if (!mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    final hasSeenWelcome = prefs.getBool(WelcomeScreen.prefKeyHasSeenWelcome) ?? false;
+    if (!mounted) return;
+
+    final nextScreen = hasSeenWelcome ? const VidSaveHomePage() : const WelcomeScreen();
+
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const VidSaveHomePage(),
+        pageBuilder: (context, animation, secondaryAnimation) => nextScreen,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },

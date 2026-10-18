@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+
 import 'backend_settings.dart';
 import 'media_downloader.dart';
 
@@ -15,9 +17,11 @@ class BulkDownloadService {
     return text
         .split(RegExp(r'\r?\n'))
         .map((line) => line.trim())
-        .where((line) =>
-            line.isNotEmpty &&
-            (line.startsWith('http://') || line.startsWith('https://')))
+        .where(
+          (line) =>
+              line.isNotEmpty &&
+              (line.startsWith('http://') || line.startsWith('https://')),
+        )
         .toSet() // Mükerrer bağlantıları teke indir
         .toList();
   }

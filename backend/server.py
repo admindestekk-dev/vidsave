@@ -25,9 +25,12 @@ Point the Flutter app at it:
 from __future__ import annotations
 
 import datetime
+import hashlib
 import hmac
+from contextlib import closing
 import json
 import logging
+import secrets
 import os
 import re
 import shutil
@@ -45,6 +48,7 @@ from typing import Any
 
 import requests
 from flask import Flask, Response, jsonify, request, send_file
+from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     import mutagen
@@ -183,6 +187,34 @@ def _init_db() -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                failed_logins INTEGER NOT NULL DEFAULT 0,
+                locked_until REAL,
+                created_at REAL NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                revoked_at REAL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id "
+            "ON auth_sessions(user_id)"
         )
         conn.commit()
     except Exception as exc:
@@ -1378,6 +1410,94 @@ def _authorized() -> bool:
     return hmac.compare_digest(supplied, API_KEY.encode("utf-8"))
 
 
+def _current_user() -> dict[str, str] | None:
+    authorization = request.headers.get("Authorization", "").strip()
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer" or not token.strip():
+        return None
+
+    token_hash = hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            row = conn.execute(
+                """
+                SELECT users.id, users.email
+                FROM auth_sessions
+                JOIN users ON users.id = auth_sessions.user_id
+                WHERE auth_sessions.token_hash = ?
+                  AND auth_sessions.revoked_at IS NULL
+                  AND auth_sessions.expires_at > ?
+                """,
+                (token_hash, time.time()),
+            ).fetchone()
+    except sqlite3.Error:
+        logging.exception("Could not validate auth session")
+        return None
+
+    if row is None:
+        return None
+    return {"id": row[0], "email": row[1]}
+
+
+def _auth_user_id(
+    body: dict[str, Any],
+) -> tuple[str | None, tuple[Response, int] | None]:
+    authorization = request.headers.get("Authorization", "").strip()
+    if authorization:
+        user = _current_user()
+        if user is None:
+            return None, (
+                jsonify(status="error", error={"code": "auth.session_invalid"}),
+                401,
+            )
+        return user["id"], None
+
+    raw_user_id = str(body.get("userId") or body.get("user_id") or "").strip()
+    try:
+        user_id = str(uuid.UUID(raw_user_id))
+    except (AttributeError, TypeError, ValueError):
+        return None, (
+            jsonify(status="error", error={"code": "user.id_invalid"}),
+            400,
+        )
+
+    # Guest installations can manage only guest-scoped rows; an account UUID
+    # requires its own authenticated session even if it is known to the caller.
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            is_registered = conn.execute(
+                "SELECT 1 FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+    except sqlite3.Error:
+        logging.exception("Could not resolve account identity")
+        return None, (
+            jsonify(status="error", error={"code": "auth.identity_unavailable"}),
+            500,
+        )
+    if is_registered:
+        return None, (
+            jsonify(status="error", error={"code": "auth.required"}),
+            401,
+        )
+    return user_id, None
+
+
+def _issue_auth_session(conn: sqlite3.Connection, user_id: str) -> str:
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    conn.execute("DELETE FROM auth_sessions WHERE expires_at <= ? OR revoked_at IS NOT NULL", (now,))
+    conn.execute(
+        "INSERT INTO auth_sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (
+            hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            user_id,
+            now,
+            now + 60 * 60 * 24 * 30,
+        ),
+    )
+    return token
+
+
 # --- CORS ------------------------------------------------------------------
 #
 # The Flutter app talks to this backend from a different origin (the device),
@@ -1403,7 +1523,7 @@ def _apply_cors(response: Response) -> Response:
         "GET, POST, OPTIONS, HEAD"
     )
     response.headers["Access-Control-Allow-Headers"] = (
-        "Content-Type, X-Api-Key, Range, Accept"
+        "Content-Type, X-Api-Key, Authorization, Range, Accept"
     )
     response.headers["Access-Control-Expose-Headers"] = (
         "Content-Length, Content-Range, Content-Disposition, Accept-Ranges"
@@ -1757,15 +1877,159 @@ def api_get_lyrics() -> Response:
     return jsonify(status="error", message="Parametre eksik"), 400
 
 
+@app.post("/api/auth/register")
+def api_register() -> Response | tuple[Response, int]:
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    email = str(body.get("email") or "").strip().lower()
+    password = body.get("password")
+    if not isinstance(password, str):
+        password = ""
+
+    if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return jsonify(status="error", error={"code": "auth.email_invalid"}), 400
+    password_length = len(password.encode("utf-8"))
+    if password_length < 8 or password_length > 128:
+        return jsonify(status="error", error={"code": "auth.password_invalid"}), 400
+
+    user_id = str(uuid.uuid4())
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, email, generate_password_hash(password, method="scrypt"), time.time()),
+        )
+        token = _issue_auth_session(conn, user_id)
+        conn.commit()
+    except sqlite3.IntegrityError:
+        if conn:
+            conn.rollback()
+        return jsonify(status="error", error={"code": "auth.email_in_use"}), 409
+    except sqlite3.Error:
+        logging.exception("Account registration failed")
+        if conn:
+            conn.rollback()
+        return jsonify(status="error", error={"code": "auth.registration_failed"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    return jsonify(status="ok", token=token, user={"id": user_id, "email": email}), 201
+
+
+_DUMMY_PASSWORD_HASH = generate_password_hash(
+    "not-a-real-password", method="scrypt"
+)
+
+
+@app.post("/api/auth/login")
+def api_login() -> Response | tuple[Response, int]:
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    email = str(body.get("email") or "").strip().lower()
+    password = body.get("password")
+    if not isinstance(password, str):
+        password = ""
+    now = time.time()
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute(
+            "SELECT id, email, password_hash, failed_logins, locked_until FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+        if row is None:
+            check_password_hash(_DUMMY_PASSWORD_HASH, password)
+            conn.close()
+            return jsonify(status="error", error={"code": "auth.invalid_credentials"}), 401
+
+        user_id, normalized_email, password_hash, failures, locked_until = row
+        if locked_until is not None and float(locked_until) > now:
+            conn.close()
+            return jsonify(status="error", error={"code": "auth.rate_limited"}), 429
+
+        if not check_password_hash(password_hash, password):
+            failures = int(failures or 0) + 1
+            lock_time = now + 15 * 60 if failures >= 5 else None
+            conn.execute(
+                "UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?",
+                (0 if lock_time is not None else failures, lock_time, user_id),
+            )
+            conn.commit()
+            conn.close()
+            code = "auth.rate_limited" if lock_time is not None else "auth.invalid_credentials"
+            status = 429 if lock_time is not None else 401
+            return jsonify(status="error", error={"code": code}), status
+
+        conn.execute(
+            "UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?",
+            (user_id,),
+        )
+        token = _issue_auth_session(conn, user_id)
+        conn.commit()
+    except sqlite3.Error:
+        logging.exception("Login failed")
+        if conn:
+            conn.close()
+        return jsonify(status="error", error={"code": "auth.login_failed"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    return jsonify(
+        status="ok",
+        token=token,
+        user={"id": user_id, "email": normalized_email},
+    )
+
+
+@app.get("/api/auth/me")
+def api_auth_me() -> Response | tuple[Response, int]:
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+    user = _current_user()
+    if user is None:
+        return jsonify(status="error", error={"code": "auth.session_invalid"}), 401
+    return jsonify(status="ok", user=user)
+
+
+@app.post("/api/auth/logout")
+def api_logout() -> Response | tuple[Response, int]:
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+    authorization = request.headers.get("Authorization", "").strip()
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer" or not token.strip():
+        return jsonify(status="error", error={"code": "auth.session_invalid"}), 401
+
+    token_hash = hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        conn.execute(
+            "UPDATE auth_sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL",
+            (time.time(), token_hash),
+        )
+        conn.commit()
+    return jsonify(status="ok", success=True)
+
+
 @app.post("/api/auth/subscribe-monthly")
-def api_subscribe_monthly() -> Response:
+def api_subscribe_monthly() -> Response | tuple[Response, int]:
     """Monthly subscription accounting endpoint with psychological pricing (9.99 TRY vs 0.99 USD)."""
     if not _authorized():
         return jsonify(status="error", error={"code": "unauthorized"}), 401
 
     body = request.get_json(silent=True) or {}
+    user_id, auth_error = _auth_user_id(body)
+    if auth_error:
+        return auth_error
+    assert user_id is not None
+
     lang = str(body.get("lang") or request.args.get("lang") or "tr").strip().lower()
-    user_id = str(body.get("user_id") or body.get("userId") or "guest").strip()
 
     # Psychological pricing based on language / region
     is_tr = lang == "tr"
@@ -1833,7 +2097,10 @@ def api_verify_purchase() -> Response:
         or ""
     ).strip()
     product_id = str(body.get("productId") or body.get("product_id") or "vidsave_premium_monthly").strip()
-    user_id = str(body.get("userId") or body.get("user_id") or "device_user").strip()
+    user_id, auth_error = _auth_user_id(body)
+    if auth_error:
+        return auth_error
+    assert user_id is not None
     lang = str(body.get("lang") or "tr").strip().lower()
 
     if not token:
@@ -1914,6 +2181,50 @@ def api_verify_purchase() -> Response:
         productId=product_id,
         premiumUntil=new_until_str,
         receiptMessage=receipt_msg,
+    )
+
+
+@app.post("/api/auth/delete-account")
+def api_delete_account() -> Response:
+    """Delete the subscription records owned by a single app installation."""
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    user_id, auth_error = _auth_user_id(body)
+    if auth_error:
+        return auth_error
+    assert user_id is not None
+
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
+        conn.execute(
+            "DELETE FROM user_subscriptions WHERE user_id = ?",
+            (user_id,),
+        )
+        conn.execute(
+            "DELETE FROM subscriptions WHERE user_id = ?",
+            (user_id,),
+        )
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+    except Exception:
+        logging.exception("Account deletion DB error")
+        return jsonify(
+            status="error",
+            error={"code": "account.deletion_failed"},
+        ), 500
+    finally:
+        if conn:
+            conn.close()
+
+    # Cookies and download jobs have no owner column, so do not delete shared data.
+    return jsonify(
+        status="ok",
+        success=True,
+        message="Bu kuruluma bağlı abonelik ve kayıt bilgileri silindi.",
     )
 
 
