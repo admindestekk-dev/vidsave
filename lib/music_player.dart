@@ -122,9 +122,13 @@ MusicPlayerController _defaultAudioPlayerFactory(AssetEntity asset) =>
     _AudioplayersMusicController();
 
 Future<Source> _defaultAudioSourceResolver(AssetEntity asset) async {
+  final origin = await asset.originFile;
+  if (origin != null && origin.existsSync()) {
+    return DeviceFileSource(origin.path);
+  }
   final file = await asset.file;
-  if (file == null) {
-    throw StateError('Müzik dosyasına erişilemiyor.');
+  if (file == null || !file.existsSync()) {
+    throw StateError('Müzik dosyasına erişilemiyor veya dosya bulunamadı.');
   }
   return DeviceFileSource(file.path);
 }

@@ -77,11 +77,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return VideoPlayerController.file(widget.file!);
     }
     if (widget.asset != null) {
-      final file = await widget.asset!.file;
-      if (file == null) {
-        throw StateError('Video dosyasına erişilemiyor.');
+      // On modern Android (API 29+ scoped storage), asset.file can be null or restricted,
+      // while originFile (or fileWithSubtype) resolves the direct underlying media file.
+      final origin = await widget.asset!.originFile;
+      if (origin != null && origin.existsSync()) {
+        return VideoPlayerController.file(origin);
       }
-      return VideoPlayerController.file(file);
+      final file = await widget.asset!.file;
+      if (file != null && file.existsSync()) {
+        return VideoPlayerController.file(file);
+      }
+      throw StateError('Video dosyasına erişilemiyor veya dosya bulunamadı.');
     }
     throw StateError('Oynatılacak video bulunamadı.');
   }

@@ -863,10 +863,12 @@ def _format_selector(kind: str, height: int | None = None) -> str:
     # A picked 1080p falls back to *lower* resolutions when 1080p is missing;
     # any other pick stays strictly at the requested height.
     lower = "[height<=1080]" if (height or 1080) == 1080 else cap
+    # Prefer h264 (avc1) video codec and aac/m4a audio codec for 100% Android/iOS native player compatibility.
     return (
+        f"best[ext=mp4][vcodec^=avc1][acodec!=none]{cap}/"
         f"best[ext=mp4][vcodec!=none][acodec!=none]{cap}/"
         f"best[vcodec!=none][acodec!=none]{cap}/"
-        f"bv*[ext=mp4]{cap}+ba[ext=m4a]/b[ext=mp4]{lower}/"
+        f"bv*[vcodec^=avc1]{cap}+ba[ext=m4a]/bv*[ext=mp4]{cap}+ba[ext=m4a]/b[ext=mp4]{lower}/"
         f"bv*{cap}+ba/b{lower}/bv*+ba/b"
     )
 
