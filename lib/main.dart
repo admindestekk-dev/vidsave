@@ -22,6 +22,7 @@ import 'music_player.dart';
 import 'quick_download_dialog.dart';
 import 'storage_service.dart';
 import 'theme_service.dart';
+import 'locale_service.dart';
 import 'video_player_screen.dart';
 import 'package:metadata_god/metadata_god.dart';
 
@@ -33,6 +34,7 @@ void main() {
   unawaited(DownloadNotificationService.instance.initialize());
   unawaited(StorageService.getItems());
   unawaited(ThemeService.initialize());
+  unawaited(LocaleService.initialize());
   runApp(const MyApp());
 }
 
@@ -44,30 +46,37 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeService.themeModeNotifier,
       builder: (context, currentThemeMode, _) {
-        return MaterialApp(
-          title: 'VidSave',
-          debugShowCheckedModeBanner: false,
-          themeMode: currentThemeMode,
-          theme: ThemeService.lightTheme,
-          darkTheme: ThemeService.darkTheme,
-          localizationsDelegates: const [
-            AppLocalizations.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: AppLocalizations.supportedLocales,
-          localeResolutionCallback: (deviceLocale, supportedLocales) {
-            if (deviceLocale == null) return const Locale('tr');
-            for (final supported in supportedLocales) {
-              if (supported.languageCode == deviceLocale.languageCode) {
-                return supported;
-              }
-            }
-            // Eğer tam eşleşme yoksa cihaz dilini kabul et (AppLocalizations dünyadaki tüm dilleri karşılar)
-            return deviceLocale;
+        return ValueListenableBuilder<Locale?>(
+          valueListenable: LocaleService.localeNotifier,
+          builder: (context, currentLocale, _) {
+            return MaterialApp(
+              title: 'VidSave',
+              debugShowCheckedModeBanner: false,
+              themeMode: currentThemeMode,
+              theme: ThemeService.lightTheme,
+              darkTheme: ThemeService.darkTheme,
+              locale: currentLocale,
+              localizationsDelegates: const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              supportedLocales: AppLocalizations.supportedLocales,
+              localeResolutionCallback: (deviceLocale, supportedLocales) {
+                if (currentLocale != null) return currentLocale;
+                if (deviceLocale == null) return const Locale('tr');
+                for (final supported in supportedLocales) {
+                  if (supported.languageCode == deviceLocale.languageCode) {
+                    return supported;
+                  }
+                }
+                // Eğer tam eşleşme yoksa cihaz dilini kabul et (AppLocalizations dünyadaki tüm dilleri karşılar)
+                return deviceLocale;
+              },
+              home: const VidSaveHomePage(),
+            );
           },
-          home: const VidSaveHomePage(),
         );
       },
     );

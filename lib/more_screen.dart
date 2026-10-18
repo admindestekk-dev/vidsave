@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
 import 'instagram_login_webview_screen.dart';
+import 'locale_service.dart';
 import 'media_downloader.dart';
 import 'subscription_screen.dart';
 import 'theme_service.dart';
@@ -48,6 +49,104 @@ class _MoreScreenState extends State<MoreScreen> {
       _clickCount = 0;
       _isDeveloperModeActive = false;
     });
+  }
+
+  void _showLanguageDialog() {
+    final currentCode = LocaleService.currentLanguageCode;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _accent.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.language_rounded, color: _accent, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Dil Seçimi / Language',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+
+                // 🇹🇷 Türkçe
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  leading: const Text('🇹🇷', style: TextStyle(fontSize: 26)),
+                  title: const Text(
+                    'Türkçe',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  subtitle: const Text('Türkçe'),
+                  trailing: currentCode == 'tr'
+                      ? const Icon(Icons.check_circle_rounded, color: _accent)
+                      : null,
+                  onTap: () async {
+                    await LocaleService.setLocale(const Locale('tr'));
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 6),
+
+                // 🇺🇸 English
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  leading: const Text('🇺🇸', style: TextStyle(fontSize: 26)),
+                  title: const Text(
+                    'English',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  subtitle: const Text('English'),
+                  trailing: currentCode == 'en'
+                      ? const Icon(Icons.check_circle_rounded, color: _accent)
+                      : null,
+                  onTap: () async {
+                    await LocaleService.setLocale(const Locale('en'));
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -162,17 +261,17 @@ class _MoreScreenState extends State<MoreScreen> {
                 ),
               ),
               const Divider(),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.language, color: _accent),
-                title: const Text('Dil Seçimi / Language'),
-                subtitle: const Text('Türkçe / English'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Dil seçimi yakında eklenecek.'),
-                    ),
+              ValueListenableBuilder<Locale?>(
+                valueListenable: LocaleService.localeNotifier,
+                builder: (context, currentLocale, _) {
+                  final isTr = (currentLocale?.languageCode.toLowerCase() ?? 'tr') == 'tr';
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.language, color: _accent),
+                    title: const Text('Dil Seçimi / Language'),
+                    subtitle: Text(isTr ? '🇹🇷 Türkçe' : '🇺🇸 English'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: _showLanguageDialog,
                   );
                 },
               ),
