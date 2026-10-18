@@ -3,7 +3,7 @@ services:
     name: vidsave-backend
     runtime: python
     buildCommand: "bash ./render-build.sh"
-    startCommand: "gunicorn --chdir backend --workers 2 --threads 4 --timeout 300 server:app"
+    startCommand: "gunicorn --chdir backend --workers 1 --threads 8 --timeout 300 server:app"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9

@@ -174,6 +174,48 @@ void main() {
       client.close();
     });
 
+    test('preview polls when status is running or pending', () async {
+      var requests = 0;
+      final client = MockClient((request) async {
+        requests++;
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        if (requests == 1) {
+          expect(body.containsKey('job'), isFalse);
+          return http.Response(
+            jsonEncode({'status': 'running', 'job': 'probe-job-1'}),
+            200,
+          );
+        }
+        expect(body['job'], 'probe-job-1');
+        return http.Response(
+          jsonEncode({
+            'status': 'info',
+            'job': 'probe-job-1',
+            'title': 'YouTube MP3 Track',
+            'duration': 210,
+            'uploader': 'Music Channel',
+            'qualities': [],
+          }),
+          200,
+        );
+      });
+      final resolver = BackendMediaResolver(
+        settingsStore: _MemoryBackendSettingsStore(settings),
+        client: client,
+        delay: (_) async {},
+      );
+
+      final preview = await resolver.preview(
+        Uri.parse('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
+        DownloadKind.audio,
+      );
+
+      expect(requests, 2);
+      expect(preview.title, 'YouTube MP3 Track');
+      expect(preview.duration?.inSeconds, 210);
+      client.close();
+    });
+
     test('resolve passes chosen height parameter to backend', () async {
       final client = MockClient((request) async {
         expect(jsonDecode(request.body), {

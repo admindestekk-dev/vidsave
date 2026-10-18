@@ -1808,21 +1808,23 @@ class _PlatformSearchDownloadModalState
       return;
     }
 
-    _focusNode.unfocus();
-    setState(() {
-      _searching = true;
-      _statusMessage = widget.platform.isAudio
-          ? '�?arkılar aranıyor…'
-          : 'İçerik ve çözünürlük seçenekleri aranıyor…';
-      _statusIsError = false;
-      _preview = null;
-      _searchResults = [];
-    });
-
     final parsed = Uri.tryParse(text);
     final isUrl = parsed != null &&
         parsed.host.isNotEmpty &&
         (parsed.isScheme('http') || parsed.isScheme('https'));
+
+    _focusNode.unfocus();
+    setState(() {
+      _searching = true;
+      _statusMessage = isUrl
+          ? 'Bağlantı inceleniyor…'
+          : (widget.platform.isAudio
+              ? 'Şarkılar aranıyor…'
+              : 'İçerik ve çözünürlük seçenekleri aranıyor…');
+      _statusIsError = false;
+      _preview = null;
+      _searchResults = [];
+    });
 
     // Platform doğrulama kontrolü: Her platform yalnızca kendi linkini indirebilir
     if (isUrl && !widget.platform.matchesUrl(text)) {
@@ -1869,13 +1871,26 @@ class _PlatformSearchDownloadModalState
       });
     } catch (e) {
       if (!mounted) return;
+      final errMsg = switch (e) {
+        MediaResolverException(:final message) => message,
+        _ => 'Arama başarısız oldu veya video bulunamadı: $e',
+      };
       setState(() {
         _searching = false;
-        _statusMessage = switch (e) {
-          MediaResolverException(:final message) => message,
-          _ => 'Arama başarısız oldu veya video bulunamadı: $e',
-        };
+        _statusMessage = errMsg;
         _statusIsError = true;
+        // Eğer doğrudan bir URL girildiyse ve MP3 indirilmek isteniyorsa,
+        // önizleme başarısız olsa bile doğrudan MP3 indirme butonlarını göster.
+        if (isUrl && widget.platform.isAudio) {
+          _preview = MediaPreview(
+            title: text,
+            qualities: const [
+              VideoQuality(height: 0, label: 'MP3 Ses Dosyası (320 kbps - En Yüksek Kalite)'),
+              VideoQuality(height: 192, label: 'MP3 Standart Kalite (192 kbps)'),
+              VideoQuality(height: 128, label: 'MP3 Hızlı İndir (128 kbps)'),
+            ],
+          );
+        }
       });
     }
   }
@@ -2222,7 +2237,7 @@ class _PlatformSearchDownloadModalState
                     ? 'Müzik ara veya Video linki yapıştırın (YouTube, TikTok, IG vb.)'
                     : 'Video ara veya bağlantı yapıştırın',
                 hintText: widget.platform.isAudio
-                    ? '�?arkı adı veya video linki yapıştırın'
+                    ? 'Şarkı adı veya video linki yapıştırın'
                     : widget.platform.hint,
                 prefixIcon: Icon(
                   Icons.search_rounded,

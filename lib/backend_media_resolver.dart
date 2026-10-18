@@ -119,8 +119,8 @@ class BackendMediaResolver implements MediaResolver {
       );
     }
 
-    // info:true makes the backend probe the link and list its resolutions.
-    final payload = await _resolveRequest(
+    final stopwatch = Stopwatch()..start();
+    var payload = await _resolveRequest(
       baseUri: baseUri,
       settings: settings,
       rawInput: rawInput,
@@ -128,15 +128,40 @@ class BackendMediaResolver implements MediaResolver {
       info: true,
     );
 
-    final status = (payload['status'] as String? ?? '').toLowerCase();
-    if (status == 'error') {
-      throw MediaResolverException(
-        _errorMessage(payload) ?? 'Bağlantı çözümlenemedi.',
-      );
-    }
-    if (status != 'info') {
-      throw const MediaResolverException(
-        'Backend önizleme bilgisini döndürmedi. Backend’i güncelleyin.',
+    while (true) {
+      final status = (payload['status'] as String? ?? '').toLowerCase();
+      if (status == 'error') {
+        throw MediaResolverException(
+          _errorMessage(payload) ?? 'Bağlantı çözümlenemedi.',
+        );
+      }
+      if (status == 'info') {
+        break;
+      }
+      if (status != 'pending' && status != 'running') {
+        throw const MediaResolverException(
+          'Backend beklenmeyen bir yanıt döndürdü.',
+        );
+      }
+
+      final jobId = payload['job'] as String?;
+      if (jobId == null || jobId.isEmpty) {
+        throw const MediaResolverException(
+          'Backend işi izlemek için job kimliği döndürmedi. Backend’i güncelleyin.',
+        );
+      }
+      if (stopwatch.elapsed >= maxWait) {
+        throw const MediaResolverException('İşlem zaman aşımına uğradı.');
+      }
+
+      await _delay(pollInterval);
+      payload = await _resolveRequest(
+        baseUri: baseUri,
+        settings: settings,
+        rawInput: rawInput,
+        kind: kind,
+        info: true,
+        jobId: jobId,
       );
     }
 
@@ -271,17 +296,28 @@ class BackendMediaResolver implements MediaResolver {
       'end_time': ?endTime,
       if (audioEffect != null && audioEffect.isNotEmpty) 'audio_effect': audioEffect,
     };
-    final response = await _client
-        .post(
-          baseUri.resolve('/api/resolve'),
-          headers: {
-            ..._headers(settings),
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 30));
+    final http.Response response;
+    try {
+      response = await _client
+          .post(
+            baseUri.resolve('/api/resolve'),
+            headers: {
+              ..._headers(settings),
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 45));
+    } on TimeoutException {
+      throw const MediaResolverException(
+        'Sunucu yanıt vermedi (zaman aşımı). Backend sunucusunun çalıştığından emin olun.',
+      );
+    } on http.ClientException catch (error) {
+      throw MediaResolverException(
+        'Backend sunucusuna bağlanılamadı ($error). Lütfen Ayarlar sekmesini kontrol edin.',
+      );
+    }
 
     final payload = _decodePayload(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {

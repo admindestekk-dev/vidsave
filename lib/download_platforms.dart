@@ -100,7 +100,7 @@ const List<DownloadPlatform> kDownloadPlatforms = [
   ),
   DownloadPlatform(
     label: 'MP3 İNDİR',
-    hint: 'Ses dosyası veya müzik bağlantısı',
+    hint: 'YouTube, TikTok veya herhangi bir müzik/video bağlantısı',
     assetPath: 'assets/logos/mp3.png',
     letter: 'M',
     gradient: [Color(0xFF1DB954), Color(0xFF0E7C4B)],

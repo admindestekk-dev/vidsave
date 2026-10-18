@@ -108,20 +108,174 @@ DB_PATH = os.environ.get("VIDSAVE_DB_PATH") or os.path.join(
 
 
 def _init_db() -> None:
+    conn = None
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS user_cookies (
-                    platform TEXT PRIMARY KEY,
-                    cookies TEXT NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_cookies (
+                platform TEXT PRIMARY KEY,
+                cookies TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            conn.commit()
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS jobs (
+                id TEXT PRIMARY KEY,
+                kind TEXT,
+                source TEXT,
+                mode TEXT,
+                status TEXT,
+                progress REAL,
+                filename TEXT,
+                filepath TEXT,
+                direct_url TEXT,
+                title TEXT,
+                ext TEXT,
+                mime TEXT,
+                error TEXT,
+                height INTEGER,
+                info_only INTEGER,
+                duration INTEGER,
+                uploader TEXT,
+                qualities TEXT,
+                start_time REAL,
+                end_time REAL,
+                audio_effect TEXT,
+                lyrics TEXT,
+                created_at REAL
+            )
+            """
+        )
+        conn.commit()
     except Exception as exc:
         logging.warning("Database init warning: %s", exc)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _save_job_to_db(job: Job) -> None:
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO jobs (
+                id, kind, source, mode, status, progress, filename, filepath,
+                direct_url, title, ext, mime, error, height, info_only,
+                duration, uploader, qualities, start_time, end_time, audio_effect,
+                lyrics, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job.id,
+                job.kind,
+                job.source,
+                job.mode,
+                job.status,
+                job.progress,
+                job.filename,
+                job.filepath,
+                job.direct_url,
+                job.title,
+                job.ext,
+                job.mime,
+                job.error,
+                job.height,
+                1 if job.info_only else 0,
+                job.duration,
+                job.uploader,
+                json.dumps(job.qualities) if job.qualities else None,
+                job.start_time,
+                job.end_time,
+                job.audio_effect,
+                job.lyrics,
+                job.created_at,
+            ),
+        )
+        conn.commit()
+    except Exception as exc:
+        logging.warning("Could not save job to DB: %s", exc)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _load_job_from_db(job_id: str) -> Job | None:
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, kind, source, mode, status, progress, filename, filepath,
+                   direct_url, title, ext, mime, error, height, info_only,
+                   duration, uploader, qualities, start_time, end_time, audio_effect,
+                   lyrics, created_at
+            FROM jobs WHERE id = ?
+            """,
+            (job_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        qualities = []
+        if row[17]:
+            try:
+                qualities = json.loads(row[17])
+            except Exception:
+                pass
+        return Job(
+            id=row[0],
+            kind=row[1] or "video",
+            source=row[2] or "",
+            mode=row[3] or "url",
+            status=row[4] or "pending",
+            progress=row[5] or 0.0,
+            filename=row[6],
+            filepath=row[7],
+            direct_url=row[8],
+            title=row[9],
+            ext=row[10],
+            mime=row[11],
+            error=row[12],
+            height=row[13],
+            info_only=bool(row[14]),
+            duration=row[15],
+            uploader=row[16],
+            qualities=qualities,
+            start_time=row[18],
+            end_time=row[19],
+            audio_effect=row[20] or "normal",
+            lyrics=row[21],
+            created_at=row[22] or time.time(),
+        )
+    except Exception as exc:
+        logging.warning("Could not load job from DB: %s", exc)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def _update_job_in_db(job: Job) -> None:
+    _save_job_to_db(job)
+
+
+def _delete_job_from_db(job_id: str) -> None:
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        conn.commit()
+    except Exception as exc:
+        logging.warning("Could not delete job from DB: %s", exc)
+    finally:
+        if conn:
+            conn.close()
 
 
 _init_db()
@@ -129,41 +283,45 @@ _init_db()
 
 def _get_platform_cookie_file(platform: str) -> str | None:
     """Return a temp netscape cookiefile path for the given platform, if saved in DB."""
+    conn = None
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT cookies FROM user_cookies WHERE platform = ?", (platform.lower(),))
-            row = cur.fetchone()
-            if not row or not row[0]:
-                return None
-            raw = str(row[0]).strip()
-            if not raw:
-                return None
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT cookies FROM user_cookies WHERE platform = ?", (platform.lower(),))
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return None
+        raw = str(row[0]).strip()
+        if not raw:
+            return None
 
-            # Convert to Netscape cookie format if not already
-            if "# Netscape" not in raw:
-                lines = [
-                    "# Netscape HTTP Cookie File",
-                    "# http://curl.haxx.se/rfc/cookie_spec.html",
-                    "",
-                ]
-                default_domain = ".instagram.com" if platform.lower() == "instagram" else ""
-                for part in raw.split(";"):
-                    if "=" in part:
-                        k, v = part.strip().split("=", 1)
-                        if k.strip():
-                            lines.append(
-                                f"{default_domain}\tTRUE\t/\tTRUE\t2147483647\t{k.strip()}\t{v.strip()}"
-                            )
-                raw = "\n".join(lines)
+        # Convert to Netscape cookie format if not already
+        if "# Netscape" not in raw:
+            lines = [
+                "# Netscape HTTP Cookie File",
+                "# http://curl.haxx.se/rfc/cookie_spec.html",
+                "",
+            ]
+            default_domain = ".instagram.com" if platform.lower() == "instagram" else ""
+            for part in raw.split(";"):
+                if "=" in part:
+                    k, v = part.strip().split("=", 1)
+                    if k.strip():
+                        lines.append(
+                            f"{default_domain}\tTRUE\t/\tTRUE\t2147483647\t{k.strip()}\t{v.strip()}"
+                        )
+            raw = "\n".join(lines)
 
-            temp_cookie_path = os.path.join(WORK_DIR, f"{platform.lower()}_cookie.txt")
-            with open(temp_cookie_path, "w", encoding="utf-8") as f:
-                f.write(raw)
-            return temp_cookie_path
+        temp_cookie_path = os.path.join(WORK_DIR, f"{platform.lower()}_cookie.txt")
+        with open(temp_cookie_path, "w", encoding="utf-8") as f:
+            f.write(raw)
+        return temp_cookie_path
     except Exception as exc:
         logging.warning("Could not read cookie from DB for %s: %s", platform, exc)
         return None
+    finally:
+        if conn:
+            conn.close()
 
 
 def _fetch_lyrics_online(title: str, uploader: str | None = None) -> str | None:
@@ -405,6 +563,7 @@ def _prune_jobs(max_age_seconds: int = 3600) -> None:
                     os.remove(job.filepath)
                 except OSError:
                     pass
+            _delete_job_from_db(job_id)
 
 
 def _new_job(
@@ -431,6 +590,7 @@ def _new_job(
     )
     with _JOBS_LOCK:
         _JOBS[job.id] = job
+    _save_job_to_db(job)
     return job
 
 
@@ -919,11 +1079,12 @@ def _download_job_to_disk(job: Job, target_source: str | None = None) -> str:
     ) + [
         "-f",
         _format_selector(job.kind, job.height),
-        "--merge-output-format",
-        "mp4",
     ]
     if job.kind == "audio":
-        cmd += ["-x", "--audio-format", "mp3", "--audio-quality", "0"]
+        q = f"{job.height}K" if (job.height and job.height in (128, 192, 256, 320)) else "0"
+        cmd += ["-x", "--audio-format", "mp3", "--audio-quality", q]
+    else:
+        cmd += ["--merge-output-format", "mp4"]
     cmd += ["-o", out_tmpl, "--", src]
 
     proc = _execute_ytdlp(cmd, timeout=1800)
@@ -945,6 +1106,7 @@ def _download_job_to_disk(job: Job, target_source: str | None = None) -> str:
 def _work(job: Job) -> None:
     try:
         job.status = "running"
+        _update_job_in_db(job)
         # The quality probe asks for the full format list so the app can show
         # every resolution the link offers before anything is downloaded.
         info = _run_json(
@@ -970,6 +1132,7 @@ def _work(job: Job) -> None:
             # Probe only: never download, just report the pickable qualities.
             job.qualities = _available_qualities(info)
             job.status = "info"
+            _update_job_in_db(job)
             return
 
         direct = _pick_direct_format(info, job.kind)
@@ -990,6 +1153,7 @@ def _work(job: Job) -> None:
                 job.mime = _mime_for(ext, job.kind)
                 job.progress = 1.0
                 job.status = "ready"
+                _update_job_in_db(job)
                 return
 
         # Slow path: merge/transcode on the server with yt-dlp + ffmpeg.
@@ -1056,12 +1220,15 @@ def _work(job: Job) -> None:
         )
         job.progress = 1.0
         job.status = "ready"
+        _update_job_in_db(job)
     except subprocess.TimeoutExpired:
         job.error = "İşlem zaman aşımına uğradı."
         job.status = "error"
+        _update_job_in_db(job)
     except Exception as exc:  # noqa: BLE001 - surface any failure to the client
         job.error = _clean_error(str(exc))
         job.status = "error"
+        _update_job_in_db(job)
 
 
 # --- http api --------------------------------------------------------------
@@ -1295,6 +1462,11 @@ def resolve() -> Response:
     if job_id:
         with _JOBS_LOCK:
             existing = _JOBS.get(job_id)
+        if existing is None:
+            existing = _load_job_from_db(job_id)
+            if existing is not None:
+                with _JOBS_LOCK:
+                    _JOBS[existing.id] = existing
         if existing is not None:
             return jsonify(_job_payload(existing))
         if not (body.get("url") or body.get("query")):
@@ -1457,6 +1629,26 @@ def download() -> Response | tuple[Response, int]:
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
     if job is None:
+        job = _load_job_from_db(job_id)
+        if job is not None:
+            with _JOBS_LOCK:
+                _JOBS[job.id] = job
+    if job is None:
+        # Check if file exists on disk directly
+        for cand in os.listdir(WORK_DIR):
+            if cand.startswith(f"{job_id}."):
+                c_path = os.path.join(WORK_DIR, cand)
+                c_ext = os.path.splitext(cand)[1].lstrip(".").lower()
+                c_mime = _mime_for(c_ext, "audio" if c_ext == "mp3" else "video")
+                res = send_file(
+                    c_path,
+                    mimetype=c_mime,
+                    as_attachment=True,
+                    download_name=cand,
+                    conditional=True,
+                )
+                res.headers["Accept-Ranges"] = "bytes"
+                return res
         return jsonify(status="error", error={"code": "job.not_found"}), 404
     if job.status != "ready":
         return jsonify(status="error", error={"code": "job.not_ready"}), 409

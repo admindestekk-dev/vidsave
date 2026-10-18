@@ -131,4 +131,62 @@ void main() {
 
     expect(resolver.resolveCalls.isNotEmpty, isTrue);
   });
+
+  testWidgets('MP3 modal allows pasting YouTube URL, fetching preview and downloading MP3', (tester) async {
+    final resolver = _FakeMusicResolver();
+    final downloader = _FakeMusicDownloader();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (ctx) => Center(
+              child: ElevatedButton(
+                onPressed: () {
+                  showModalBottomSheet<void>(
+                    context: ctx,
+                    isScrollControlled: true,
+                    builder: (_) => PlatformSearchDownloadModal(
+                      platform: kDownloadPlatforms.firstWhere((p) => p.isAudio),
+                      resolver: resolver,
+                      downloader: downloader,
+                    ),
+                  );
+                },
+                child: const Text('Open Modal'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open Modal'));
+    await tester.pumpAndSettle();
+
+    // Enter YouTube URL into TextField
+    final input = find.byType(TextField);
+    await tester.enterText(input, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    await tester.pump();
+
+    // Tap ARA button to fetch preview
+    await tester.tap(find.text('ARA'));
+    await tester.pumpAndSettle();
+
+    // Verify preview title and MP3 quality options are shown
+    expect(find.text('Örnek Başlık'), findsOneWidget);
+    expect(find.text('MP3 SES DÖNÜŞTÜRME SEÇENEKLERİ'), findsOneWidget);
+    expect(find.text('MP3 Ses Dosyası (320 kbps - En Yüksek Kalite)'), findsOneWidget);
+
+    // Tap the MP3 download button beside 320 kbps (height: 0)
+    final downloadButton = find.byKey(const ValueKey('quality_0'));
+    expect(downloadButton, findsOneWidget);
+    await tester.ensureVisible(downloadButton);
+    await tester.tap(downloadButton);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(resolver.resolveCalls.any((call) => call.contains('audio')), isTrue);
+  });
 }
