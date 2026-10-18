@@ -42,6 +42,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+import requests
 from flask import Flask, Response, jsonify, request, send_file
 
 try:
@@ -386,6 +387,7 @@ class Job:
     # Audio effect: "normal" | "nightcore" | "bassboost"
     audio_effect: str = "normal"
     lyrics: str | None = None
+    direct_headers: dict[str, str] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
 
 
@@ -875,6 +877,71 @@ def _mime_for(ext: str, kind: str) -> str:
 # --- background worker -----------------------------------------------------
 
 
+def _is_direct_url_accessible(url: str | None, headers: dict[str, Any] | None) -> bool:
+    """Test if direct stream URL can actually be fetched from CDN without 403 or network errors."""
+    if not url:
+        return False
+    try:
+        validate_public_http_url(url)
+        test_h = {
+            "User-Agent": BROWSER_UA,
+            "Accept": "*/*",
+            "Range": "bytes=0-0",
+        }
+        if headers and isinstance(headers, dict):
+            for k, v in headers.items():
+                if k.lower() not in ("host", "content-length"):
+                    test_h[k] = str(v)
+        res = requests.get(url, headers=test_h, stream=True, timeout=5, allow_redirects=True)
+        status = res.status_code
+        res.close()
+        return status in (200, 206)
+    except Exception:
+        return False
+
+
+def _download_job_to_disk(job: Job, target_source: str | None = None) -> str:
+    """Download merged video or mp3 audio directly to WORK_DIR using yt-dlp + ffmpeg."""
+    if not FFMPEG_PATH:
+        if job.kind == "audio":
+            raise RuntimeError("Ses (mp3) dönüştürmek için sunucuda ffmpeg kurulu olmalı.")
+        raise RuntimeError("Bu video için ayrı akışları birleştirmek gerekiyor; sunucuda ffmpeg kurulu olmalı.")
+
+    src = target_source or job.source
+    out_tmpl = os.path.join(WORK_DIR, f"{job.id}.%(ext)s")
+    cookiefile = None
+    if "instagram.com" in src.lower() or "instagr.am" in src.lower():
+        cookiefile = _get_platform_cookie_file("instagram")
+
+    cmd = _base_args(
+        allow_playlist_items=_is_search_source(src),
+        cookiefile=cookiefile,
+    ) + [
+        "-f",
+        _format_selector(job.kind, job.height),
+        "--merge-output-format",
+        "mp4",
+    ]
+    if job.kind == "audio":
+        cmd += ["-x", "--audio-format", "mp3", "--audio-quality", "0"]
+    cmd += ["-o", out_tmpl, "--", src]
+
+    proc = _execute_ytdlp(cmd, timeout=1800)
+    if proc.returncode != 0:
+        raise RuntimeError(_clean_error(proc.stderr or proc.stdout or "yt-dlp failed"))
+
+    produced = [
+        os.path.join(WORK_DIR, name)
+        for name in os.listdir(WORK_DIR)
+        if name.startswith(f"{job.id}.")
+    ]
+    if not produced:
+        raise RuntimeError("yt-dlp çıktı dosyası oluşturamadı.")
+
+    path = max(produced, key=os.path.getsize)
+    return path
+
+
 def _work(job: Job) -> None:
     try:
         job.status = "running"
@@ -909,73 +976,30 @@ def _work(job: Job) -> None:
         # Audio downloads are normalized to MP3 even when the source already
         # offers a single-file M4A/AAC stream.
         if direct is not None and job.kind != "audio":
-            # Validate before storing; the actual request revalidates every hop.
             direct_url = direct.get("url")
-            validate_public_http_url(direct_url)
-            ext = direct.get("ext") or ("mp3" if job.kind == "audio" else "mp4")
-            job.direct_url = direct_url
-            job.filename = _safe_filename(
-                info.get("title") or "vidsave", "vidsave", ext
-            )
-            job.ext = ext
-            job.mime = _mime_for(ext, job.kind)
-            job.progress = 1.0
-            job.status = "ready"
-            return
+            direct_headers = direct.get("http_headers") or {}
+            # Verify if direct_url is actually accessible from CDN without 403 or network errors
+            if _is_direct_url_accessible(direct_url, direct_headers):
+                ext = direct.get("ext") or "mp4"
+                job.direct_url = direct_url
+                job.direct_headers = direct_headers
+                job.filename = _safe_filename(
+                    info.get("title") or "vidsave", "vidsave", ext
+                )
+                job.ext = ext
+                job.mime = _mime_for(ext, job.kind)
+                job.progress = 1.0
+                job.status = "ready"
+                return
 
         # Slow path: merge/transcode on the server with yt-dlp + ffmpeg.
-        # Audio extraction to mp3 and merging separate streams BOTH need ffmpeg;
-        # fail loudly instead of shipping a mislabelled file.
-        if not FFMPEG_PATH:
-            if job.kind == "audio":
-                raise RuntimeError(
-                    "Ses (mp3) dönüştürmek için sunucuda ffmpeg kurulu olmalı."
-                )
-            raise RuntimeError(
-                "Bu video için ayrı akışları birleştirmek gerekiyor; "
-                "sunucuda ffmpeg kurulu olmalı."
-            )
-
-        out_tmpl = os.path.join(WORK_DIR, f"{job.id}.%(ext)s")
-        # If the job came from a search query, use the resolved video's direct
-        # webpage URL so yt-dlp does not have to re-search the query on download.
         target_source = (
             (info.get("webpage_url") or info.get("original_url"))
             if _is_search_source(job.source)
             else job.source
         ) or job.source
 
-        # Check for user-provided platform cookies (e.g. Instagram private profile / story)
-        cookiefile = None
-        if "instagram.com" in target_source.lower() or "instagr.am" in target_source.lower():
-            cookiefile = _get_platform_cookie_file("instagram")
-
-        cmd = _base_args(
-            allow_playlist_items=_is_search_source(target_source),
-            cookiefile=cookiefile,
-        ) + [
-            "-f",
-            _format_selector(job.kind, job.height),
-            "--merge-output-format",
-            "mp4",
-        ]
-        if job.kind == "audio":
-            cmd += ["-x", "--audio-format", "mp3", "--audio-quality", "0"]
-        cmd += ["-o", out_tmpl, "--", target_source]
-
-        proc = _execute_ytdlp(cmd, timeout=1800)
-        if proc.returncode != 0:
-            raise RuntimeError(_clean_error(proc.stderr or proc.stdout or "yt-dlp failed"))
-
-        produced = [
-            os.path.join(WORK_DIR, name)
-            for name in os.listdir(WORK_DIR)
-            if name.startswith(f"{job.id}.")
-        ]
-        if not produced:
-            raise RuntimeError("yt-dlp çıktı dosyası oluşturamadı.")
-
-        path = max(produced, key=os.path.getsize)
+        path = _download_job_to_disk(job, target_source)
         ext = os.path.splitext(path)[1].lstrip(".").lower() or "mp4"
 
         # Apply Audio Post-Processing (Feature 1: Trimming & Feature 4: Audio Effects)
@@ -1437,7 +1461,34 @@ def download() -> Response | tuple[Response, int]:
     if job.status != "ready":
         return jsonify(status="error", error={"code": "job.not_ready"}), 409
     if job.direct_url:
-        return stream_upstream_response(job, request.headers.get("Range"))
+        extra_h = getattr(job, "direct_headers", None)
+        if extra_h:
+            result = stream_upstream_response(
+                job,
+                request.headers.get("Range"),
+                extra_headers=extra_h,
+            )
+        else:
+            result = stream_upstream_response(job, request.headers.get("Range"))
+
+        # If stream proxy failed with 502, seamlessly recover by downloading on server with yt-dlp!
+        if isinstance(result, tuple) and len(result) == 2 and result[1] == 502:
+            logging.warning("Stream proxy returned 502 for job %s. Recovering with server-side download.", job.id)
+            try:
+                job.direct_url = None
+                path = _download_job_to_disk(job)
+                job.filepath = path
+                return send_file(
+                    job.filepath,
+                    mimetype=job.mime or "application/octet-stream",
+                    as_attachment=True,
+                    download_name=job.filename,
+                    conditional=True,
+                )
+            except Exception as exc:
+                logging.error("Fallback server download failed: %s", exc)
+                return result
+        return result
     if not job.filepath or not os.path.exists(job.filepath):
         return jsonify(status="error", error={"code": "job.not_ready"}), 409
 

@@ -114,7 +114,9 @@ BROWSER_USER_AGENT = (
 
 
 def _open_upstream(
-    url: str, range_header: str | None
+    url: str,
+    range_header: str | None,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[requests.Session, requests.Response]:
     session = requests.Session()
     # Avoid inheriting proxy settings from the environment for an untrusted URL.
@@ -124,6 +126,10 @@ def _open_upstream(
         "Accept": "*/*",
         "Accept-Encoding": "identity",
     }
+    if extra_headers and isinstance(extra_headers, dict):
+        for k, v in extra_headers.items():
+            if k.lower() not in ("host", "content-length"):
+                headers[k] = str(v)
     if range_header and re.fullmatch(r"bytes=\d*-\d*", range_header.strip()):
         headers["Range"] = range_header.strip()
 
@@ -163,11 +169,16 @@ def _open_upstream(
 
 
 def stream_upstream_response(
-    job: object, range_header: str | None = None
+    job: object,
+    range_header: str | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> Response | tuple[Response, int]:
     """Return a Flask response streaming a job's resolved URL in bounded chunks."""
     try:
-        session, upstream = _open_upstream(job.direct_url, range_header)
+        if extra_headers is not None:
+            session, upstream = _open_upstream(job.direct_url, range_header, extra_headers)
+        else:
+            session, upstream = _open_upstream(job.direct_url, range_header)
     except ProxyDownloadTooLarge:
         return jsonify(status="error", error={"code": "download.too_large"}), 413
     except (ProxyDownloadError, requests.RequestException, OSError, ValueError):
