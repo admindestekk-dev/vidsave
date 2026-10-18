@@ -1,28 +1,35 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'app_localizations.dart';
 import 'backend_settings.dart';
+import 'locale_service.dart';
 
 /// VidSave Premium Aylık Abonelik Ekranı
 ///
-/// Psikolojik fiyatlandırma (9,99 TL / $0.99) ve çok dilli yapı barındırır.
-/// Ödeme başarılı olduğunda confetti animasyonu oynatılır ve shared_preferences'a kaydedilir.
+/// Google Play Store resmi `in_app_purchase` kütüphanesini kullanır.
+/// Ürün Kimliği: `vidsave_premium_monthly`
+/// Satın alma gerçekleştiğinde makbuz backend `/api/auth/verify-purchase` endpoint'i
+/// ile doğrulanır, 3 saniyelik konfeti patlatılır ve premium durum SharedPreferences'a kaydedilir.
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({
     super.key,
+    this.inAppPurchase,
     this.store,
     this.httpClient,
     this.onSubscribed,
   });
 
+  final InAppPurchase? inAppPurchase;
   final BackendSettingsStore? store;
   final http.Client? httpClient;
   final VoidCallback? onSubscribed;
 
+  static const String productId = 'vidsave_premium_monthly';
   static const String prefKeyIsPremium = 'vidsave_is_premium';
   static const String prefKeySubscribedAt = 'vidsave_premium_subscribed_at';
 
@@ -31,10 +38,15 @@ class SubscriptionScreen extends StatefulWidget {
 }
 
 class _SubscriptionScreenState extends State<SubscriptionScreen> {
+  late final InAppPurchase _inAppPurchase;
+  StreamSubscription<List<PurchaseDetails>>? _subscription;
   late final ConfettiController _confettiController;
+
+  bool _isAvailable = false;
   bool _loading = false;
   bool _isPremiumActive = false;
   String? _receiptMessage;
+  ProductDetails? _monthlyProduct;
 
   static const _accentColor = Color(0xFFFF5436);
   static const _darkBackground = Color(0xFF14191F);
@@ -46,11 +58,29 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 3),
     );
+
+    _inAppPurchase = widget.inAppPurchase ?? InAppPurchase.instance;
+
+    // 1. in_app_purchase akış dinleyicisini başlat
+    final purchaseUpdated = _inAppPurchase.purchaseStream;
+    _subscription = purchaseUpdated.listen(
+      _listenToPurchaseUpdated,
+      onDone: () {
+        _subscription?.cancel();
+      },
+      onError: (error) {
+        debugPrint('Purchase stream error: $error');
+      },
+    );
+
+    // 2. Google Play Store ürünlerini ve yerel premium durumunu sorgula
+    _initStoreAndProducts();
     _checkCurrentPremiumStatus();
   }
 
   @override
   void dispose() {
+    _subscription?.cancel();
     _confettiController.dispose();
     super.dispose();
   }
@@ -65,6 +95,34 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
+  Future<void> _initStoreAndProducts() async {
+    try {
+      final available = await _inAppPurchase.isAvailable();
+      if (!available) {
+        if (mounted) setState(() => _isAvailable = false);
+        return;
+      }
+
+      final response = await _inAppPurchase.queryProductDetails({
+        SubscriptionScreen.productId,
+      });
+
+      if (mounted) {
+        setState(() {
+          _isAvailable = true;
+          if (response.productDetails.isNotEmpty) {
+            _monthlyProduct = response.productDetails.firstWhere(
+              (p) => p.id == SubscriptionScreen.productId,
+              orElse: () => response.productDetails.first,
+            );
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error querying Google Play products: $e');
+    }
+  }
+
   bool _isTurkish(BuildContext context) {
     try {
       final loc = Localizations.maybeLocaleOf(context);
@@ -72,12 +130,171 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         return loc.languageCode.toLowerCase() == 'tr';
       }
     } catch (_) {}
-    return AppLocalizations.of(context).locale.languageCode.toLowerCase() == 'tr';
+    return (LocaleService.localeNotifier.value?.languageCode.toLowerCase() ?? 'tr') == 'tr';
   }
 
+  /// In-App Purchase akışından gelen satın alma durumlarını işler
+  Future<void> _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) async {
+    for (final purchaseDetails in purchaseDetailsList) {
+      if (purchaseDetails.status == PurchaseStatus.pending) {
+        if (mounted) setState(() => _loading = true);
+      } else {
+        if (purchaseDetails.status == PurchaseStatus.error) {
+          if (mounted) {
+            setState(() => _loading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(purchaseDetails.error?.message ?? 'Ödeme iptal edildi veya başarısız oldu.'),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          }
+        } else if (purchaseDetails.status == PurchaseStatus.purchased ||
+            purchaseDetails.status == PurchaseStatus.restored) {
+          // Google'dan gelen dijital makbuzu doğrulamak için backend'e gönder
+          final verified = await _verifyPurchaseOnBackend(purchaseDetails);
+          if (verified && purchaseDetails.pendingCompletePurchase) {
+            await _inAppPurchase.completePurchase(purchaseDetails);
+          }
+        }
+
+        if (purchaseDetails.pendingCompletePurchase &&
+            purchaseDetails.status != PurchaseStatus.purchased) {
+          await _inAppPurchase.completePurchase(purchaseDetails);
+        }
+      }
+    }
+  }
+
+  /// Backend'deki `/api/auth/verify-purchase` endpoint'ine makbuzu gönderir
+  Future<bool> _verifyPurchaseOnBackend(PurchaseDetails purchaseDetails) async {
+    final token = purchaseDetails.verificationData.serverVerificationData.isNotEmpty
+        ? purchaseDetails.verificationData.serverVerificationData
+        : purchaseDetails.verificationData.localVerificationData;
+
+    final isTurkish = _isTurkish(context);
+    final langCode = isTurkish ? 'tr' : 'en';
+
+    try {
+      String baseUrl = BackendSettings.defaultBaseUrl;
+      String apiKey = '';
+      if (widget.store != null) {
+        try {
+          final settings = await widget.store!.load();
+          if (settings.isConfigured) {
+            baseUrl = settings.baseUrl;
+            apiKey = settings.apiKey;
+          }
+        } catch (_) {}
+      }
+
+      final uri = Uri.parse(baseUrl).resolve('/api/auth/verify-purchase');
+      final client = widget.httpClient ?? http.Client();
+
+      final response = await client.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (apiKey.isNotEmpty) 'X-Api-Key': apiKey,
+        },
+        body: jsonEncode({
+          'token': token.isNotEmpty ? token : 'token_${purchaseDetails.purchaseID}',
+          'productId': purchaseDetails.productID,
+          'userId': 'device_user',
+          'lang': langCode,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final isSuccess = response.statusCode == 200 &&
+          (data['success'] == true || data['verified'] == true);
+
+      if (!isSuccess) {
+        throw StateError(data['message']?.toString() ?? 'Makbuz doğrulanamadı.');
+      }
+
+      final serverReceipt = data['receiptMessage']?.toString();
+      final fallbackReceipt = isTurkish
+          ? 'Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!'
+          : 'Invoice generated: \$0.99 (All taxes included) charged. Premium active!';
+      final finalReceipt = (serverReceipt != null && serverReceipt.isNotEmpty)
+          ? serverReceipt
+          : fallbackReceipt;
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(SubscriptionScreen.prefKeyIsPremium, true);
+      await prefs.setString(
+        SubscriptionScreen.prefKeySubscribedAt,
+        DateTime.now().toIso8601String(),
+      );
+
+      if (!mounted) return false;
+      setState(() {
+        _loading = false;
+        _isPremiumActive = true;
+        _receiptMessage = finalReceipt;
+      });
+
+      _confettiController.play();
+      widget.onSubscribed?.call();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(finalReceipt),
+          backgroundColor: const Color(0xFF0E7C4B),
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isTurkish
+                ? 'Doğrulama tamamlanamadı: $e'
+                : 'Verification could not be completed: $e',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return false;
+    }
+  }
+
+  /// Abone Ol butonuna basıldığında Google Play ödeme akışını tetikler
   Future<void> _handleSubscribe() async {
     if (_loading) return;
 
+    // Google Play Store üzerinden ürün tanımlı ise resmi satın alma sayfasını tetikle
+    if (_monthlyProduct != null && _isAvailable) {
+      setState(() => _loading = true);
+      final purchaseParam = PurchaseParam(productDetails: _monthlyProduct!);
+      try {
+        await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+      } catch (e) {
+        if (mounted) {
+          setState(() => _loading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Google Play ödeme akışı başlatılamadı: $e'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      }
+      return;
+    }
+
+    // Google Play mağaza bağlantısı olmayan test/geliştirici ortamlarında
+    // doğrudan backend abonelik muhasebe akışını çalıştır
+    await _handleFallbackDirectSubscribe();
+  }
+
+  Future<void> _handleFallbackDirectSubscribe() async {
     setState(() {
       _loading = true;
       _receiptMessage = null;
@@ -87,7 +304,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final langCode = isTurkish ? 'tr' : 'en';
 
     try {
-      // 1. Backend settings'ten base URL'i al
       String baseUrl = BackendSettings.defaultBaseUrl;
       String apiKey = '';
       if (widget.store != null) {
@@ -136,7 +352,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ? serverReceipt
           : fallbackReceipt;
 
-      // 2. Kalıcı hafızaya kaydet
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(SubscriptionScreen.prefKeyIsPremium, true);
       await prefs.setString(
@@ -152,12 +367,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         _receiptMessage = finalReceipt;
       });
 
-      // 3. Konfeti patlat (3 saniye boyunca)
       _confettiController.play();
-
       widget.onSubscribed?.call();
 
-      // Makbuz bildirim snackbar'ı
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(finalReceipt),
@@ -168,9 +380,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-      });
+      setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

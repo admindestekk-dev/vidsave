@@ -216,3 +216,28 @@ class SubscriptionMonthlyTests(unittest.TestCase):
         self.assertEqual(sub["currency"], "USD")
         self.assertEqual(sub["lang"], "en")
         self.assertIn("$0.99 (All taxes included)", sub["receiptMessage"])
+
+
+    def test_verify_purchase_extends_premium_until_by_30_days(self):
+        res = self.client.post("/api/auth/verify-purchase", json={
+            "token": "google_play_purchase_token_xyz_123",
+            "productId": "vidsave_premium_monthly",
+            "userId": "test_google_user",
+            "lang": "tr",
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["success"])
+        self.assertTrue(data["verified"])
+        self.assertEqual(data["userId"], "test_google_user")
+        self.assertIn("premiumUntil", data)
+        self.assertIn("30 gün uzatıldı", data["receiptMessage"])
+
+    def test_verify_purchase_missing_token_returns_bad_request(self):
+        res = self.client.post("/api/auth/verify-purchase", json={
+            "productId": "vidsave_premium_monthly",
+            "userId": "test_google_user",
+        })
+        self.assertEqual(res.status_code, 400)
+        data = res.get_json()
+        self.assertEqual(data["error"]["code"], "token.missing")

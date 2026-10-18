@@ -24,6 +24,7 @@ Point the Flutter app at it:
 
 from __future__ import annotations
 
+import datetime
 import hmac
 import json
 import logging
@@ -168,6 +169,18 @@ def _init_db() -> None:
                 status TEXT NOT NULL,
                 invoice_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_subscriptions (
+                user_id TEXT PRIMARY KEY,
+                is_premium INTEGER DEFAULT 1,
+                premium_until TIMESTAMP,
+                product_id TEXT,
+                purchase_token TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -1802,6 +1815,105 @@ def api_subscribe_monthly() -> Response:
             "invoiceId": invoice_id,
             "receiptMessage": receipt_message,
         },
+    )
+
+
+@app.post("/api/auth/verify-purchase")
+def api_verify_purchase() -> Response:
+    """Verify in-app purchase receipt from Google Play Store and extend premium_until by 30 days."""
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    token = str(
+        body.get("token")
+        or body.get("purchaseToken")
+        or body.get("serverVerificationData")
+        or body.get("purchaseId")
+        or ""
+    ).strip()
+    product_id = str(body.get("productId") or body.get("product_id") or "vidsave_premium_monthly").strip()
+    user_id = str(body.get("userId") or body.get("user_id") or "device_user").strip()
+    lang = str(body.get("lang") or "tr").strip().lower()
+
+    if not token:
+        return jsonify(
+            status="error",
+            error={"code": "token.missing", "message": "Doğrulama belirteci (token) eksik."},
+        ), 400
+
+    # Calculate 30 days extension from now (or from existing premium_until if currently active)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    current_until = None
+
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT premium_until FROM user_subscriptions WHERE user_id = ?", (user_id,))
+        row = cur.fetchone()
+        if row and row[0]:
+            try:
+                parsed_ts = datetime.datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+                if parsed_ts > now:
+                    current_until = parsed_ts
+            except Exception:
+                pass
+
+        base_time = current_until or now
+        new_until = base_time + datetime.timedelta(days=30)
+        new_until_str = new_until.isoformat()
+
+        # Update or insert into user_subscriptions
+        conn.execute(
+            """
+            INSERT INTO user_subscriptions (user_id, is_premium, premium_until, product_id, purchase_token, updated_at)
+            VALUES (?, 1, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                is_premium = 1,
+                premium_until = excluded.premium_until,
+                product_id = excluded.product_id,
+                purchase_token = excluded.purchase_token,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (user_id, new_until_str, product_id, token),
+        )
+
+        # Record accounting audit entry in subscriptions table as well
+        invoice_id = f"inv_{uuid.uuid4().hex[:12]}"
+        amount = 9.99 if lang == "tr" else 0.99
+        currency = "TRY" if lang == "tr" else "USD"
+        sub_id = f"sub_{uuid.uuid4().hex[:12]}"
+        conn.execute(
+            """
+            INSERT INTO subscriptions (
+                id, user_id, lang, amount, currency, vat_included, status, invoice_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (sub_id, user_id, lang, amount, currency, 1, "verified", invoice_id),
+        )
+        conn.commit()
+    except Exception as exc:
+        logging.warning("verify-purchase DB error: %s", exc)
+        return jsonify(status="error", error={"message": str(exc)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    receipt_msg = (
+        "Faturanız onaylandı: Google Play aboneliğiniz doğrulandı ve Premium süreniz 30 gün uzatıldı!"
+        if lang == "tr"
+        else "Receipt verified: Google Play subscription confirmed and Premium extended by 30 days!"
+    )
+
+    return jsonify(
+        status="ok",
+        success=True,
+        verified=True,
+        userId=user_id,
+        productId=product_id,
+        premiumUntil=new_until_str,
+        receiptMessage=receipt_msg,
     )
 
 

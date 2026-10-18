@@ -47,8 +47,9 @@ class ServerQualityTests(unittest.TestCase):
     @patch("backend.server.validate_public_http_url")
     @patch("backend.server._run_json")
     @patch("backend.server._pick_direct_format")
+    @patch("backend.server._is_direct_url_accessible", return_value=True)
     def test_height_is_passed_to_format_selector(
-        self, mock_pick_direct, mock_run_json, mock_validate
+        self, mock_is_direct, mock_pick_direct, mock_run_json, mock_validate
     ):
         mock_run_json.return_value = {
             "title": "Short Clip",
@@ -76,8 +77,9 @@ class ServerQualityTests(unittest.TestCase):
     @patch("backend.server.validate_public_http_url")
     @patch("backend.server._run_json")
     @patch("backend.server._pick_direct_format")
+    @patch("backend.server._is_direct_url_accessible", return_value=True)
     def test_polling_with_height_and_job_id_reuses_existing_job(
-        self, mock_pick_direct, mock_run_json, mock_validate
+        self, mock_is_direct, mock_pick_direct, mock_run_json, mock_validate
     ):
         mock_run_json.return_value = {
             "title": "Short Clip",
