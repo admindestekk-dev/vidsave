@@ -82,6 +82,7 @@ flutter:
   # badge if a file is missing, so no screen depends on these assets.
   assets:
     - assets/logos/
+    - assets/translations/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

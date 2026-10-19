@@ -1,0 +1,20 @@
+{
+  "app_name": "VidSave",
+  "app_title": "VidSave",
+  "download_video": "Скачать Видео",
+  "download_mp3": "Скачать MP3",
+  "downloads": "Загрузки",
+  "activate_pro_version": "Активировать Pro Версию",
+  "fast_and_safe_downloads": "Быстрые и Безопасные Загрузки",
+  "delete_account": "Удалить Аккаунт",
+  "support_and_contact": "Поддержка и Контакты",
+  "support_code": "Код Поддержки",
+  "support_code_title": "Код Поддержки (User ID)",
+  "contact_us": "Связаться с Нами / Поддержка",
+  "support_email": "admindestekk@gmail.com",
+  "code_copied": "Код поддержки скопирован в буфер обмена!",
+  "pricing_text": "Всего 99 ₽ / Месяц",
+  "pricing_full": "Всего 99 ₽ / Месяц - НДС включен",
+  "subscribe_button": "Подписаться - 99 ₽ / Мес",
+  "vat_included": "Все налоги и НДС включены."
+}

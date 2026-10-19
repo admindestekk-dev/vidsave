@@ -1,0 +1,20 @@
+{
+  "app_name": "VidSave",
+  "app_title": "VidSave",
+  "download_video": "下载视频",
+  "download_mp3": "下载 MP3",
+  "downloads": "已下载",
+  "activate_pro_version": "激活专业版",
+  "fast_and_safe_downloads": "快速安全下载",
+  "delete_account": "删除账户",
+  "support_and_contact": "支持与联系",
+  "support_code": "支持代码",
+  "support_code_title": "支持代码 (User ID)",
+  "contact_us": "联系我们 / 获取支持",
+  "support_email": "admindestekk@gmail.com",
+  "code_copied": "支持代码已复制到剪贴板！",
+  "pricing_text": "每月 Automation $0.99",
+  "pricing_full": "每月 $0.99 - 含税",
+  "subscribe_button": "订阅 - $0.99 / 月",
+  "vat_included": "包含所有适用税费。"
+}

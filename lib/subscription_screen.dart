@@ -138,17 +138,18 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  bool _isTurkish(BuildContext context) {
+  String _getLanguageCode(BuildContext context) {
     try {
       final loc = Localizations.maybeLocaleOf(context);
       if (loc != null) {
-        return loc.languageCode.toLowerCase() == 'tr';
+        return loc.languageCode.toLowerCase();
       }
     } catch (_) {}
-    return (LocaleService.localeNotifier.value?.languageCode.toLowerCase() ??
-            'tr') ==
+    return LocaleService.localeNotifier.value?.languageCode.toLowerCase() ??
         'tr';
   }
+
+  bool _isTurkish(BuildContext context) => _getLanguageCode(context) == 'tr';
 
   /// In-App Purchase akışından gelen satın alma durumlarını işler
   Future<void> _listenToPurchaseUpdated(
@@ -448,18 +449,56 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isTurkish = _isTurkish(context);
+    final lang = _getLanguageCode(context);
+    final isTurkish = lang == 'tr';
 
-    // Fiyat etiketleri
-    final priceTitle = isTurkish
-        ? 'Aylık Sadece 9,99 TL - KDV Dahil'
-        : 'Only \$0.99 / Month - All Taxes Included';
-    final taxFootnote = isTurkish
-        ? 'Tüm vergiler ve KDV dahildir.'
-        : 'All taxes and VAT included.';
-    final buttonText = isTurkish
-        ? '9,99 TL / Ay - Abone Ol'
-        : 'Subscribe - \$0.99 / Mo';
+    // 8 Küresel Dile Göre Dinamik Psikolojik Fiyatlandırma
+    final String priceTitle;
+    final String taxFootnote;
+    final String buttonText;
+
+    switch (lang) {
+      case 'tr':
+        priceTitle = 'Aylık Sadece 9,99 TL - KDV Dahil';
+        taxFootnote = 'Tüm vergiler ve KDV dahildir.';
+        buttonText = '9,99 TL / Ay - Abone Ol';
+        break;
+      case 'es':
+        priceTitle = 'Solo \$0.99 / Mes - Impuestos Incluidos';
+        taxFootnote = 'Todos los impuestos incluidos.';
+        buttonText = 'Suscribirse - \$0.99 / Mes';
+        break;
+      case 'de':
+        priceTitle = 'Nur 0,99 € / Monat - Inkl. MwSt.';
+        taxFootnote = 'Alle Steuern und MwSt. inbegriffen.';
+        buttonText = 'Abonnieren - 0,99 € / Mt.';
+        break;
+      case 'fr':
+        priceTitle = 'Seulement 0,99 € / Mois - Taxes Comprises';
+        taxFootnote = 'Toutes taxes et TVA incluses.';
+        buttonText = 'S\'abonner - 0,99 € / Mois';
+        break;
+      case 'ru':
+        priceTitle = 'Всего 99 ₽ / Месяц - НДС включен';
+        taxFootnote = 'Все налоги и НДС включены.';
+        buttonText = 'Подписаться - 99 ₽ / Мес';
+        break;
+      case 'ar':
+        priceTitle = '0.99 \$ فقط / شهر - شامل الضرائب';
+        taxFootnote = 'جميع الضرائب وضريبة القيمة المضافة مشمولة.';
+        buttonText = 'اشتراك - 0.99 \$ / شهرياً';
+        break;
+      case 'zh':
+        priceTitle = '每月 \$0.99 - 含税';
+        taxFootnote = '包含所有适用税费。';
+        buttonText = '订阅 - \$0.99 / 月';
+        break;
+      default: // en ve diğer diller
+        priceTitle = 'Only \$0.99 / Month - All Taxes Included';
+        taxFootnote = 'All taxes and VAT included.';
+        buttonText = 'Subscribe - \$0.99 / Mo';
+        break;
+    }
 
     return Scaffold(
       backgroundColor: _darkBackground,

@@ -69,14 +69,14 @@ class MyApp extends StatelessWidget {
               supportedLocales: AppLocalizations.supportedLocales,
               localeResolutionCallback: (deviceLocale, supportedLocales) {
                 if (currentLocale != null) return currentLocale;
-                if (deviceLocale == null) return const Locale('tr');
+                if (deviceLocale == null) return const Locale('en');
                 for (final supported in supportedLocales) {
                   if (supported.languageCode == deviceLocale.languageCode) {
                     return supported;
                   }
                 }
-                // Eğer tam eşleşme yoksa cihaz dilini kabul et (AppLocalizations dünyadaki tüm dilleri karşılar)
-                return deviceLocale;
+                // Fallback olarak İngilizce ('en')
+                return const Locale('en');
               },
               home: AuthGate(
                 authService: authService,

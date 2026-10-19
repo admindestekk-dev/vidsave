@@ -68,8 +68,42 @@ class _MoreScreenState extends State<MoreScreen> {
     });
   }
 
+  String _getLanguageSubtitle(String code) {
+    switch (code) {
+      case 'tr':
+        return '🇹🇷 Türkçe';
+      case 'en':
+        return '🇺🇸 English';
+      case 'es':
+        return '🇪🇸 Español';
+      case 'de':
+        return '🇩🇪 Deutsch';
+      case 'fr':
+        return '🇫🇷 Français';
+      case 'ru':
+        return '🇷🇺 Русский';
+      case 'ar':
+        return '🇸🇦 العربية';
+      case 'zh':
+        return '🇨🇳 简体中文';
+      default:
+        return '🇺🇸 English';
+    }
+  }
+
   void _showLanguageDialog() {
     final currentCode = LocaleService.currentLanguageCode;
+
+    final languages = [
+      {'code': 'tr', 'flag': '🇹🇷', 'name': 'Türkçe', 'native': 'Türkçe'},
+      {'code': 'en', 'flag': '🇺🇸', 'name': 'English', 'native': 'English'},
+      {'code': 'es', 'flag': '🇪🇸', 'name': 'Spanish', 'native': 'Español'},
+      {'code': 'de', 'flag': '🇩🇪', 'name': 'German', 'native': 'Deutsch'},
+      {'code': 'fr', 'flag': '🇫🇷', 'name': 'French', 'native': 'Français'},
+      {'code': 'ru', 'flag': '🇷🇺', 'name': 'Russian', 'native': 'Русский'},
+      {'code': 'ar', 'flag': '🇸🇦', 'name': 'Arabic', 'native': 'العربية'},
+      {'code': 'zh', 'flag': '🇨🇳', 'name': 'Chinese', 'native': '简体中文'},
+    ];
 
     showDialog<void>(
       context: context,
@@ -117,50 +151,47 @@ class _MoreScreenState extends State<MoreScreen> {
                 const Divider(height: 1),
                 const SizedBox(height: 8),
 
-                // 🇹🇷 Türkçe
-                ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  leading: const Text('🇹🇷', style: TextStyle(fontSize: 26)),
-                  title: const Text(
-                    'Türkçe',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
-                  subtitle: const Text('Türkçe'),
-                  trailing: currentCode == 'tr'
-                      ? const Icon(Icons.check_circle_rounded, color: _accent)
-                      : null,
-                  onTap: () async {
-                    await LocaleService.setLocale(const Locale('tr'));
-                    if (dialogContext.mounted) {
-                      Navigator.pop(dialogContext);
-                    }
-                  },
-                ),
+                // Dikey olarak kaydırılabilen 8 Dilli Liste
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: languages.map((lang) {
+                        final code = lang['code']!;
+                        final flag = lang['flag']!;
+                        final name = lang['name']!;
+                        final native = lang['native']!;
+                        final isSelected = currentCode == code;
 
-                const SizedBox(height: 6),
-
-                // 🇺🇸 English
-                ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4.0),
+                          child: ListTile(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            leading: Text(flag, style: const TextStyle(fontSize: 26)),
+                            title: Text(
+                              native,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
+                            ),
+                            subtitle: Text(name),
+                            trailing: isSelected
+                                ? const Icon(Icons.check_circle_rounded, color: _accent)
+                                : null,
+                            onTap: () async {
+                              await LocaleService.setLocale(Locale(code));
+                              if (dialogContext.mounted) {
+                                Navigator.pop(dialogContext);
+                              }
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
-                  leading: const Text('🇺🇸', style: TextStyle(fontSize: 26)),
-                  title: const Text(
-                    'English',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
-                  subtitle: const Text('English'),
-                  trailing: currentCode == 'en'
-                      ? const Icon(Icons.check_circle_rounded, color: _accent)
-                      : null,
-                  onTap: () async {
-                    await LocaleService.setLocale(const Locale('en'));
-                    if (dialogContext.mounted) {
-                      Navigator.pop(dialogContext);
-                    }
-                  },
                 ),
               ],
             ),
@@ -333,14 +364,13 @@ class _MoreScreenState extends State<MoreScreen> {
               ValueListenableBuilder<Locale?>(
                 valueListenable: LocaleService.localeNotifier,
                 builder: (context, currentLocale, _) {
-                  final isTr =
-                      (currentLocale?.languageCode.toLowerCase() ?? 'tr') ==
-                      'tr';
+                  final code =
+                      (currentLocale?.languageCode.toLowerCase() ?? 'tr');
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.language, color: _accent),
                     title: const Text('Dil Seçimi / Language'),
-                    subtitle: Text(isTr ? '🇹🇷 Türkçe' : '🇺🇸 English'),
+                    subtitle: Text(_getLanguageSubtitle(code)),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: _showLanguageDialog,
                   );

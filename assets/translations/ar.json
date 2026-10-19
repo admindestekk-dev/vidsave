@@ -1,0 +1,20 @@
+{
+  "app_name": "VidSave",
+  "app_title": "VidSave",
+  "download_video": "تنزيل الفيديو",
+  "download_mp3": "تنزيل MP3",
+  "downloads": "التنزيلات",
+  "activate_pro_version": "تفعيل الإصدار الاحترافي Pro",
+  "fast_and_safe_downloads": "تنزيلات سريعة وآمنة",
+  "delete_account": "حذف الحساب",
+  "support_and_contact": "الدعم والتواصل",
+  "support_code": "رمز الدعم",
+  "support_code_title": "رمز الدعم (User ID)",
+  "contact_us": "اتصل بنا / احصل على الدعم",
+  "support_email": "admindestekk@gmail.com",
+  "code_copied": "تم نسخ رمز الدعم إلى الحافظة!",
+  "pricing_text": "0.99 $ فقط / شهر",
+  "pricing_full": "0.99 $ فقط / شهر - شامل الضرائب",
+  "subscribe_button": "اشتراك - 0.99 $ / شهرياً",
+  "vat_included": "جميع الضرائب وضريبة القيمة المضافة مشمولة."
+}

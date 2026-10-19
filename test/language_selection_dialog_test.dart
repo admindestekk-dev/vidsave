@@ -75,11 +75,24 @@ void main() {
     final border = dialog.shape as RoundedRectangleBorder;
     expect(border.borderRadius, BorderRadius.circular(20));
 
-    // Verify both language options are listed
+    // Verify language options are listed (including flags)
     expect(find.text('Türkçe'), findsWidgets);
     expect(find.text('English'), findsWidgets);
+    expect(find.text('Español'), findsOneWidget);
+    expect(find.text('Deutsch'), findsOneWidget);
+    expect(find.text('Français'), findsOneWidget);
+    expect(find.text('Русский'), findsOneWidget);
+    expect(find.text('العربية'), findsOneWidget);
+    expect(find.text('简体中文'), findsOneWidget);
+
     expect(find.text('🇹🇷'), findsOneWidget);
     expect(find.text('🇺🇸'), findsOneWidget);
+    expect(find.text('🇪🇸'), findsOneWidget);
+    expect(find.text('🇩🇪'), findsOneWidget);
+    expect(find.text('🇫🇷'), findsOneWidget);
+    expect(find.text('🇷🇺'), findsOneWidget);
+    expect(find.text('🇸🇦'), findsOneWidget);
+    expect(find.text('🇨🇳'), findsOneWidget);
 
     // Tap English option
     await tester.tap(find.text('English').last);

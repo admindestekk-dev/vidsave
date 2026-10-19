@@ -1,0 +1,20 @@
+{
+  "app_name": "VidSave",
+  "app_title": "VidSave",
+  "download_video": "Video İndir",
+  "download_mp3": "MP3 İndir",
+  "downloads": "İndirilenler",
+  "activate_pro_version": "Pro Sürümü Aktif Et",
+  "fast_and_safe_downloads": "Hızlı ve Güvenli İndirmeler",
+  "delete_account": "Hesabımı Sil",
+  "support_and_contact": "Destek ve İletişim",
+  "support_code": "Destek Kodu",
+  "support_code_title": "Destek Kodu (User ID)",
+  "contact_us": "Bize Ulaşın / Destek Alın",
+  "support_email": "admindestekk@gmail.com",
+  "code_copied": "Destek kodu panoya kopyalandı!",
+  "pricing_text": "Aylık Sadece 9,99 TL",
+  "pricing_full": "Aylık Sadece 9,99 TL - KDV Dahil",
+  "subscribe_button": "9,99 TL / Ay - Abone Ol",
+  "vat_included": "Tüm vergiler ve KDV dahildir."
+}

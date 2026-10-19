@@ -1,0 +1,20 @@
+{
+  "app_name": "VidSave",
+  "app_title": "VidSave",
+  "download_video": "Video Herunterladen",
+  "download_mp3": "MP3 Herunterladen",
+  "downloads": "Downloads",
+  "activate_pro_version": "Pro-Version Aktivieren",
+  "fast_and_safe_downloads": "Schnelle & Sichere Downloads",
+  "delete_account": "Konto Löschen",
+  "support_and_contact": "Support & Kontakt",
+  "support_code": "Support-Code",
+  "support_code_title": "Support-Code (User ID)",
+  "contact_us": "Kontakt / Support Erhalten",
+  "support_email": "admindestekk@gmail.com",
+  "code_copied": "Support-Code in die Zwischenablage kopiert!",
+  "pricing_text": "Nur 0,99 € / Monat",
+  "pricing_full": "Nur 0,99 € / Monat - Inkl. MwSt.",
+  "subscribe_button": "Abonnieren - 0,99 € / Mt.",
+  "vat_included": "Alle Steuern und MwSt. inbegriffen."
+}
