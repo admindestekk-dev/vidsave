@@ -10,6 +10,7 @@ import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
 import 'locale_service.dart';
 import 'media_downloader.dart';
+import 'privacy_policy_screen.dart';
 import 'profile_screen.dart';
 import 'storage_service.dart';
 import 'subscription_screen.dart';
@@ -1004,26 +1005,13 @@ class _MoreScreenState extends State<MoreScreen> {
     }
   }
 
-  /// 3. Gizlilik Politikası: url_launcher ile resmi GitHub Pages sözleşme linki
-  Future<void> _openPrivacyPolicy() async {
-    final uri = Uri.parse('https://admindestekk-dev.github.io/vidsave/privacy-policy.html');
-    try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!launched) {
-        // Fallback ana domain
-        await launchUrl(
-          Uri.parse('https://github.io'),
-          mode: LaunchMode.externalApplication,
-        );
-      }
-    } catch (_) {
-      try {
-        await launchUrl(
-          Uri.parse('https://github.io'),
-          mode: LaunchMode.externalApplication,
-        );
-      } catch (_) {}
-    }
+  /// 3. Gizlilik Politikası: Uygulama içi tam metin ekranını açar (çevrimdışı ve web destekli)
+  void _openPrivacyPolicy() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const PrivacyPolicyScreen(),
+      ),
+    );
   }
 
   /// 4. Sorumluluk Reddi (Disclaimer): Şık yasal bilgilendirme modalı

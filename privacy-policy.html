@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VidSave - Gizlilik Politikası / Privacy Policy</title>
+  <meta name="description" content="VidSave Video & MP3 Downloader Privacy Policy - Google Play Store & Data Safety Compliant">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand-primary: #FF5436;
+      --brand-gradient: linear-gradient(135deg, #FF5436 0%, #FF7E40 100%);
+      --bg-dark: #0D1117;
+      --bg-card: #161B22;
+      --bg-card-hover: #1C2128;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-glow: rgba(255, 84, 54, 0.25);
+      --text-main: #F0F6FC;
+      --text-muted: #8B949E;
+      --text-sub: #C9D1D9;
+      --success: #1DB954;
+      --accent: #006673;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.7;
+      padding: 0;
+      margin: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+    }
+
+    /* HEADER & NAV */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(13, 17, 23, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 24px;
+      margin-bottom: 40px;
+    }
+
+    .header-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #fff;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--brand-gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(255, 84, 54, 0.35);
+    }
+
+    .brand-icon svg {
+      width: 22px;
+      height: 22px;
+      fill: #ffffff;
+    }
+
+    .brand-name {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .lang-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .lang-toggle-btn:hover {
+      border-color: var(--brand-primary);
+      background: var(--bg-card-hover);
+      box-shadow: 0 0 16px var(--border-glow);
+    }
+
+    .lang-flag {
+      font-size: 16px;
+    }
+
+    /* HERO */
+    .hero {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(29, 185, 84, 0.12);
+      color: var(--success);
+      border: 1px solid rgba(29, 185, 84, 0.3);
+      padding: 5px 14px;
+      border-radius: 30px;
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      margin-bottom: 12px;
+      background: linear-gradient(180deg, #FFFFFF 0%, #C9D1D9 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .effective-date {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* CARDS */
+    .policy-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 28px;
+      margin-bottom: 24px;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .policy-card:hover {
+      border-color: var(--border-glow);
+      transform: translateY(-2px);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .card-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 84, 54, 0.12);
+      color: var(--brand-primary);
+      flex-shrink: 0;
+    }
+
+    .card-icon svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+
+    .card-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .card-content {
+      color: var(--text-sub);
+      font-size: 15px;
+    }
+
+    .card-content p {
+      margin-bottom: 12px;
+    }
+
+    .card-content p:last-child {
+      margin-bottom: 0;
+    }
+
+    .highlight-box {
+      background: rgba(255, 255, 255, 0.03);
+      border-left: 3px solid var(--brand-primary);
+      padding: 14px 18px;
+      border-radius: 0 12px 12px 0;
+      margin: 14px 0;
+      font-size: 14px;
+      color: var(--text-main);
+    }
+
+    ul.check-list {
+      list-style: none;
+      padding: 0;
+      margin: 12px 0;
+    }
+
+    ul.check-list li {
+      position: relative;
+      padding-left: 26px;
+      margin-bottom: 8px;
+      font-size: 14.5px;
+    }
+
+    ul.check-list li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--success);
+      font-weight: bold;
+    }
+
+    /* FOOTER & CONTACT */
+    .contact-card {
+      background: linear-gradient(135deg, rgba(22, 27, 34, 0.9) 0%, rgba(30, 37, 45, 0.9) 100%);
+      border: 1px solid var(--border-glow);
+      border-radius: 20px;
+      padding: 32px;
+      text-align: center;
+      margin-top: 48px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .contact-title {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .contact-desc {
+      color: var(--text-muted);
+      font-size: 14.5px;
+      max-width: 600px;
+      margin: 0 auto 20px;
+    }
+
+    .email-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--brand-gradient);
+      color: #fff;
+      text-decoration: none;
+      padding: 12px 24px;
+      border-radius: 14px;
+      font-weight: 700;
+      font-size: 15px;
+      box-shadow: 0 4px 18px rgba(255, 84, 54, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    .email-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(255, 84, 54, 0.55);
+    }
+
+    .email-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    .copyright {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 40px;
+    }
+
+    /* DIL GÖSTER/GİZLE */
+    .lang-content {
+      display: none;
+    }
+
+    .lang-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 600px) {
+      h1 { font-size: 26px; }
+      .container { padding: 20px 16px 60px; }
+      .policy-card { padding: 20px; }
+      .card-title { font-size: 17px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-inner">
+      <a href="#" class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+        </div>
+        <span class="brand-name">VidSave</span>
+      </a>
+
+      <!-- Dil Seçici Butonu -->
+      <button id="langToggleBtn" class="lang-toggle-btn" onclick="toggleLanguage()">
+        <span id="langFlag" class="lang-flag">🇺🇸</span>
+        <span id="langText">English</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="badge">
+        <span>●</span> <span id="heroBadge">Google Play Store & Data Safety Compliant</span>
+      </div>
+      <h1 id="heroTitle">Gizlilik Politikası</h1>
+      <p class="effective-date" id="heroDate">Son Güncelleme / Last Updated: 19 Ekim 2026</p>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- TÜRKÇE İÇERİK (TR) -->
+    <!-- ============================================================== -->
+    <div id="content-tr" class="lang-content active">
+
+      <!-- 1. GİRİŞ VE TAAHHÜT -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+          </div>
+          <h2 class="card-title">1. Giriş ve Taahhüt</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave ("biz", "uygulamamız"), kullanıcılarımızın gizliliğine ve kişisel verilerinin korunmasına en üst düzeyde önem verir. Bu Gizlilik Politikası, mobil uygulamamızı kullanırken hangi verilerin toplandığını, nasıl işlendiğini ve Google Play Store Geliştirici Politikaları ile Veri Güvenliği (Data Safety) standartlarına nasıl tam uyum sağlandığını açıklamaktadır.</p>
+          <div class="highlight-box">
+            VidSave, kullanıcı verilerini hiçbir koşul altında satmaz, kiralamaz veya üçüncü taraf veri simsarlarıyla paylaşmaz.
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. TOPLANAN VERİLER VE GOOGLE SIGN-IN -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+          </div>
+          <h2 class="card-title">2. Toplanan Veriler (Google ile Giriş)</h2>
+        </div>
+        <div class="card-content">
+          <p>Uygulamamız Google Play Login Wall kuralına tam uyumludur; uygulamayı dilediğiniz gibi <strong>'Giriş Yapmadan Ücretsiz Devam Et' (Misafir Modu)</strong> ile kullanabilirsiniz.</p>
+          <p>Kullanıcı isteğe bağlı olarak <strong>Google ile Giriş (Google Sign-In)</strong> yaptığında yalnızca şu temel profil bilgileri güvenli sunucumuza aktarılır:</p>
+          <ul class="check-list">
+            <li><strong>Ad ve Soyad:</strong> Uygulama içi profil karşılama alanında gösterilmek üzere.</li>
+            <li><strong>E-posta Adresi:</strong> Benzersiz kullanıcı kimliği eşleştirmesi ve destek talepleri için.</li>
+            <li><strong>Profil Fotoğrafı URL'si:</strong> Profil ekranında görsel avatarınızı oluşturmak üzere.</li>
+          </ul>
+          <p>Bu veriler yalnızca kullanıcının <strong>Aylık 9,99 TL Premium aboneliğini</strong> cihazlar arası doğrulamak amacıyla güvenli SQLite veritabanımızda ve SHA-256 oturum token'ları altında saklanır.</p>
+        </div>
+      </div>
+
+      <!-- 3. CİHAZ İZİNLERİ VE KULLANIM AMAÇLARI -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10H6v-2h8v2zm4-4H6v-2h12v2z"/></svg>
+          </div>
+          <h2 class="card-title">3. Cihaz İzinleri ve Kullanım Amaçları</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave, kullanıcı deneyimini sağlamak için yalnızca temel Android ve iOS izinlerini talep eder:</p>
+          <ul class="check-list">
+            <li><strong>Medya Kitaplığı Erişimi (READ_MEDIA_VIDEO, READ_MEDIA_AUDIO, READ_EXTERNAL_STORAGE):</strong> Cihazınızdaki mevcut yerel videoları ve müzikleri "Videolar" ve "Müzik" sekmelerinde listelemek için kullanılır. Cihazınızdaki hiçbir kişisel fotoğraf veya dosya sunucularımıza yüklenmez.</li>
+            <li><strong>İndirme Depolama İzni (WRITE_EXTERNAL_STORAGE - Android 9 ve altı):</strong> İndirilen video ve MP3 dosyalarını cihazınızın genel "Download" klasörüne ve galerinize kaydedebilmek için gereklidir.</li>
+            <li><strong>Bildirim İzni (POST_NOTIFICATIONS):</strong> İndirme işleminin ilerleme yüzdesini (%0 - %100) canlı bildirim çubuğunda göstermek ve indirme tamamlandığında sesli/titreşimli bildirim sunmak için kullanılır.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 4. MEDYA İŞLEME VE SIFIR KALICI DEPOLAMA -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
+          </div>
+          <h2 class="card-title">4. Medya İşleme & Kalıcı Saklama Yapılmaması</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave'in en temel prensibi gizlilik ve anlık köprü görevi görmektir:</p>
+          <ul class="check-list">
+            <li>Kullanıcının indirmek istediği video veya MP3 bağlantıları backend sunucumuz tarafından yalnızca akış (stream) dönüştürme anında işlenir.</li>
+            <li><strong>Sıfır Kalıcı Saklama Politikası:</strong> Sunucularımızda hiçbir video, ses, şarkı veya görsel dosyası asla kalıcı olarak saklanmaz ve arşivlenmez.</li>
+            <li>Dönüştürülen medya akışı anında ve doğrudan kullanıcının kendi cihaz hafızasına (Download klasörü) aktarılır. İndirme bittiğinde geçici köprü temizlenir.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 5. REKLAMLAR (ADMOB & PREMIUM FİLTRESİ) -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zm-10-7h9v6h-9z"/></svg>
+          </div>
+          <h2 class="card-title">5. Google AdMob Reklamları & Premium Filtresi</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave, ücretsiz hizmetin sürdürülebilirliğini sağlamak amacıyla Google AdMob reklam ağını kullanır:</p>
+          <ul class="check-list">
+            <li><strong>Ücretsiz ve Misafir Kullanıcılar:</strong> İndirme işlemlerini başlatmadan önce Google AdMob Ödüllü Video Reklamı (Rewarded Ad) izletilebilir. AdMob, reklam performansı ve sahtecilik önleme için anonim reklam kimliğini (AAID) işleyebilir.</li>
+            <li><strong>Aylık 9,99 TL Premium Üyeler:</strong> Premium abonelik satın alan kullanıcılar için AdMob reklam motoru kod düzeyinde <strong>tamamen bypass edilir (atlanır)</strong>. Hiçbir reklam gösterilmez ve hiçbir reklam takip verisi toplanmaz.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 6. GOOGLE PLAY FATURALANDIRMA VE ABONELİKLER -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+          </div>
+          <h2 class="card-title">6. Google Play Faturalandırma & Abonelikler</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave Premium abonelik işlemleri doğrudan Google Play Store resmi faturalandırma altyapısı (In-App Purchase / Google Play Billing) aracılığıyla güvence altına alınmıştır:</p>
+          <ul class="check-list">
+            <li>Kredi kartı, banka kartı ve ödeme bilgileri doğrudan Google tarafından işlenir; geliştiricimiz finansal bilgilerinize hiçbir zaman erişemez ve kaydedemez.</li>
+            <li>Abonelikler Google Play hesabınız üzerinden dilediğiniz an tek tıkla iptal edilebilir veya yönetilebilir.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 7. YASAL HESAP SİLME HAKKI -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </div>
+          <h2 class="card-title">7. Yasal Hesap Silme (Account Deletion)</h2>
+        </div>
+        <div class="card-content">
+          <p>Google Play Store'un <em>'Hesap Silme Gereksinimi' (Account Deletion Requirement)</em> politikasına %100 uyum sağlıyoruz:</p>
+          <div class="highlight-box">
+            Kullanıcı, VidSave uygulaması içindeki Profil Ekranından veya Ayarlar menüsünden kırmızı renkli <strong>'Hesabımı Sil' (Delete Account)</strong> butonuna dokunduğu anda;
+          </div>
+          <ul class="check-list">
+            <li>Google'dan alınan profil bilgileri (ad, e-posta, avatar) sunucudan kalıcı olarak silinir.</li>
+            <li>Abonelik kayıtları, oturum token'ları ve indirme logları veritabanından geri döndürülemez biçimde yok edilir.</li>
+            <li>Uygulama yerel belleği temizlenir ve kullanıcı misafir statüsüne sıfırlanır.</li>
+          </ul>
+          <p>Kullanıcı dilerse uygulamayı yüklemeden de aşağıdaki e-posta adresimize destek koduyla yazarak verilerinin derhal silinmesini talep edebilir.</p>
+        </div>
+      </div>
+
+      <!-- 8. ÇOCUKLARIN GİZLİLİĞİ (COPPA) -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5.5-9.5c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5zm11 0c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5zm-5.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+          </div>
+          <h2 class="card-title">8. Çocukların Gizliliği (COPPA)</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave, 13 yaşın (veya bulunduğunuz ülkedeki yasal yaş sınırının) altındaki çocuklara yönelik değildir. Çocuklardan bilerek hiçbir kişisel tanımlayıcı bilgi toplanmaz. Ebeveyn veya vasi izni olmaksızın veri iletildiğini fark ederseniz bizimle iletişime geçmeniz halinde bu veriler derhal silinir.</p>
+        </div>
+      </div>
+
+      <!-- 9. TELİF HAKLARI VE SORUMLULUK REDDİ -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+          </div>
+          <h2 class="card-title">9. Telif Hakları, Adil Kullanım & Sorumluluk Reddi</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave telif hakkı içeren materyallerin izinsiz indirilmesini veya çoğaltılmasını teşvik etmez. Uygulama kişisel kullanım, açık lisanslı içerikler ve adil kullanım (Fair Use) prensipleri için tasarlanmış bir araçtır. İndirilen içeriklerin yasal sorumluluğu tamamen kullanıcıya aittir.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- İNGİLİZCE İÇERİK (EN) -->
+    <!-- ============================================================== -->
+    <div id="content-en" class="lang-content">
+
+      <!-- 1. INTRODUCTION -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+          </div>
+          <h2 class="card-title">1. Introduction & Commitment</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave ("we", "our app") values the privacy of our users and adheres to the highest standards of personal data protection. This Privacy Policy details the types of information collected, how it is processed, and our full compliance with Google Play Store Developer Policies and Data Safety standards.</p>
+          <div class="highlight-box">
+            VidSave does NOT sell, rent, or trade your personal information with third parties or data brokers under any circumstances.
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. DATA COLLECTION & GOOGLE SIGN-IN -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+          </div>
+          <h2 class="card-title">2. Data Collection (Google Sign-In)</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave strictly complies with the Google Play Login Wall policy: you can use the entire app freely via <strong>'Continue as Guest (Free)'</strong> without signing in.</p>
+          <p>When a user voluntarily chooses to sign in via <strong>Google Sign-In</strong>, only the following profile details are received and securely stored:</p>
+          <ul class="check-list">
+            <li><strong>Full Name:</strong> Displayed on your user profile screen.</li>
+            <li><strong>Email Address:</strong> Used as your unique account identifier and for support requests.</li>
+            <li><strong>Avatar Photo URL:</strong> Used to display your profile picture in-app.</li>
+          </ul>
+          <p>This data is strictly utilized to authenticate your <strong>Monthly Subscription</strong> across devices and stored under salted SHA-256 session tokens.</p>
+        </div>
+      </div>
+
+      <!-- 3. DEVICE PERMISSIONS & PURPOSE OF USE -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10H6v-2h8v2zm4-4H6v-2h12v2z"/></svg>
+          </div>
+          <h2 class="card-title">3. Device Permissions & Purpose of Use</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave requests the bare minimum permissions necessary to function:</p>
+          <ul class="check-list">
+            <li><strong>Media Library Access (READ_MEDIA_VIDEO, READ_MEDIA_AUDIO, READ_EXTERNAL_STORAGE):</strong> Used to display your local videos and audio tracks in the "Videos" and "Music" tabs. None of your private photos or documents are ever uploaded to any server.</li>
+            <li><strong>Storage Write (WRITE_EXTERNAL_STORAGE - Android 9 & older):</strong> Required to save downloaded video and MP3 files into your public Download folder and media gallery.</li>
+            <li><strong>Notifications (POST_NOTIFICATIONS):</strong> Used to show real-time download progress percentages in the notification bar and inform you when complete.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 4. MEDIA PROCESSING -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
+          </div>
+          <h2 class="card-title">4. Media Processing & Zero Permanent Storage</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave operates on a strict zero-retention bridge architecture:</p>
+          <ul class="check-list">
+            <li>Video and audio URLs submitted for conversion are resolved instantaneously in real time.</li>
+            <li><strong>Zero Storage Policy:</strong> No video, audio, or media file is ever permanently stored or archived on our backend servers.</li>
+            <li>The media stream is transmitted directly to the user's local device storage (Downloads folder). Once completed, transient stream buffers are purged.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 5. ADMOB & PREMIUM FILTER -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zm-10-7h9v6h-9z"/></svg>
+          </div>
+          <h2 class="card-title">5. Google AdMob & Premium Ad-Free Filter</h2>
+        </div>
+        <div class="card-content">
+          <p>To keep the service accessible to everyone, VidSave partners with Google AdMob:</p>
+          <ul class="check-list">
+            <li><strong>Free & Guest Users:</strong> A rewarded video advertisement may be presented prior to starting a media download. AdMob may process anonymous identifiers (AAID) for ad delivery and fraud prevention.</li>
+            <li><strong>Monthly Premium Members ($0.99 / Month):</strong> AdMob SDK invocations are <strong>completely bypassed at the architectural level</strong>. Zero ads are shown and zero advertising telemetry is collected.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 6. GOOGLE PLAY BILLING & SUBSCRIPTIONS -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+          </div>
+          <h2 class="card-title">6. Google Play Billing & Subscriptions</h2>
+        </div>
+        <div class="card-content">
+          <p>All in-app purchases are securely processed through Google Play Store's official billing system (In-App Purchase / Google Play Billing):</p>
+          <ul class="check-list">
+            <li>Your credit card and payment details are processed directly by Google. The developer never accesses or stores your financial data.</li>
+            <li>Subscriptions can be cancelled or managed anytime with a single tap in your Google Play account settings.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 7. ACCOUNT DELETION -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </div>
+          <h2 class="card-title">7. Legal Account Deletion (Google Play Compliant)</h2>
+        </div>
+        <div class="card-content">
+          <p>We are fully compliant with Google Play Store's <em>Account Deletion Requirement</em>:</p>
+          <div class="highlight-box">
+            Whenever a user taps the red <strong>'Delete Account' (Hesabımı Sil)</strong> button within the Profile or Settings screen;
+          </div>
+          <ul class="check-list">
+            <li>All associated Google profile data (name, email, avatar) is permanently deleted from server databases.</li>
+            <li>Subscription records, session tokens, and download logs are irreversibly purged.</li>
+            <li>Local app cache and credentials are reset to guest status.</li>
+          </ul>
+          <p>Users may also request instant data deletion by emailing our support desk with their unique Support Code.</p>
+        </div>
+      </div>
+
+      <!-- 8. CHILDREN'S PRIVACY (COPPA) -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5.5-9.5c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5zm11 0c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5zm-5.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+          </div>
+          <h2 class="card-title">8. Children's Privacy (COPPA)</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave is not directed to children under 13 years of age, and we do not knowingly collect personal information from children. If you become aware that a child has provided us with personal information without parental consent, please contact us and we will promptly delete it.</p>
+        </div>
+      </div>
+
+      <!-- 9. COPYRIGHT & DISCLAIMER -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+          </div>
+          <h2 class="card-title">9. Copyright, Fair Use & Disclaimer</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave does not encourage or facilitate unauthorized downloading of copyrighted content. The application is built for personal archiving, open-source media, and fair use purposes. Users are strictly responsible for adhering to applicable copyright laws and platform terms of service.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- İLETİŞİM ALANI (CONTACT SECTION) -->
+    <!-- ============================================================== -->
+    <div class="contact-card">
+      <h3 class="contact-title" id="contactTitle">Resmi Destek ve İletişim</h3>
+      <p class="contact-desc" id="contactDesc">
+        Gizlilik Politikamız, veri haklarınız veya hesap silme talepleriniz ile ilgili her türlü soru için resmi destek ekibimize ulaşabilirsiniz.
+      </p>
+      <a href="mailto:admindestekk@gmail.com?subject=[VidSave%20Privacy%20%26%20Support]" class="email-btn">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        <span>admindestekk@gmail.com</span>
+      </a>
+    </div>
+
+    <!-- COPYRIGHT -->
+    <div class="copyright">
+      <p>&copy; 2026 VidSave. All rights reserved. Designed for Google Play Store Data Safety.</p>
+    </div>
+
+  </div>
+
+  <!-- JAVASCRIPT: Otomatik Tarayıcı Dili Algılama ve Dil Değiştirici -->
+  <script>
+    let currentLang = 'tr';
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      const trContent = document.getElementById('content-tr');
+      const enContent = document.getElementById('content-en');
+      const langFlag = document.getElementById('langFlag');
+      const langText = document.getElementById('langText');
+      const heroTitle = document.getElementById('heroTitle');
+      const heroBadge = document.getElementById('heroBadge');
+      const heroDate = document.getElementById('heroDate');
+      const contactTitle = document.getElementById('contactTitle');
+      const contactDesc = document.getElementById('contactDesc');
+
+      if (lang === 'en') {
+        trContent.classList.remove('active');
+        enContent.classList.add('active');
+        langFlag.textContent = '🇹🇷';
+        langText.textContent = 'Türkçe';
+        document.documentElement.lang = 'en';
+
+        heroTitle.textContent = 'Privacy Policy';
+        heroBadge.textContent = 'Google Play Store & Data Safety Compliant';
+        heroDate.textContent = 'Last Updated: October 19, 2026';
+        contactTitle.textContent = 'Official Support & Contact';
+        contactDesc.textContent = 'For questions regarding this Privacy Policy, your data rights, or account deletion requests, please contact our official support desk.';
+      } else {
+        enContent.classList.remove('active');
+        trContent.classList.add('active');
+        langFlag.textContent = '🇺🇸';
+        langText.textContent = 'English';
+        document.documentElement.lang = 'tr';
+
+        heroTitle.textContent = 'Gizlilik Politikası';
+        heroBadge.textContent = 'Google Play Store & Veri Güvenliği Uyumlu';
+        heroDate.textContent = 'Son Güncelleme: 19 Ekim 2026';
+        contactTitle.textContent = 'Resmi Destek ve İletişim';
+        contactDesc.textContent = 'Gizlilik Politikamız, veri haklarınız veya hesap silme talepleriniz ile ilgili her türlü soru için resmi destek ekibimize ulaşabilirsiniz.';
+      }
+    }
+
+    function toggleLanguage() {
+      setLanguage(currentLang === 'tr' ? 'en' : 'tr');
+    }
+
+    // Açılışta kullanıcının tarayıcı diline göre otomatik belirle
+    (function initLanguage() {
+      const browserLang = (navigator.language || navigator.userLanguage || 'tr').toLowerCase();
+      if (browserLang.startsWith('tr')) {
+        setLanguage('tr');
+      } else {
+        setLanguage('en');
+      }
+    })();
+  </script>
+</body>
+</html>

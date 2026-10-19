@@ -72,5 +72,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Anladım'), findsNothing);
+
+    // Gizlilik politikası tıklandığında PrivacyPolicyScreen açılmalı
+    await tester.ensureVisible(find.text('Gizlilik Politikası'));
+    await tester.tap(find.text('Gizlilik Politikası'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Google Play Data Safety Compliant'), findsOneWidget);
+    expect(find.text('1. Giriş ve Taahhüdümüz'), findsOneWidget);
+    expect(find.text('3. Cihaz İzinleri ve Kullanım Amaçları'), findsOneWidget);
+
+    // Dil değiştirme (EN) testi
+    await tester.tap(find.text('EN'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1. Introduction & Commitment'), findsOneWidget);
   });
 }
