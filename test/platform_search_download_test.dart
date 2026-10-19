@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import 'package:vid_downloader_app/admob_service.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/media_downloader.dart';
@@ -113,6 +114,10 @@ class _MockDownloader extends MediaDownloader {
 }
 
 void main() {
+  setUp(() {
+    AdmobService.instance.disableAdsForTesting = true;
+  });
+
   testWidgets('tapping platform tile opens search modal and allows downloading specific quality directly', (
     WidgetTester tester,
   ) async {

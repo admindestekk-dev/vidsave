@@ -127,7 +127,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('9,99 TL / Ay - KDV Dahil'), findsOneWidget);
+      expect(find.text('Aylık Sadece 9,99 TL - KDV Dahil'), findsOneWidget);
       expect(find.text('Tüm vergiler ve KDV dahildir.'), findsOneWidget);
       expect(find.text('9,99 TL / Ay - Abone Ol'), findsOneWidget);
     },
@@ -149,7 +149,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('\$0.99 / Month - All Taxes Included'), findsOneWidget);
+      expect(find.text('Only \$0.99 / Month - All Taxes Included'), findsOneWidget);
       expect(find.text('All taxes and VAT included.'), findsOneWidget);
       expect(find.text('Subscribe - \$0.99 / Mo'), findsOneWidget);
     },
@@ -261,7 +261,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify price is displayed
-      expect(find.text('9,99 TL / Ay - KDV Dahil'), findsOneWidget);
+      expect(find.text('Aylık Sadece 9,99 TL - KDV Dahil'), findsOneWidget);
 
       final subscribeButton = find.text('9,99 TL / Ay - Abone Ol');
       expect(subscribeButton, findsOneWidget);

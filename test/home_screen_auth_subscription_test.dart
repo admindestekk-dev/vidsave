@@ -116,7 +116,7 @@ void main() {
 
         // Since user was already logged in, SubscriptionScreen should be opened directly!
         expect(find.byType(SubscriptionScreen), findsOneWidget);
-        expect(find.text('9,99 TL / Ay - KDV Dahil'), findsOneWidget);
+        expect(find.text('Aylık Sadece 9,99 TL - KDV Dahil'), findsOneWidget);
         expect(find.text('9,99 TL / Ay - Abone Ol'), findsOneWidget);
         // Login modal must NOT be open
         expect(find.text('Pro Sürüme Geçmek İçin Giriş Yapın'), findsNothing);
@@ -213,7 +213,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(SubscriptionScreen), findsOneWidget);
-        expect(find.text('9,99 TL / Ay - KDV Dahil'), findsOneWidget);
+        expect(find.text('Aylık Sadece 9,99 TL - KDV Dahil'), findsOneWidget);
       },
     );
 

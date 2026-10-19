@@ -30,6 +30,9 @@ class WelcomeScreen extends StatefulWidget {
 
   static const String prefKeyHasSeenWelcome = 'vidsave_has_seen_welcome';
 
+  /// Firebase / Google Cloud Console OAuth 2.0 Web Client ID (Android yapılandırma hatasını önlemek için serverClientId)
+  static const String serverClientId = AuthService.googleServerClientId;
+
   @override
   State<WelcomeScreen> createState() => _WelcomeScreenState();
 }
@@ -105,6 +108,8 @@ class _WelcomeScreenState extends State<WelcomeScreen>
 
     try {
       final auth = widget.authService ?? AuthService.instance;
+      // Android yapılandırma hatasını önlemek için serverClientId şablon parametresini initialize et
+      await AuthService.ensureGoogleSignInInitialized(widget.googleSignInClient);
       await auth.loginWithGoogle(
         googleSignInClient: widget.googleSignInClient,
       );

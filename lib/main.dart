@@ -28,9 +28,11 @@ import 'video_player_screen.dart';
 import 'auth_gate.dart';
 import 'welcome_screen.dart';
 import 'home_screen.dart';
+import 'admob_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  unawaited(AdmobService.instance.initialize());
   unawaited(DownloadNotificationService.instance.initialize());
   unawaited(StorageService.getItems());
   unawaited(ThemeService.initialize());
@@ -193,6 +195,27 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
 
   /// Onaylanan linki doğrudan indirme akışına (video veya MP3) yönlendirir.
   Future<void> _triggerDirectDownload(
+    String url, {
+    DownloadKind kind = DownloadKind.video,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
+  }) async {
+    await AdmobService.instance.showRewardedAdOrBypass(
+      onRewardEarned: () async {
+        if (!mounted) return;
+        await _executeDirectDownload(
+          url,
+          kind: kind,
+          startTime: startTime,
+          endTime: endTime,
+          audioEffect: audioEffect,
+        );
+      },
+    );
+  }
+
+  Future<void> _executeDirectDownload(
     String url, {
     DownloadKind kind = DownloadKind.video,
     double? startTime,
@@ -1935,6 +1958,15 @@ class _PlatformSearchDownloadModalState
   }
 
   Future<void> _startDownloadMusicItem(SearchResultItem item) async {
+    // Ödüllü reklam filtresi: isPremium == true ise bypass eder, false ise reklam izletir
+    await AdmobService.instance.showRewardedAdOrBypass(
+      onRewardEarned: () async {
+        await _executeDownloadMusicItem(item);
+      },
+    );
+  }
+
+  Future<void> _executeDownloadMusicItem(SearchResultItem item) async {
     final parsed = Uri.tryParse(item.url);
     final isUrl =
         parsed != null &&
@@ -2076,7 +2108,20 @@ class _PlatformSearchDownloadModalState
       return;
     }
 
-    final source = isUrl ? parsed : Uri(path: text);
+    await AdmobService.instance.showRewardedAdOrBypass(
+      onRewardEarned: () async {
+        await _executeDownloadQuality(quality, text, parsed, isUrl);
+      },
+    );
+  }
+
+  Future<void> _executeDownloadQuality(
+    VideoQuality quality,
+    String text,
+    Uri? parsed,
+    bool isUrl,
+  ) async {
+    final source = isUrl ? parsed! : Uri(path: text);
     final kind = widget.platform.isAudio
         ? DownloadKind.audio
         : DownloadKind.video;

@@ -3,7 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_localizations.dart';
 import 'auth_service.dart';
+import 'storage_service.dart';
 import 'subscription_screen.dart';
+import 'user_identity_service.dart';
 import 'welcome_screen.dart';
 
 /// VidSave Kullanıcı Profil Ekranı (Profile Screen)
@@ -82,6 +84,102 @@ class _ProfileScreenState extends State<ProfileScreen> {
       MaterialPageRoute<void>(builder: (_) => const WelcomeScreen()),
       (route) => false,
     );
+  }
+
+  void _confirmDeleteAccount(BuildContext context, bool isTurkish) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E252D),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 26),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                isTurkish ? 'Hesabı Kalıcı Olarak Sil' : 'Delete Account Permanently',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          isTurkish
+              ? 'Hesabınızı ve sunucudaki tüm indirme geçmişinizi, üyelik kayıtlarınızı ve profil bilgilerinizi kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.'
+              : 'Are you sure you want to permanently delete your account, subscription records, and profile data from our servers? This action cannot be undone.',
+          style: const TextStyle(color: Color(0xFFB0BEC5), fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: Text(
+              isTurkish ? 'Vazgeç' : 'Cancel',
+              style: const TextStyle(color: Color(0xFF8B9BA7), fontWeight: FontWeight.w600),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              Navigator.of(dialogCtx).pop();
+              await _executeDeleteAccount(isTurkish);
+            },
+            child: Text(
+              isTurkish ? 'Evet, Kalıcı Olarak Sil' : 'Yes, Delete Permanently',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _executeDeleteAccount(bool isTurkish) async {
+    setState(() => _loading = true);
+    try {
+      final auth = widget.authService ?? AuthService.instance;
+      final guestUserId = await UserIdentityService.getOrCreateUserId();
+      await auth.deleteAccount(guestUserId: guestUserId);
+
+      // Cihazdaki yerel verileri ve oturumu tamamen sıfırla
+      await StorageService.clearAll();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(SubscriptionScreen.prefKeyIsPremium);
+      await prefs.remove(SubscriptionScreen.prefKeySubscribedAt);
+      await prefs.remove(WelcomeScreen.prefKeyHasSeenWelcome);
+      await prefs.remove(SecureAuthTokenStore.prefKeyUserName);
+      await prefs.remove(SecureAuthTokenStore.prefKeyUserEmail);
+      await prefs.remove(SecureAuthTokenStore.prefKeyUserAvatarUrl);
+      await UserIdentityService.clearUserId();
+
+      if (!mounted) return;
+      widget.onLoggedOut?.call();
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const WelcomeScreen()),
+        (route) => false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isTurkish
+                ? 'Hesap silinemedi. Bağlantınızı kontrol edip tekrar deneyin.'
+                : 'Account deletion failed. Check your connection and try again.',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
   }
 
   @override
@@ -258,8 +356,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: OutlinedButton.icon(
                       onPressed: _logout,
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.redAccent,
-                        side: const BorderSide(color: Colors.redAccent, width: 1.5),
+                        foregroundColor: Colors.white70,
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          width: 1.5,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -270,6 +371,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 4. YASAL HESAP SİLME BUTONU (Google Play Hesap Silme Politikası Uyumlu)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _confirmDeleteAccount(context, isTurkish),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD32F2F),
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      icon: const Icon(Icons.delete_forever_rounded, size: 22),
+                      label: Text(
+                        isTurkish ? 'Hesabımı Sil' : 'Delete Account',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
                         ),
                       ),
                     ),

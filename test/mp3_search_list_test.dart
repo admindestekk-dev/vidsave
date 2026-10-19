@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vid_downloader_app/admob_service.dart';
 import 'package:vid_downloader_app/download_platforms.dart';
 import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/media_downloader.dart';
@@ -71,6 +72,10 @@ class _FakeMusicDownloader extends MediaDownloader {
 }
 
 void main() {
+  setUp(() {
+    AdmobService.instance.disableAdsForTesting = true;
+  });
+
   testWidgets('MP3 search lists multiple songs and downloads on click', (tester) async {
     final resolver = _FakeMusicResolver();
     final downloader = _FakeMusicDownloader();

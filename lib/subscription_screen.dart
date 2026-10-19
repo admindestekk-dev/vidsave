@@ -452,8 +452,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     // Fiyat etiketleri
     final priceTitle = isTurkish
-        ? '9,99 TL / Ay - KDV Dahil'
-        : '\$0.99 / Month - All Taxes Included';
+        ? 'Aylık Sadece 9,99 TL - KDV Dahil'
+        : 'Only \$0.99 / Month - All Taxes Included';
     final taxFootnote = isTurkish
         ? 'Tüm vergiler ve KDV dahildir.'
         : 'All taxes and VAT included.';

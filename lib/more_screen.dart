@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'auth_service.dart';
 import 'backend_media_resolver.dart';
@@ -373,11 +375,100 @@ class _MoreScreenState extends State<MoreScreen> {
               ),
               const Divider(),
 
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.info_outline, color: _accent),
-                title: const Text('Hakkında'),
-                onTap: () => _showAboutDialog(),
+              // =============================================================
+              // DESTEK VE İLETİŞİM (SUPPORT & CONTACT)
+              // =============================================================
+              FutureBuilder<String>(
+                future: _getEffectiveUserId(),
+                builder: (context, snapshot) {
+                  final userId = snapshot.data ?? '…';
+                  final isTr = LocaleService.currentLanguageCode == 'tr';
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 1. ListTile: Destek Kodu (User ID) ve Panoya Kopyalama
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _accent.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.fingerprint_rounded,
+                            color: _accent,
+                            size: 22,
+                          ),
+                        ),
+                        title: Text(
+                          isTr ? 'Destek Kodu (User ID)' : 'Support Code (User ID)',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        subtitle: Text(
+                          userId,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                            color: Colors.grey,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: const Icon(
+                          Icons.copy_rounded,
+                          size: 18,
+                          color: _accent,
+                        ),
+                        onTap: () => _copyUserIdToClipboard(userId, isTr),
+                      ),
+                      const Divider(),
+
+                      // 2. ListTile: E-posta İletişim Butonu (mailto)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.mail_outline_rounded,
+                            color: Colors.orange,
+                            size: 22,
+                          ),
+                        ),
+                        title: Text(
+                          isTr
+                              ? 'Bize Ulaşın / Destek Alın'
+                              : 'Contact Us / Get Support',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          supportEmail,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        trailing: const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
+                        onTap: () => _launchSupportEmail(userId, isTr),
+                      ),
+                    ],
+                  );
+                },
               ),
               const Divider(),
 
@@ -549,23 +640,113 @@ class _MoreScreenState extends State<MoreScreen> {
     }
   }
 
-  void _showAboutDialog() {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('VidSave'),
-        content: const Text(
-          'VidSave, video ve müzik indirmenizi sağlayan bir uygulamadır.\n\n'
-          'İndirme işlemleri kendi sunucunuzda (backend) çalışır.',
+  static const String supportEmail = 'admindestekk@gmail.com';
+
+  /// Kullanıcının benzersiz Destek Kodunu (User ID) dinamik olarak çeker
+  Future<String> _getEffectiveUserId() async {
+    try {
+      final token = await _authService.hasStoredSession;
+      if (token) {
+        final userId = await _authService.storedUserId;
+        if (userId != null && userId.trim().isNotEmpty) {
+          return userId.trim();
+        }
+      }
+    } catch (_) {}
+
+    // Misafir veya ücretsiz modda cihaz kimliğine özel kimlik
+    try {
+      final guestId = await UserIdentityService.getOrCreateUserId();
+      if (guestId.isNotEmpty) {
+        return guestId;
+      }
+    } catch (_) {}
+
+    return 'Misafir Kullanıcı (Giriş Yapılmadı)';
+  }
+
+  /// Destek kodunu panoya kopyalar ve kullanıcıya SnackBar bildirimi gösterir
+  Future<void> _copyUserIdToClipboard(String userId, bool isTurkish) async {
+    await Clipboard.setData(ClipboardData(text: userId));
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                isTurkish
+                    ? 'Destek kodu panoya kopyalandı!'
+                    : 'Support code copied to clipboard!',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Tamam'),
-          ),
-        ],
+        backgroundColor: const Color(0xFF0E7C4B),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  /// E-posta uygulamasını otomatik açarak [VidSave Destek - ID: UserID] konusuyla hazır mail taslağı oluşturur
+  Future<void> _launchSupportEmail(String userId, bool isTurkish) async {
+    final subject = '[VidSave Destek - ID: $userId]';
+    final body = isTurkish
+        ? 'Merhaba VidSave Destek Ekibi,\n\nKullanıcı ID / Destek Kodu: $userId\n\nYaşadığım sorun / Geri bildirimim:\n'
+        : 'Hello VidSave Support Team,\n\nUser ID / Support Code: $userId\n\nIssue / Feedback:\n';
+
+    final emailLaunchUri = Uri(
+      scheme: 'mailto',
+      path: supportEmail,
+      queryParameters: {
+        'subject': subject,
+        'body': body,
+      },
+    );
+
+    try {
+      final launched = await launchUrl(
+        emailLaunchUri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        // Fallback: E-posta istemcisi bulunamazsa adresi panoya kopyala ve bildir
+        await Clipboard.setData(const ClipboardData(text: supportEmail));
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isTurkish
+                  ? 'E-posta uygulaması açılamadı. $supportEmail adresi panoya kopyalandı.'
+                  : 'Could not open mail app. $supportEmail copied to clipboard.',
+            ),
+            backgroundColor: Colors.orange.shade800,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {
+      await Clipboard.setData(const ClipboardData(text: supportEmail));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isTurkish
+                ? '$supportEmail adresi panoya kopyalandı.'
+                : '$supportEmail copied to clipboard.',
+          ),
+          backgroundColor: Colors.orange.shade800,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }
 
