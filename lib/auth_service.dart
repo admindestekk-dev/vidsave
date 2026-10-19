@@ -96,6 +96,28 @@ class AuthService {
 
   static final AuthService instance = AuthService();
 
+  /// Firebase / Google Cloud Console OAuth 2.0 Web Client ID
+  static const String googleServerClientId =
+      '415854271102-oj44ne0nedjik1lodes91noa1dok3jeu.apps.googleusercontent.com';
+
+  static bool _googleSignInInitialized = false;
+
+  /// Google Sign-In motorunu serverClientId ile başlatır
+  static Future<void> ensureGoogleSignInInitialized([
+    GoogleSignIn? client,
+  ]) async {
+    if (_googleSignInInitialized && client == null) return;
+    try {
+      final target = client ?? GoogleSignIn.instance;
+      await target.initialize(serverClientId: googleServerClientId);
+      if (client == null) {
+        _googleSignInInitialized = true;
+      }
+    } catch (_) {
+      // Test ortamlarında veya tekrarlayan çağrılarda sessizce geç
+    }
+  }
+
   final BackendSettingsStore _settingsStore;
   final AuthTokenStore _tokenStore;
   final http.Client _httpClient;
@@ -126,6 +148,7 @@ class AuthService {
       final googleSignIn = googleSignInClient ?? GoogleSignIn.instance;
       GoogleSignInAccount? account;
       try {
+        await ensureGoogleSignInInitialized(googleSignInClient);
         account = await googleSignIn.authenticate();
       } catch (e) {
         if (e is GoogleSignInException &&
