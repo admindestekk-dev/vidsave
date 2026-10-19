@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:in_app_review/in_app_review.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -505,6 +507,78 @@ class _MoreScreenState extends State<MoreScreen> {
               // =============================================================
               // GOOGLE PLAY YASAL ZORUNLULUĞU: HESABIMI SİL (DELETE ACCOUNT)
               // =============================================================
+              // =============================================================
+              // DİĞERLERİ (OTHERS) - 4 MODERN KART
+              // =============================================================
+              const SizedBox(height: 24),
+              _buildSectionHeader(
+                context,
+                title: LocaleService.currentLanguageCode == 'tr'
+                    ? 'Diğerleri'
+                    : 'Others',
+              ),
+              const SizedBox(height: 12),
+              _buildModernMenuCard(
+                context,
+                icon: Icons.star_rounded,
+                iconColor: const Color(0xFFF59E0B),
+                iconBgColor: const Color(0xFFFEF3C7),
+                title: LocaleService.currentLanguageCode == 'tr'
+                    ? 'Bizi Değerlendirin'
+                    : 'Rate Us',
+                subtitle: LocaleService.currentLanguageCode == 'tr'
+                    ? 'Google Play Store\'da 5 yıldız vererek bize destek olun'
+                    : 'Support us with 5 stars on Google Play Store',
+                onTap: _rateApp,
+              ),
+              const SizedBox(height: 10),
+              _buildModernMenuCard(
+                context,
+                icon: Icons.share_rounded,
+                iconColor: const Color(0xFF3B82F6),
+                iconBgColor: const Color(0xFFDBEAFE),
+                title: LocaleService.currentLanguageCode == 'tr'
+                    ? 'Uygulamayı Paylaş'
+                    : 'Share App',
+                subtitle: LocaleService.currentLanguageCode == 'tr'
+                    ? 'VidSave\'i arkadaşlarınızla ve ailenizle paylaşın'
+                    : 'Share VidSave with friends and family',
+                onTap: _shareApp,
+              ),
+              const SizedBox(height: 10),
+              _buildModernMenuCard(
+                context,
+                icon: Icons.shield_rounded,
+                iconColor: const Color(0xFF10B981),
+                iconBgColor: const Color(0xFFD1FAE5),
+                title: LocaleService.currentLanguageCode == 'tr'
+                    ? 'Gizlilik Politikası'
+                    : 'Privacy Policy',
+                subtitle: LocaleService.currentLanguageCode == 'tr'
+                    ? 'Veri güvenliği ve kullanım şartlarını inceleyin'
+                    : 'Review data privacy and terms of service',
+                onTap: _openPrivacyPolicy,
+              ),
+              const SizedBox(height: 10),
+              _buildModernMenuCard(
+                context,
+                icon: Icons.lock_outline_rounded,
+                iconColor: const Color(0xFF8B5CF6),
+                iconBgColor: const Color(0xFFEDE9FE),
+                title: LocaleService.currentLanguageCode == 'tr'
+                    ? 'Sorumluluk Reddi'
+                    : 'Disclaimer',
+                subtitle: LocaleService.currentLanguageCode == 'tr'
+                    ? 'Telif hakları ve yasal kullanım bildirimi'
+                    : 'Copyrights and legal disclaimer',
+                onTap: () => _showDisclaimerDialog(context),
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+
+              // =============================================================
+              // GOOGLE PLAY YASAL ZORUNLULUĞU: HESABIMI SİL (DELETE ACCOUNT)
+              // =============================================================
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
@@ -777,6 +851,254 @@ class _MoreScreenState extends State<MoreScreen> {
         ),
       );
     }
+  }
+
+  // =============================================================
+  // DİĞERLERİ BÖLÜMÜ YARDIMCI WIDGET'LARI VE METODLARI
+  // =============================================================
+
+  Widget _buildSectionHeader(BuildContext context, {required String title}) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 20,
+          decoration: BoxDecoration(
+            color: _accent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModernMenuCard(
+    BuildContext context, {
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBgColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E262B) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF2C353D) : const Color(0xFFEDF2F7);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: iconBgColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: iconColor, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.white60 : const Color(0xFF718096),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 16,
+                  color: isDark ? Colors.white38 : const Color(0xFFA0AEC0),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 1. Bizi Değerlendirin: in_app_review ile Google Play Store puanı & yorumu
+  Future<void> _rateApp() async {
+    try {
+      final InAppReview inAppReview = InAppReview.instance;
+      if (await inAppReview.isAvailable()) {
+        await inAppReview.requestReview();
+      } else {
+        await inAppReview.openStoreListing(
+          appStoreId: 'com.example.vid_downloader_app',
+        );
+      }
+    } catch (_) {
+      final fallbackUri = Uri.parse(
+        'https://play.google.com/store/apps/details?id=com.example.vid_downloader_app',
+      );
+      try {
+        await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    }
+  }
+
+  /// 2. Uygulamayı Paylaş: share_plus ile sistem paylaşım menüsü
+  Future<void> _shareApp() async {
+    final isTr = LocaleService.currentLanguageCode == 'tr';
+    const playStoreLink =
+        'https://play.google.com/store/apps/details?id=com.example.vid_downloader_app';
+
+    final shareText = isTr
+        ? 'VidSave ile tüm video ve MP3\'leri ışık hızında indir! Link: $playStoreLink'
+        : 'Download all videos & MP3s at lightning speed with VidSave! Link: $playStoreLink';
+
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: shareText,
+          subject: isTr ? 'VidSave Video & MP3 İndirici' : 'VidSave Downloader',
+        ),
+      );
+    } catch (e) {
+      debugPrint('Share error: $e');
+    }
+  }
+
+  /// 3. Gizlilik Politikası: url_launcher ile resmi GitHub Pages sözleşme linki
+  Future<void> _openPrivacyPolicy() async {
+    final uri = Uri.parse('https://admindestekk-dev.github.io/vidsave/privacy-policy.html');
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        // Fallback ana domain
+        await launchUrl(
+          Uri.parse('https://github.io'),
+          mode: LaunchMode.externalApplication,
+        );
+      }
+    } catch (_) {
+      try {
+        await launchUrl(
+          Uri.parse('https://github.io'),
+          mode: LaunchMode.externalApplication,
+        );
+      } catch (_) {}
+    }
+  }
+
+  /// 4. Sorumluluk Reddi (Disclaimer): Şık yasal bilgilendirme modalı
+  void _showDisclaimerDialog(BuildContext context) {
+    final isTr = LocaleService.currentLanguageCode == 'tr';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: isDark ? const Color(0xFF1E262B) : Colors.white,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.gavel_rounded,
+                color: Color(0xFF8B5CF6),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              isTr ? 'Sorumluluk Reddi' : 'Legal Disclaimer',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isTr
+                  ? 'Bu uygulama telif hakkı içeren materyallerin indirilmesini teşvik etmez. Tüm sorumluluk kullanıcıya aittir.'
+                  : 'This application does not encourage downloading copyrighted material. All responsibility belongs to the user.',
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              isTr
+                  ? 'VidSave yalnızca kişisel kullanım, açık kaynak ve adil kullanım (Fair Use) kapsamındaki içeriklerin arşivlenmesi amacıyla tasarlanmıştır.'
+                  : 'VidSave is intended solely for personal use and archival purposes under Fair Use guidelines.',
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: isDark ? Colors.white60 : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: _accent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(isTr ? 'Anladım' : 'Got it'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
