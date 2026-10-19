@@ -25,6 +25,7 @@ class AdmobService {
   RewardedAd? _rewardedAd;
   bool _isLoading = false;
   bool _isInitialized = false;
+  bool _consentGathered = false;
 
   /// AdMob SDK başlatma metodu (main.dart veya ilk ihtiyaçta çağrılır)
   Future<void> initialize() async {
@@ -32,10 +33,58 @@ class AdmobService {
     try {
       await MobileAds.instance.initialize();
       _isInitialized = true;
+      unawaited(gatherConsentIfRequired());
       loadRewardedAd();
     } catch (e) {
       debugPrint('AdmobService: MobileAds initialize error: $e');
     }
+  }
+
+  /// Avrupa Birliği (GDPR) ve UMP SDK Kullanıcı Rızası (Consent Form) Yönetimi
+  ///
+  /// Kullanıcı AB/AEA veya rıza gerektiren bir bölgedeyse Google'ın resmi
+  /// onay formunu (Consent Form) ekrana getirir. Onay alındıktan sonra
+  /// reklam motorunun başlatılmasını ve ödüllü reklamın güvenle yüklenmesini sağlar.
+  Future<void> gatherConsentIfRequired() async {
+    if (_consentGathered || isRunningInTest || kIsWeb) return;
+
+    final completer = Completer<void>();
+    final params = ConsentRequestParameters();
+
+    try {
+      ConsentInformation.instance.requestConsentInfoUpdate(
+        params,
+        () async {
+          ConsentForm.loadAndShowConsentFormIfRequired((formError) {
+            if (formError != null) {
+              debugPrint('AdmobService: UMP Form gösterim uyarısı: ${formError.message}');
+            }
+            _consentGathered = true;
+            // Rıza verildikten sonra reklamı taze rıza parametreleriyle yükle
+            loadRewardedAd();
+            if (!completer.isCompleted) completer.complete();
+          });
+        },
+        (FormError error) {
+          debugPrint('AdmobService: UMP Consent Info güncelleme hatası: ${error.message}');
+          _consentGathered = true;
+          loadRewardedAd();
+          if (!completer.isCompleted) completer.complete();
+        },
+      );
+    } catch (e) {
+      debugPrint('AdmobService: UMP SDK çalıştırma hatası: $e');
+      _consentGathered = true;
+      if (!completer.isCompleted) completer.complete();
+    }
+
+    // Arayüzün kilitlenmemesi için maksimum 4 saniye timeout tanınır
+    return completer.future.timeout(
+      const Duration(seconds: 4),
+      onTimeout: () {
+        debugPrint('AdmobService: UMP zaman aşımına uğradı, işleme devam ediliyor.');
+      },
+    );
   }
 
   /// Ödüllü reklamı önceden belleğe yükler (Pre-load)
@@ -122,7 +171,12 @@ class AdmobService {
       return;
     }
 
-    // 2. ÜCRETSİZ / GİRİŞ YAPMAMIŞ KULLANICI: Ödüllü reklam göster
+    // 2. ÜCRETSİZ / GİRİŞ YAPMAMIŞ KULLANICI:
+    // GDPR / UMP kullanıcı rızası henüz alınmadıysa öncelikle rıza formunu tamamla
+    if (!_consentGathered) {
+      await gatherConsentIfRequired();
+    }
+
     if (_rewardedAd == null) {
       // Reklam önceden yüklenmemişse yüklemeyi dene ve kullanıcıyı mağdur etmemek için
       // yüklenemezse doğrudan indirmeyi başlat (Google Play politika dostu)
