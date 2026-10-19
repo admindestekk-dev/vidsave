@@ -406,9 +406,14 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          l10n.text('app_title'),
-          style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
+        title: Image.asset(
+          'assets/app_icon.png',
+          height: 36,
+          fit: BoxFit.contain,
         ),
       ),
       body: IndexedStack(
@@ -594,6 +599,24 @@ class _DownloadPageState extends State<_DownloadPage> {
     final kind = platform.isAudio ? DownloadKind.audio : DownloadKind.video;
 
     _tileFocusNodes[platform.label]?.unfocus();
+
+    await AdmobService.instance.showRewardedAdOrBypass(
+      onRewardEarned: () async {
+        if (!mounted) return;
+        await _executeDownloadFromTile(
+          platform: platform,
+          source: source,
+          kind: kind,
+        );
+      },
+    );
+  }
+
+  Future<void> _executeDownloadFromTile({
+    required DownloadPlatform platform,
+    required Uri source,
+    required DownloadKind kind,
+  }) async {
     setState(() {
       _stateOf(platform)
         ..busy = true

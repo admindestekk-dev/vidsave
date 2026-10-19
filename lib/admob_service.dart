@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -18,20 +19,37 @@ class AdmobService {
   AdmobService._();
   static final AdmobService instance = AdmobService._();
 
-  /// Google Resmi Android Ödüllü Test Reklam Birim Kimliği (Rewarded Video Ad Unit ID)
-  static const String rewardedAdUnitId =
-      'ca-app-pub-3940256099942544/5224354917';
+  /// Google Resmi Test Cihazı Kimlikleri & Reklam Birim Kimlikleri
+  /// iOS: ca-app-pub-3940256099942544/1712485313
+  /// Android: ca-app-pub-3940256099942544/5224354917
+  static String get rewardedAdUnitId {
+    if (kIsWeb) return '';
+    try {
+      if (Platform.isIOS) {
+        return 'ca-app-pub-3940256099942544/1712485313';
+      }
+    } catch (_) {}
+    return 'ca-app-pub-3940256099942544/5224354917';
+  }
 
   RewardedAd? _rewardedAd;
   bool _isLoading = false;
   bool _isInitialized = false;
   bool _consentGathered = false;
+  final List<VoidCallback> _pendingLoadedCallbacks = [];
+  final List<VoidCallback> _pendingFailedCallbacks = [];
 
   /// AdMob SDK başlatma metodu (main.dart veya ilk ihtiyaçta çağrılır)
   Future<void> initialize() async {
     if (_isInitialized) return;
     try {
       await MobileAds.instance.initialize();
+      // Tüm emülatörler ve test cihazları için otomatik test yapılandırması
+      await MobileAds.instance.updateRequestConfiguration(
+        RequestConfiguration(
+          testDeviceIds: <String>[],
+        ),
+      );
       _isInitialized = true;
       unawaited(gatherConsentIfRequired());
       loadRewardedAd();
@@ -89,8 +107,18 @@ class AdmobService {
 
   /// Ödüllü reklamı önceden belleğe yükler (Pre-load)
   void loadRewardedAd({VoidCallback? onLoaded, VoidCallback? onFailed}) {
-    if (_isLoading || _rewardedAd != null) return;
+    if (_rewardedAd != null) {
+      onLoaded?.call();
+      return;
+    }
+    if (_isLoading) {
+      if (onLoaded != null) _pendingLoadedCallbacks.add(onLoaded);
+      if (onFailed != null) _pendingFailedCallbacks.add(onFailed);
+      return;
+    }
     _isLoading = true;
+    if (onLoaded != null) _pendingLoadedCallbacks.add(onLoaded);
+    if (onFailed != null) _pendingFailedCallbacks.add(onFailed);
 
     try {
       RewardedAd.load(
@@ -101,20 +129,35 @@ class AdmobService {
             _rewardedAd = ad;
             _isLoading = false;
             debugPrint('AdmobService: Ödüllü reklam başarıyla yüklendi.');
-            onLoaded?.call();
+            final callbacks = List<VoidCallback>.from(_pendingLoadedCallbacks);
+            _pendingLoadedCallbacks.clear();
+            _pendingFailedCallbacks.clear();
+            for (final cb in callbacks) {
+              cb();
+            }
           },
           onAdFailedToLoad: (error) {
             _rewardedAd = null;
             _isLoading = false;
             debugPrint('AdmobService: Ödüllü reklam yükleme hatası: $error');
-            onFailed?.call();
+            final callbacks = List<VoidCallback>.from(_pendingFailedCallbacks);
+            _pendingLoadedCallbacks.clear();
+            _pendingFailedCallbacks.clear();
+            for (final cb in callbacks) {
+              cb();
+            }
           },
         ),
       );
     } catch (e) {
       _isLoading = false;
       debugPrint('AdmobService: loadRewardedAd exception: $e');
-      onFailed?.call();
+      final callbacks = List<VoidCallback>.from(_pendingFailedCallbacks);
+      _pendingLoadedCallbacks.clear();
+      _pendingFailedCallbacks.clear();
+      for (final cb in callbacks) {
+        cb();
+      }
     }
   }
 
@@ -148,7 +191,7 @@ class AdmobService {
         return true;
       }
     } catch (_) {}
-    return true; // Varsayılan olarak güvenli: Eğer AdMob açıkça initialize edilmemişse test/headless say
+    return false;
   }
 
   Future<void> showRewardedAdOrBypass({
@@ -178,19 +221,37 @@ class AdmobService {
     }
 
     if (_rewardedAd == null) {
-      // Reklam önceden yüklenmemişse yüklemeyi dene ve kullanıcıyı mağdur etmemek için
-      // yüklenemezse doğrudan indirmeyi başlat (Google Play politika dostu)
+      // Reklam önceden yüklenmemişse yüklemeyi dene (azami 4 sn bekle)
+      // Kullanıcı deneyimi için zaman aşımına uğrarsa indirmeye devam et
+      final completer = Completer<void>();
       loadRewardedAd(
         onLoaded: () {
-          _presentRewardedAd(
-            onRewardEarned: onRewardEarned,
-            onAdDismissedWithoutReward: onAdDismissedWithoutReward,
-          );
+          if (!completer.isCompleted) {
+            completer.complete();
+            _presentRewardedAd(
+              onRewardEarned: onRewardEarned,
+              onAdDismissedWithoutReward: onAdDismissedWithoutReward,
+            );
+          }
         },
         onFailed: () async {
-          debugPrint('AdmobService: Reklam yüklenemedi, kullanıcı bekletilmeden indirmeye devam ediliyor.');
-          await onRewardEarned();
+          if (!completer.isCompleted) {
+            completer.complete();
+            debugPrint('AdmobService: Reklam yüklenemedi, kullanıcı bekletilmeden indirmeye devam ediliyor.');
+            await onRewardEarned();
+          }
         },
+      );
+
+      // Maksimum 4 saniye bekle; eğer ağ yavaşsa ve reklam yüklenemezse kullanıcıyı kilitleme
+      unawaited(
+        Future.delayed(const Duration(seconds: 4), () async {
+          if (!completer.isCompleted) {
+            completer.complete();
+            debugPrint('AdmobService: Reklam yükleme zaman aşımı (4 sn), indirme başlatılıyor.');
+            await onRewardEarned();
+          }
+        }),
       );
       return;
     }

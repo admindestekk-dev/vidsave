@@ -88,3 +88,7 @@ vidsave_data.db
 
 # Flutter test failures
 test/failures/
+
+# Gradle build and problem reports
+/android/build/
+android/build/

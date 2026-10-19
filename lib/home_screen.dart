@@ -568,9 +568,14 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'VidSave',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
+        title: Image.asset(
+          'assets/app_icon.png',
+          height: 36,
+          fit: BoxFit.contain,
         ),
       ),
       body: SafeArea(

@@ -34,7 +34,8 @@ void main() {
       ),
     );
 
-    expect(find.text('VidSave'), findsOneWidget);
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.byType(Image), findsWidgets);
     expect(find.byType(BottomNavigationBar), findsOneWidget);
     expect(
       tester

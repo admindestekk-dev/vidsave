@@ -11,6 +11,7 @@ import 'download_notification_service.dart';
 import 'downloads_screen.dart';
 import 'media_downloader.dart';
 import 'storage_service.dart';
+import 'admob_service.dart';
 
 enum BulkItemStatus { pending, downloading, completed, error }
 
@@ -106,6 +107,15 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
 
     _focusNode.unfocus();
 
+    await AdmobService.instance.showRewardedAdOrBypass(
+      onRewardEarned: () async {
+        if (!mounted) return;
+        await _executeBulkDownload(urls);
+      },
+    );
+  }
+
+  Future<void> _executeBulkDownload(List<String> urls) async {
     setState(() {
       _isProcessing = true;
       _totalCount = urls.length;
