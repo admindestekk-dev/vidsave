@@ -738,6 +738,9 @@ class Job:
     audio_effect: str = "normal"
     lyrics: str | None = None
     direct_headers: dict[str, str] = field(default_factory=dict)
+    speed_str: str | None = None
+    eta_str: str | None = None
+    percent_str: str | None = None
     created_at: float = field(default_factory=time.time)
 
 
@@ -971,13 +974,13 @@ def _base_args(
     return args
 
 
-def _execute_ytdlp(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
-    """Execute yt-dlp command with automatic resilience and transparent fallbacks.
-
-    Applies requested flags ('cookies_from_browser': 'chrome', 'impersonate': 'chrome',
-    'player_client': 'ios,android,web') and provides automatic recovery if the host environment
-    lacks local Chrome user data or if a specific YouTube link requires client fallback.
-    """
+def _execute_ytdlp(
+    cmd: list[str],
+    timeout: int,
+    progress_callback: Any = None,
+) -> subprocess.CompletedProcess[str]:
+    """Execute yt-dlp command with automatic resilience, transparent fallbacks,
+    and optional real-time stdout progress streaming."""
     current_cmd = list(cmd)
     for _ in range(4):
         proc = subprocess.run(
@@ -988,6 +991,10 @@ def _execute_ytdlp(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[
             errors="replace",
             timeout=timeout,
         )
+        if progress_callback and (proc.stdout or proc.stderr):
+            for line in (proc.stdout or "").splitlines():
+                progress_callback(line)
+
         if proc.returncode == 0:
             return proc
 
@@ -1290,7 +1297,32 @@ def _download_job_to_disk(job: Job, target_source: str | None = None) -> str:
         cmd += ["--merge-output-format", "mp4"]
     cmd += ["-o", out_tmpl, "--", src]
 
-    proc = _execute_ytdlp(cmd, timeout=1800)
+    _PROGRESS_RE = re.compile(
+        r"\[download\]\s+(\d+(?:\.\d+)?)%\s+of\s+~?([0-9.]+[A-Za-z]+)\s+at\s+([0-9.]+[A-Za-z]+/s)\s+ETA\s+([0-9:]+)"
+    )
+
+    def _ytdlp_progress_hook(line: str) -> None:
+        """Parse stdout lines from yt-dlp to extract percentage, speed, and ETA."""
+        line_str = line.strip()
+        m = _PROGRESS_RE.search(line_str)
+        if m:
+            pct_val = float(m.group(1))
+            speed = m.group(3)
+            eta = m.group(4)
+            job.progress = pct_val / 100.0
+            job.percent_str = f"{pct_val:.1f}%"
+            job.speed_str = speed
+            job.eta_str = eta
+            print(f"[VidSave Backend Progress] Job {job.id[:8]}: {job.percent_str} | Hız: {speed} | Kalan: {eta}")
+        elif "[download]" in line_str and "%" in line_str:
+            pct_match = re.search(r"(\d+(?:\.\d+)?)%", line_str)
+            if pct_match:
+                pct_val = float(pct_match.group(1))
+                job.progress = pct_val / 100.0
+                job.percent_str = f"{pct_val:.1f}%"
+                print(f"[VidSave Backend Progress] Job {job.id[:8]}: {job.percent_str}")
+
+    proc = _execute_ytdlp(cmd, timeout=1800, progress_callback=_ytdlp_progress_hook)
     if proc.returncode != 0:
         raise RuntimeError(_clean_error(proc.stderr or proc.stdout or "yt-dlp failed"))
 
@@ -1589,6 +1621,9 @@ def _job_payload(job: Job) -> dict[str, Any]:
         "ext": job.ext,
         "mime": job.mime,
         "lyrics": job.lyrics,
+        "speed": job.speed_str,
+        "eta": job.eta_str,
+        "percentStr": job.percent_str,
     }
     if job.height:
         payload["height"] = job.height
@@ -1835,6 +1870,45 @@ def resolve() -> Response:
 
     code = 200 if job.status != "error" else 422
     return jsonify(_job_payload(job)), code
+
+
+@app.route("/api/indirme-durumu", methods=["GET", "POST"])
+def api_indirme_durumu() -> Response:
+    """Canlı indirme durumu endpoint'i (Long-Polling & Progress Tracking).
+
+    Flutter Frontend'in indirme yüzdesini, hızını, kalan süresini (ETA) ve
+    işlem durumunu anlık olarak sorgulamasını sağlar.
+    """
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+
+    job_id = (request.args.get("job") or request.args.get("id") or "").strip()
+    if not job_id and request.is_json:
+        body = request.get_json(silent=True) or {}
+        job_id = (body.get("job") or body.get("id") or "").strip()
+
+    if not job_id:
+        # En son aktif olan işi döndürmeyi dene veya hata dön
+        with _JOBS_LOCK:
+            if _JOBS:
+                latest_job = max(_JOBS.values(), key=lambda j: j.created_at)
+                return jsonify(_job_payload(latest_job))
+        return jsonify(status="error", error={"code": "job_id_missing", "message": "job parametresi eksik."}), 400
+
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if job is None:
+        job = _load_job_from_db(job_id)
+        if job is not None:
+            with _JOBS_LOCK:
+                _JOBS[job.id] = job
+
+    if job is None:
+        return jsonify(status="error", error={"code": "job.not_found", "message": "İndirme işi bulunamadı."}), 404
+
+    payload = _job_payload(job)
+    payload["success"] = True
+    return jsonify(payload)
 
 
 @app.post("/api/cookies")

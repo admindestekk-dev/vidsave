@@ -1808,6 +1808,9 @@ class _PlatformSearchDownloadModalState
   List<SearchResultItem> _searchResults = [];
   String? _downloadingUrl;
   double? _downloadProgress;
+  String? _downloadSpeed;
+  DateTime? _lastProgressTime;
+  int? _lastReceivedBytes;
   String? _statusMessage;
   bool _statusIsError = false;
   MediaPreview? _preview;
@@ -1980,6 +1983,9 @@ class _PlatformSearchDownloadModalState
       _downloading = true;
       _downloadingUrl = item.id.isNotEmpty ? item.id : item.url;
       _downloadProgress = null;
+      _downloadSpeed = null;
+      _lastProgressTime = DateTime.now();
+      _lastReceivedBytes = 0;
       _statusMessage = '${item.baslik} MP3 olarak indiriliyor…';
       _statusIsError = false;
     });
@@ -2010,13 +2016,28 @@ class _PlatformSearchDownloadModalState
         onProgress: (received, total) {
           if (!mounted) return;
           final percent = downloadPercent(received, total);
+
+          // Canlı indirme hızını hesapla
+          final now = DateTime.now();
+          if (_lastProgressTime != null && _lastReceivedBytes != null) {
+            final diffMs = now.difference(_lastProgressTime!).inMilliseconds;
+            if (diffMs >= 500) {
+              final bytesDiff = received - _lastReceivedBytes!;
+              final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
+              _downloadSpeed = '${formatBytes(bytesPerSec)}/s';
+              _lastProgressTime = now;
+              _lastReceivedBytes = received;
+            }
+          }
+
+          final speedText = _downloadSpeed != null ? ' ($_downloadSpeed)' : '';
           setState(() {
             _downloadProgress = (total == null || total <= 0)
                 ? null
                 : received / total;
             _statusMessage = percent == null
-                ? '${item.baslik} indiriliyor…'
-                : '${item.baslik} indiriliyor… %$percent';
+                ? '${item.baslik} indiriliyor…$speedText'
+                : '%$percent İndiriliyor…$speedText';
           });
           if (percent != null && percent != lastNotifPercent) {
             lastNotifPercent = percent;
@@ -2025,6 +2046,7 @@ class _PlatformSearchDownloadModalState
                 id: notificationId,
                 title: effectiveTitle,
                 percent: percent,
+                speed: _downloadSpeed,
               ),
             );
           }
@@ -2063,6 +2085,13 @@ class _PlatformSearchDownloadModalState
         _downloadProgress = null;
         _statusMessage = 'Başarıyla indirildi: $fileName';
         _statusIsError = false;
+      });
+
+      // İndirme başarıyla tamamlandığında paneli otomatik kapat
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
       });
     } catch (error) {
       final errorMsg = switch (error) {
@@ -2130,6 +2159,9 @@ class _PlatformSearchDownloadModalState
       _downloading = true;
       _downloadingHeight = quality.height;
       _downloadProgress = null;
+      _downloadSpeed = null;
+      _lastProgressTime = DateTime.now();
+      _lastReceivedBytes = 0;
       _statusMessage = '${quality.label} hazırlanıyor…';
       _statusIsError = false;
     });
@@ -2166,13 +2198,28 @@ class _PlatformSearchDownloadModalState
         onProgress: (received, total) {
           if (!mounted) return;
           final percent = downloadPercent(received, total);
+
+          // Canlı indirme hızını hesapla
+          final now = DateTime.now();
+          if (_lastProgressTime != null && _lastReceivedBytes != null) {
+            final diffMs = now.difference(_lastProgressTime!).inMilliseconds;
+            if (diffMs >= 500) {
+              final bytesDiff = received - _lastReceivedBytes!;
+              final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
+              _downloadSpeed = '${formatBytes(bytesPerSec)}/s';
+              _lastProgressTime = now;
+              _lastReceivedBytes = received;
+            }
+          }
+
+          final speedText = _downloadSpeed != null ? ' ($_downloadSpeed)' : '';
           setState(() {
             _downloadProgress = (total == null || total <= 0)
                 ? null
                 : received / total;
             _statusMessage = percent == null
-                ? '${quality.label} indiriliyor…'
-                : '${quality.label} indiriliyor… %$percent';
+                ? '${quality.label} indiriliyor…$speedText'
+                : '%$percent İndiriliyor…$speedText';
           });
           if (percent != null && percent != lastNotifPercent) {
             lastNotifPercent = percent;
@@ -2181,6 +2228,7 @@ class _PlatformSearchDownloadModalState
                 id: notificationId,
                 title: effectiveTitle,
                 percent: percent,
+                speed: _downloadSpeed,
               ),
             );
           }
@@ -2219,6 +2267,13 @@ class _PlatformSearchDownloadModalState
         _downloadProgress = null;
         _statusMessage = 'Başarıyla indirildi: $fileName';
         _statusIsError = false;
+      });
+
+      // İndirme başarıyla tamamlandığında paneli otomatik kapat
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
       });
     } catch (error) {
       final errorMsg = switch (error) {
@@ -2626,43 +2681,64 @@ class _PlatformSearchDownloadModalState
                               ),
                             ),
                             const SizedBox(width: 10),
-                            FilledButton.icon(
-                              onPressed: _downloading
-                                  ? null
-                                  : () => _startDownloadMusicItem(item),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: primaryColor,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              icon: isItemDownloading
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
+                            isItemDownloading
+                                ? Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: 80,
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(4),
+                                          child: LinearProgressIndicator(
+                                            value: _downloadProgress,
+                                            minHeight: 6,
+                                            backgroundColor: primaryColor.withValues(alpha: 0.2),
+                                            valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                                          ),
+                                        ),
                                       ),
-                                    )
-                                  : const Icon(
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _downloadProgress != null
+                                            ? '%${(_downloadProgress! * 100).round()}'
+                                            : '…',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: primaryColor,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : FilledButton.icon(
+                                    onPressed: _downloading
+                                        ? null
+                                        : () => _startDownloadMusicItem(item),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: primaryColor,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                    icon: const Icon(
                                       Icons.download_rounded,
                                       size: 16,
                                     ),
-                              label: Text(
-                                isItemDownloading ? 'İNDİRİLİYOR' : 'İNDİR',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ),
+                                    label: const Text(
+                                      'İNDİR',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
                           ],
                         ),
                       ),
@@ -2900,45 +2976,64 @@ class _PlatformSearchDownloadModalState
                         ),
                       ),
                       const SizedBox(width: 10),
-                      FilledButton.icon(
-                        key: ValueKey('quality_${quality.height}'),
-                        onPressed: _downloading
-                            ? null
-                            : () => _startDownloadQuality(quality),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        icon: isCurrentDownloading
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                      isCurrentDownloading
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 80,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: _downloadProgress,
+                                      minHeight: 6,
+                                      backgroundColor: primaryColor.withValues(alpha: 0.2),
+                                      valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                                    ),
+                                  ),
                                 ),
-                              )
-                            : const Icon(Icons.download_rounded, size: 16),
-                        label: Text(
-                          isCurrentDownloading
-                              ? 'DÖNÜŞTÜRÜLÜYOR'
-                              : (widget.platform.isAudio
+                                const SizedBox(height: 4),
+                                Text(
+                                  _downloadProgress != null
+                                      ? '%${(_downloadProgress! * 100).round()}'
+                                      : '…',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryColor,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : FilledButton.icon(
+                              key: ValueKey('quality_${quality.height}'),
+                              onPressed: _downloading
+                                  ? null
+                                  : () => _startDownloadQuality(quality),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: primaryColor,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 8,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              icon: const Icon(Icons.download_rounded, size: 16),
+                              label: Text(
+                                widget.platform.isAudio
                                     ? 'MP3 İNDİR'
-                                    : 'İNDİR'),
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ),
+                                    : 'İNDİR',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ),
                     ],
                   ),
                 );

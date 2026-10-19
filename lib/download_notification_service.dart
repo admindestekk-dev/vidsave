@@ -71,13 +71,17 @@ class DownloadNotificationService {
     required int id,
     required String title,
     int? percent,
+    String? speed,
   }) async {
     if (!_isSupportedPlatform) return;
     try {
       await initialize();
 
       final isIndeterminate = percent == null;
-      final body = isIndeterminate ? 'İndiriliyor…' : '%$percent indirildi';
+      final speedSuffix = (speed != null && speed.isNotEmpty) ? ' ($speed)' : '';
+      final body = isIndeterminate
+          ? 'VidSave: Medya İndiriliyor…$speedSuffix'
+          : '%$percent İndiriliyor…$speedSuffix';
 
       final androidDetails = AndroidNotificationDetails(
         _channelId,
@@ -99,7 +103,7 @@ class DownloadNotificationService {
       final details = NotificationDetails(android: androidDetails);
       await _plugin.show(
         id: id,
-        title: title,
+        title: 'VidSave: Medya İndiriliyor…',
         body: body,
         notificationDetails: details,
       );
@@ -108,7 +112,7 @@ class DownloadNotificationService {
     }
   }
 
-  /// Updates the notification when the download is completed.
+  /// Updates the notification when the download is completed with sound and vibration.
   Future<void> showCompleted({
     required int id,
     required String title,
@@ -119,23 +123,24 @@ class DownloadNotificationService {
       await initialize();
 
       final androidDetails = AndroidNotificationDetails(
-        _channelId,
-        _channelName,
-        channelDescription: _channelDescription,
-        importance: Importance.defaultImportance,
-        priority: Priority.defaultPriority,
+        '${_channelId}_completed',
+        'Tamamlanan İndirmeler',
+        channelDescription: 'İndirme tamamlandığında sesli ve titreşimli bildirim',
+        importance: Importance.high,
+        priority: Priority.high,
         showProgress: false,
         ongoing: false,
         autoCancel: true,
         onlyAlertOnce: false,
         playSound: true,
+        enableVibration: true,
       );
 
       final details = NotificationDetails(android: androidDetails);
       await _plugin.show(
         id: id,
-        title: title,
-        body: 'İndirme tamamlandı: $fileName',
+        title: 'İndirme Tamamlandı! Dosyanız hazır.',
+        body: fileName.isNotEmpty ? fileName : title,
         notificationDetails: details,
       );
     } catch (e) {
