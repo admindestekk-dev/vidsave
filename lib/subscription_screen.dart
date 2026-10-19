@@ -489,7 +489,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         buttonText = 'اشتراك - 0.99 \$ / شهرياً';
         break;
       case 'zh':
-        priceTitle = '每月 \$0.99 - 含税';
+        priceTitle = '每月仅需 \$0.99 - 含税';
         taxFootnote = '包含所有适用税费。';
         buttonText = '订阅 - \$0.99 / 月';
         break;
