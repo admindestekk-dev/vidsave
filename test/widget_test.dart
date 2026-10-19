@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import 'package:vid_downloader_app/download_platforms.dart';
 import 'package:vid_downloader_app/media_library.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
+import 'package:vid_downloader_app/home_screen.dart';
 import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/more_screen.dart';
 import 'package:vid_downloader_app/music_player.dart';
@@ -35,6 +36,7 @@ void main() {
     );
 
     expect(find.byType(AppBar), findsOneWidget);
+    expect(find.byType(VidSaveBrandTitle), findsOneWidget);
     expect(find.byType(Image), findsWidgets);
     expect(find.byType(BottomNavigationBar), findsOneWidget);
     expect(

@@ -410,11 +410,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        title: Image.asset(
-          'assets/app_icon.png',
-          height: 36,
-          fit: BoxFit.contain,
-        ),
+        title: const VidSaveBrandTitle(),
       ),
       body: IndexedStack(
         index: _selectedIndex,
