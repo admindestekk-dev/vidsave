@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "415854271102",
+    "project_id": "vidsave-800ba",
+    "storage_bucket": "vidsave-800ba.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:415854271102:android:a46e85d70119a47c0bd62f",
+        "android_client_info": {
+          "package_name": "com.example.vid_downloader_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "415854271102-oj44ne0nedjik1lodes91noa1dok3jeu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWqjAv5YkQOFxpGocskKK8kxwpN9easMk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "415854271102-oj44ne0nedjik1lodes91noa1dok3jeu.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

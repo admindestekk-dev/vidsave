@@ -224,3 +224,51 @@ if __name__ == "__main__":
         me_user = me.get_json()["user"]
         self.assertEqual(me_user["email"], "googleuser@gmail.com")
         self.assertEqual(me_user["name"], "Google User Updated")
+
+    def test_monthly_subscription_simulation_extends_premium_until_by_30_days(self):
+        # 1. Register new user via Google
+        res_auth = self.client.post(
+            "/api/auth/google",
+            json={
+                "email": "testuser@gmail.com",
+                "name": "Test User",
+            },
+        )
+        self.assertEqual(res_auth.status_code, 200)
+        auth_data = res_auth.get_json()
+        self.assertFalse(auth_data["is_premium"])
+        token = auth_data["token"]
+        user_id = auth_data["user"]["id"]
+
+        # 2. Simulate monthly subscription
+        res_sub = self.client.post(
+            "/api/auth/subscribe-monthly",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"lang": "tr"},
+        )
+        self.assertEqual(res_sub.status_code, 200)
+        sub_data = res_sub.get_json()
+        self.assertTrue(sub_data["success"])
+        self.assertTrue(sub_data["is_premium"])
+        self.assertTrue(sub_data["premium_until"])
+
+        # Verify database record in user_subscriptions
+        with closing(sqlite3.connect(server.DB_PATH)) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT is_premium, premium_until, product_id FROM user_subscriptions WHERE user_id = ?",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(row[0], 1)
+            self.assertIsNotNone(row[1])
+            self.assertEqual(row[2], "vidsave_premium_monthly")
+
+        # 3. Next Google login should reflect is_premium == True
+        res_login_again = self.client.post(
+            "/api/auth/google",
+            json={"email": "testuser@gmail.com"},
+        )
+        self.assertEqual(res_login_again.status_code, 200)
+        self.assertTrue(res_login_again.get_json()["is_premium"])

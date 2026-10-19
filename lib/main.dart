@@ -27,6 +27,7 @@ import 'locale_service.dart';
 import 'video_player_screen.dart';
 import 'auth_gate.dart';
 import 'welcome_screen.dart';
+import 'home_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -98,6 +99,7 @@ class VidSaveHomePage extends StatefulWidget {
     this.backendSettingsStore,
     this.musicPlayerFactory,
     this.musicSourceResolver,
+    this.showPremiumBanner = true,
   });
 
   final MediaLibrary? library;
@@ -107,6 +109,7 @@ class VidSaveHomePage extends StatefulWidget {
   final MediaResolver? mediaResolver;
   final MediaDownloader? mediaDownloader;
   final BackendSettingsStore? backendSettingsStore;
+  final bool showPremiumBanner;
 
   @override
   State<VidSaveHomePage> createState() => _VidSaveHomePageState();
@@ -417,6 +420,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           _DownloadPage(
             resolver: _mediaResolver,
             downloader: _mediaDownloader,
+            showPremiumBanner: widget.showPremiumBanner,
             onDownloaded: (kind) {
               if (kind == DownloadKind.audio) {
                 _musicLibraryKey.currentState?.reload();
@@ -480,11 +484,13 @@ class _DownloadPage extends StatefulWidget {
     required this.downloader,
     this.onDownloaded,
     this.onOpenLibrary,
+    this.showPremiumBanner = true,
   });
 
   final MediaResolver resolver;
   final MediaDownloader downloader;
   final ValueChanged<DownloadKind>? onDownloaded;
+  final bool showPremiumBanner;
 
   /// Called with the tab index (0 = Videolar, 1 = Müzik) when a category card
   /// in the İndirilenler section is tapped.
@@ -719,6 +725,10 @@ class _DownloadPageState extends State<_DownloadPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.showPremiumBanner) ...[
+              const PremiumBanner(),
+              const SizedBox(height: 14),
+            ],
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [

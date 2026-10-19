@@ -2,8 +2,9 @@ services:
   - type: web
     name: vidsave-backend
     runtime: python
+    plan: free
     buildCommand: "bash ./render-build.sh"
-    startCommand: "gunicorn --chdir backend --workers 1 --threads 8 --timeout 300 server:app"
+    startCommand: "gunicorn --chdir backend --bind 0.0.0.0:${PORT:-8787} --workers 1 --threads 8 --timeout 300 server:app"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
@@ -11,10 +12,4 @@ services:
         value: "/opt/render/project/src/bin:${PATH}"
       - key: VIDSAVE_IMPERSONATE
         value: "chrome"
-      - key: VIDSAVE_DB_PATH
-        value: /var/data/vidsave_data.db
-    disk:
-      name: vidsave-data
-      mountPath: /var/data
-      sizeGB: 1
     autoDeploy: true

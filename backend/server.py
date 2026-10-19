@@ -114,9 +114,33 @@ YT_PLAYER_CLIENT = (
 )
 
 # SQLite database for storing persistent user cookies (e.g. Instagram session)
-DB_PATH = os.environ.get("VIDSAVE_DB_PATH") or os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "vidsave_data.db"
-)
+def _resolve_db_path() -> str:
+    env_path = os.environ.get("VIDSAVE_DB_PATH")
+    if env_path:
+        try:
+            parent_dir = os.path.dirname(os.path.abspath(env_path))
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+            with sqlite3.connect(env_path) as test_conn:
+                test_conn.execute("SELECT 1")
+            return env_path
+        except Exception as exc:
+            logging.warning(
+                "Could not use VIDSAVE_DB_PATH '%s' (%s). Falling back to local backend db.",
+                env_path,
+                exc,
+            )
+    fallback = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "vidsave_data.db"
+    )
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(fallback)), exist_ok=True)
+    except Exception:
+        pass
+    return fallback
+
+
+DB_PATH = _resolve_db_path()
 
 
 def _init_db() -> None:
@@ -2161,10 +2185,44 @@ def api_subscribe_monthly() -> Response | tuple[Response, int]:
     subscription_id = f"sub_{uuid.uuid4().hex[:12]}"
     invoice_id = f"inv_{uuid.uuid4().hex[:12]}"
 
-    # Accounting record persistence in SQLite
+    now = datetime.datetime.now(datetime.timezone.utc)
+    current_until = None
+    new_until_str = (now + datetime.timedelta(days=30)).isoformat()
+
+    # Accounting record persistence & 30-day premium extension in SQLite
     conn = None
     try:
         conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT premium_until FROM user_subscriptions WHERE user_id = ?", (user_id,))
+        row = cur.fetchone()
+        if row and row[0]:
+            try:
+                parsed_ts = datetime.datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+                if parsed_ts > now:
+                    current_until = parsed_ts
+            except Exception:
+                pass
+
+        base_time = current_until or now
+        new_until = base_time + datetime.timedelta(days=30)
+        new_until_str = new_until.isoformat()
+
+        # Update or insert into user_subscriptions for active premium & 30-day extension
+        conn.execute(
+            """
+            INSERT INTO user_subscriptions (user_id, is_premium, premium_until, product_id, purchase_token, updated_at)
+            VALUES (?, 1, ?, 'vidsave_premium_monthly', ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                is_premium = 1,
+                premium_until = excluded.premium_until,
+                product_id = excluded.product_id,
+                purchase_token = excluded.purchase_token,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (user_id, new_until_str, f"sim_{subscription_id}"),
+        )
+
         conn.execute(
             """
             INSERT INTO subscriptions (
@@ -2189,6 +2247,8 @@ def api_subscribe_monthly() -> Response | tuple[Response, int]:
     return jsonify(
         status="ok",
         success=True,
+        is_premium=True,
+        premium_until=new_until_str,
         subscription={
             "id": subscription_id,
             "userId": user_id,
@@ -2200,6 +2260,7 @@ def api_subscribe_monthly() -> Response | tuple[Response, int]:
             "vatIncluded": True,
             "invoiceId": invoice_id,
             "receiptMessage": receipt_message,
+            "premiumUntil": new_until_str,
         },
     )
 

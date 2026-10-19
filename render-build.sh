@@ -1,28 +1,40 @@
 #!/usr/bin/env bash
-# Exit on error
+# Exit on critical error
 set -o errexit
 
 echo "===> Python bagimliliklari kuruluyor..."
 python -m pip install --upgrade pip
 pip install -r backend/requirements.txt
 
-echo "===> ffmpeg kuruluyor..."
+echo "===> ffmpeg kontrol ediliyor..."
 mkdir -p bin
-FFMPEG_TAR="ffmpeg-release-amd64-static.tar.xz"
-FFMPEG_URL="https://johnvansickle.com/ffmpeg/releases/${FFMPEG_TAR}"
 
 if command -v ffmpeg >/dev/null 2>&1; then
     echo "ffmpeg zaten sistemde mevcut: $(command -v ffmpeg)"
 else
-    echo "Statik ffmpeg indiriliyor: $FFMPEG_URL"
-    if curl -f -L --retry 3 -o "$FFMPEG_TAR" "$FFMPEG_URL"; then
-        tar -xJf "$FFMPEG_TAR" --wildcards --strip-components=1 -C bin '*/ffmpeg' '*/ffprobe' || true
-        rm -f "$FFMPEG_TAR"
-        chmod +x bin/ffmpeg bin/ffprobe 2>/dev/null || true
-        echo "ffmpeg kurulumu tamamlandi: bin/ffmpeg"
+    echo "ffmpeg binary indiriliyor (GitHub CDN)..."
+    FFMPEG_ZIP="ffmpeg-linux.zip"
+    FFPROBE_ZIP="ffprobe-linux.zip"
+    FFMPEG_URL="https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffmpeg-6.1-linux-64.zip"
+    FFPROBE_URL="https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffprobe-6.1-linux-64.zip"
+
+    set +e
+    if curl -f -s -S -L --connect-timeout 10 --max-time 90 -o "$FFMPEG_ZIP" "$FFMPEG_URL"; then
+        python -m zipfile -e "$FFMPEG_ZIP" bin 2>/dev/null || unzip -o -q "$FFMPEG_ZIP" -d bin 2>/dev/null || true
+        rm -f "$FFMPEG_ZIP"
+        chmod +x bin/ffmpeg 2>/dev/null || true
+        echo "ffmpeg basariyla kuruldu: bin/ffmpeg"
     else
-        echo "UYARI: ffmpeg indirilemedi, yt-dlp temel video indirme modunda calisacak."
+        echo "UYARI: ffmpeg indirilemedi, yt-dlp temel modda devam edecek."
     fi
+
+    if curl -f -s -S -L --connect-timeout 10 --max-time 90 -o "$FFPROBE_ZIP" "$FFPROBE_URL"; then
+        python -m zipfile -e "$FFPROBE_ZIP" bin 2>/dev/null || unzip -o -q "$FFPROBE_ZIP" -d bin 2>/dev/null || true
+        rm -f "$FFPROBE_ZIP"
+        chmod +x bin/ffprobe 2>/dev/null || true
+        echo "ffprobe basariyla kuruldu: bin/ffprobe"
+    fi
+    set -e
 fi
 
 echo "===> Build islemi basariyla tamamlandi!"

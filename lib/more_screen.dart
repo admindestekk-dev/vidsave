@@ -9,6 +9,7 @@ import 'media_downloader.dart';
 import 'profile_screen.dart';
 import 'storage_service.dart';
 import 'subscription_screen.dart';
+import 'home_screen.dart';
 import 'theme_service.dart';
 import 'user_identity_service.dart';
 import 'welcome_screen.dart';
@@ -219,11 +220,10 @@ class _MoreScreenState extends State<MoreScreen> {
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
                     onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (context) =>
-                              SubscriptionScreen(store: widget.store),
-                        ),
+                      handlePremiumClick(
+                        context,
+                        authService: _authService,
+                        store: widget.store,
                       );
                     },
                     child: Padding(

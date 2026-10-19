@@ -251,6 +251,7 @@ void main() {
         _buildTestApp(
           locale: const Locale('tr'),
           home: SubscriptionScreen(
+            isPlayStoreLive: true,
             inAppPurchase: fakeIap,
             httpClient: mockClient,
             authService: _testAuthService(mockClient),
@@ -319,6 +320,68 @@ void main() {
       await tester.tap(find.text('Kapat'));
       await tester.pumpAndSettle();
       expect(find.byType(AlertDialog), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'isPlayStoreLive == false shields from in_app_purchase engine and calls subscribe-monthly simulation',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final fakeIap = _FakeInAppPurchase();
+      bool subscribeMonthlyCalled = false;
+      final mockClient = MockClient((request) async {
+        if (request.url.path == '/api/auth/subscribe-monthly') {
+          subscribeMonthlyCalled = true;
+          return http.Response(
+            jsonEncode({
+              'status': 'ok',
+              'success': true,
+              'subscription': {
+                'amount': 9.99,
+                'currency': 'TRY',
+                'receiptMessage': 'Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!',
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('tr'),
+          home: SubscriptionScreen(
+            isPlayStoreLive: false,
+            inAppPurchase: fakeIap,
+            httpClient: mockClient,
+            authService: _testAuthService(mockClient),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final subscribeButton = find.text('9,99 TL / Ay - Abone Ol');
+      await tester.ensureVisible(subscribeButton);
+      await tester.tap(subscribeButton);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // in_app_purchase engine was NOT called because isPlayStoreLive is false!
+      expect(fakeIap.buyNonConsumableCalled, isFalse);
+      // backend simulation endpoint WAS called!
+      expect(subscribeMonthlyCalled, isTrue);
+      expect(find.text('PREMIUM AKTİF'), findsOneWidget);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(SubscriptionScreen.prefKeyIsPremium), isTrue);
+
+      fakeIap.purchaseStreamController.close();
     },
   );
 }

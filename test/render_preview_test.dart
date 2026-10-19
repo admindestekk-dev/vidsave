@@ -53,6 +53,7 @@ void main() {
         home: VidSaveHomePage(
           library: _TestMediaLibrary(),
           backendSettingsStore: _EmptyBackendSettingsStore(),
+          showPremiumBanner: false,
         ),
       ),
     );

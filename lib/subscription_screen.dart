@@ -17,6 +17,14 @@ import 'locale_service.dart';
 /// Ürün Kimliği: `vidsave_premium_monthly`
 /// Satın alma gerçekleştiğinde makbuz backend `/api/auth/verify-purchase` endpoint'i
 /// ile doğrulanır, 3 saniyelik konfeti patlatılır ve premium durum SharedPreferences'a kaydedilir.
+/// Test Kalkanı (isPlayStoreLive):
+/// Uygulama henüz Google Play Store'da yayında olmadığı için sistem geliştirici test moduna
+/// uyumlu olarak varsayılan `false` değerindedir.
+/// • isPlayStoreLive == false: 'Abone Ol' basıldığında in_app_purchase motorunu çağırmaz,
+///   backend'deki /api/auth/subscribe-monthly test endpoint'ine istek atar, onay gelince konfetileri patlatır.
+/// • isPlayStoreLive == true: Buton doğrudan resmi Google Play Store ödeme penceresini açar.
+bool isPlayStoreLive = false;
+
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({
     super.key,
@@ -25,6 +33,7 @@ class SubscriptionScreen extends StatefulWidget {
     this.httpClient,
     this.authService,
     this.onSubscribed,
+    this.isPlayStoreLive,
   });
 
   final InAppPurchase? inAppPurchase;
@@ -32,6 +41,7 @@ class SubscriptionScreen extends StatefulWidget {
   final http.Client? httpClient;
   final AuthService? authService;
   final VoidCallback? onSubscribed;
+  final bool? isPlayStoreLive;
 
   static const String productId = 'vidsave_premium_monthly';
   static const String prefKeyIsPremium = 'vidsave_is_premium';
@@ -287,32 +297,50 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  /// Abone Ol butonuna basıldığında Google Play ödeme akışını tetikler
+  bool get _liveMode => widget.isPlayStoreLive ?? isPlayStoreLive;
+
+  /// Abone Ol butonuna basıldığında
   Future<void> _handleSubscribe() async {
     if (_loading) return;
 
-    // Google Play Store üzerinden ürün tanımlı ise resmi satın alma sayfasını tetikle
-    if (_monthlyProduct != null && _isAvailable) {
-      setState(() => _loading = true);
-      final purchaseParam = PurchaseParam(productDetails: _monthlyProduct!);
-      try {
-        await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
-      } catch (e) {
-        if (mounted) {
-          setState(() => _loading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Google Play ödeme akışı başlatılamadı: $e'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
+    // isPlayStoreLive == true (Gelecekteki resmi mağaza durumu):
+    // Buton doğrudan resmi Google Play Store ödeme penceresini açar.
+    if (_liveMode) {
+      if (_monthlyProduct != null && _isAvailable) {
+        setState(() => _loading = true);
+        final purchaseParam = PurchaseParam(productDetails: _monthlyProduct!);
+        try {
+          await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+        } catch (e) {
+          if (mounted) {
+            setState(() => _loading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Google Play ödeme akışı başlatılamadı: $e'),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          }
         }
+        return;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _isTurkish(context)
+                  ? 'Google Play Store ürün detayı henüz hazır değil.'
+                  : 'Google Play Store product details not ready yet.',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
       }
-      return;
     }
 
-    // Google Play mağaza bağlantısı olmayan test/geliştirici ortamlarında
-    // doğrudan backend abonelik muhasebe akışını çalıştır
+    // isPlayStoreLive == false (Şu anki geliştirici test kalkanı):
+    // in_app_purchase motorunu çağırma (Play Store'da yüklü olmadığı için hata verir).
+    // Onun yerine backend'deki /api/auth/subscribe-monthly test fonksiyonuna istek at.
     await _handleFallbackDirectSubscribe();
   }
 
