@@ -1215,6 +1215,48 @@ class _BackendSettingsPageState extends State<_BackendSettingsPage> {
   }
 }
 
+class _MediaItemEntry {
+  _MediaItemEntry.fromAsset(AssetEntity assetEntity)
+      : asset = assetEntity,
+        id = assetEntity.id,
+        title = null,
+        file = null,
+        fileSizeInBytes = null,
+        durationSeconds = assetEntity.duration,
+        dateTime = assetEntity.createDateTime.toLocal(),
+        isVideo = assetEntity.type == AssetType.video;
+
+  _MediaItemEntry.fromDownload(DownloadItemModel item, File f)
+      : id = item.id,
+        title = item.name,
+        file = f,
+        fileSizeInBytes = item.sizeInBytes,
+        durationSeconds = 0,
+        dateTime = item.downloadedAt.toLocal(),
+        asset = null,
+        isVideo = item.type == 'video';
+
+  _MediaItemEntry.fromFile(File targetFile, {required this.isVideo})
+      : file = targetFile,
+        id = targetFile.path,
+        title = targetFile.uri.pathSegments.last,
+        fileSizeInBytes = targetFile.existsSync() ? targetFile.lengthSync() : 0,
+        durationSeconds = 0,
+        dateTime = targetFile.existsSync()
+            ? targetFile.lastModifiedSync().toLocal()
+            : DateTime.now(),
+        asset = null;
+
+  final String id;
+  final String? title;
+  final File? file;
+  final int? fileSizeInBytes;
+  final int durationSeconds;
+  final DateTime dateTime;
+  final AssetEntity? asset;
+  final bool isVideo;
+}
+
 class _MediaLibraryPage extends StatefulWidget {
   const _MediaLibraryPage({
     super.key,
@@ -1249,7 +1291,8 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
   static const _pageSize = 60;
 
   final _scrollController = ScrollController();
-  final List<AssetEntity> _assets = [];
+  final List<_MediaItemEntry> _entries = [];
+  final Set<String> _knownPathsAndIds = {};
   int _page = 0;
   bool _loading = false;
   bool _hasMore = true;
@@ -1261,6 +1304,9 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_loadWhenNearEnd);
+    if (_hasPermission) {
+      _resetAndLoad();
+    }
   }
 
   @override
@@ -1271,7 +1317,8 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
       _resetAndLoad();
     } else if (!_hasPermission && previouslyAuthorized) {
       setState(() {
-        _assets.clear();
+        _entries.clear();
+        _knownPathsAndIds.clear();
         _page = 0;
         _hasMore = true;
         _loadError = null;
@@ -1288,14 +1335,17 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
   }
 
   void _loadWhenNearEnd() {
-    if (_scrollController.position.extentAfter < 320) {
+    if (_loading || !_hasMore) return;
+    if (_scrollController.hasClients &&
+        _scrollController.position.extentAfter < 320) {
       _loadNextPage();
     }
   }
 
   void _resetAndLoad() {
     setState(() {
-      _assets.clear();
+      _entries.clear();
+      _knownPathsAndIds.clear();
       _page = 0;
       _hasMore = true;
       _loadError = null;
@@ -1305,49 +1355,73 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
 
   void reload() {
     widget.library.invalidateCache();
-    if (!_hasPermission) return;
     _resetAndLoad();
-    // A just-downloaded file may need a moment to appear in the media store.
-    // Re-scan shortly after so the İndirilenler list stays in sync.
-    Future<void>.delayed(const Duration(milliseconds: 600), () {
-      if (mounted && _hasPermission) {
-        widget.library.invalidateCache();
-        _resetAndLoad();
-      }
-    });
-    Future<void>.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted && _hasPermission) {
-        widget.library.invalidateCache();
-        _resetAndLoad();
-      }
-    });
+    if (_hasPermission) {
+      Future<void>.delayed(const Duration(milliseconds: 600), () {
+        if (mounted && _hasPermission) {
+          widget.library.invalidateCache();
+          _resetAndLoad();
+        }
+      });
+      Future<void>.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted && _hasPermission) {
+          widget.library.invalidateCache();
+          _resetAndLoad();
+        }
+      });
+    }
   }
 
-  void _openVideo(AssetEntity asset) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => VideoPlayerScreen(
-          asset: asset,
-          controllerFactory: widget.videoPlayerControllerFactory,
-        ),
-      ),
-    );
-  }
-
-  void _openMusic(AssetEntity asset) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => MusicPlayerScreen(
-          asset: asset,
-          playerFactory: widget.musicPlayerFactory,
-          sourceResolver: widget.musicSourceResolver,
-        ),
-      ),
-    );
+  void _openEntry(_MediaItemEntry entry) {
+    if (entry.isVideo) {
+      if (entry.asset != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => VideoPlayerScreen(
+              asset: entry.asset,
+              controllerFactory: widget.videoPlayerControllerFactory,
+            ),
+          ),
+        );
+      } else if (entry.file != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => VideoPlayerScreen(
+              file: entry.file,
+              title: entry.title,
+              controllerFactory: widget.videoPlayerControllerFactory,
+            ),
+          ),
+        );
+      }
+    } else {
+      if (entry.asset != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => MusicPlayerScreen(
+              asset: entry.asset,
+              playerFactory: widget.musicPlayerFactory,
+              sourceResolver: widget.musicSourceResolver,
+            ),
+          ),
+        );
+      } else if (entry.file != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => MusicPlayerScreen(
+              file: entry.file,
+              title: entry.title,
+              playerFactory: widget.musicPlayerFactory,
+              sourceResolver: widget.musicSourceResolver,
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _loadNextPage() async {
-    if (_loading || !_hasMore || !_hasPermission) return;
+    if (_loading || !_hasMore) return;
 
     setState(() {
       _loading = true;
@@ -1355,16 +1429,83 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
     });
 
     try {
-      final nextAssets = await widget.library.loadPage(
-        type: widget.type,
-        page: _page,
-        pageSize: _pageSize,
-      );
+      final isAudioType = widget.type == RequestType.audio;
+
+      // 1. İlk sayfada yerel indirmeleri (StorageService + disk dizini) yükle
+      if (_page == 0) {
+        final downloadedItems = await StorageService.getItems();
+        for (final item in downloadedItems) {
+          final isMatchingType =
+              isAudioType ? item.type == 'audio' : item.type == 'video';
+          if (!isMatchingType) continue;
+
+          final file = File(item.filePath);
+          if (file.existsSync() &&
+              !_knownPathsAndIds.contains(file.path) &&
+              !_knownPathsAndIds.contains(item.id)) {
+            _knownPathsAndIds.add(file.path);
+            _knownPathsAndIds.add(item.id);
+            _entries.add(_MediaItemEntry.fromDownload(item, file));
+          }
+        }
+
+        // İndirme dizinlerini tara
+        if (Platform.isAndroid) {
+          try {
+            final targetExtensions = isAudioType
+                ? const {'.mp3', '.m4a', '.aac', '.opus', '.wav'}
+                : const {'.mp4', '.mov', '.webm', '.mkv'};
+
+            for (final p in const [
+              '/storage/emulated/0/Download',
+              '/storage/emulated/0/Music'
+            ]) {
+              final d = Directory(p);
+              if (!d.existsSync()) continue;
+              try {
+                final entities = d.listSync(recursive: false);
+                for (final entity in entities) {
+                  if (entity is! File) continue;
+                  final name = entity.path.toLowerCase();
+                  final matchesExt =
+                      targetExtensions.any((ext) => name.endsWith(ext));
+                  if (matchesExt && !_knownPathsAndIds.contains(entity.path)) {
+                    _knownPathsAndIds.add(entity.path);
+                    _entries.add(
+                      _MediaItemEntry.fromFile(entity, isVideo: !isAudioType),
+                    );
+                  }
+                }
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 2. Galeri izni varsa PhotoManager asset'lerini de sayfalı olarak çek
+      var assetCount = 0;
+      if (_hasPermission) {
+        final nextAssets = await widget.library.loadPage(
+          type: widget.type,
+          page: _page,
+          pageSize: _pageSize,
+        );
+        assetCount = nextAssets.length;
+        for (final asset in nextAssets) {
+          if (!_knownPathsAndIds.contains(asset.id)) {
+            _knownPathsAndIds.add(asset.id);
+            _entries.add(_MediaItemEntry.fromAsset(asset));
+          }
+        }
+      }
+
+      // 3. Kronolojik sıralama (en yeni en üstte)
+      _entries.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
       if (!mounted) return;
       setState(() {
-        _assets.addAll(nextAssets);
         _page++;
-        _hasMore = nextAssets.length == _pageSize;
+        _hasMore = _hasPermission ? (assetCount == _pageSize) : false;
         _loading = false;
       });
     } catch (error, stackTrace) {
@@ -1386,7 +1527,7 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.permissionLoading) {
+    if (widget.permissionLoading && _entries.isEmpty) {
       return const _LibraryStatus(
         icon: Icons.lock_outline_rounded,
         message: 'Galeri erişim izni bekleniyor…',
@@ -1394,7 +1535,7 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
       );
     }
 
-    if (widget.permissionError case final error?) {
+    if (widget.permissionError case final error? when _entries.isEmpty) {
       return _LibraryStatus(
         icon: Icons.error_outline_rounded,
         message: 'Galeri izni alınamadı: $error',
@@ -1403,7 +1544,7 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
       );
     }
 
-    if (!_hasPermission) {
+    if (!_hasPermission && _entries.isEmpty) {
       return _LibraryStatus(
         icon: Icons.photo_library_outlined,
         message:
@@ -1416,7 +1557,7 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
       );
     }
 
-    if (_assets.isEmpty && _loading) {
+    if (_entries.isEmpty && _loading) {
       return const _LibraryStatus(
         icon: Icons.photo_library_outlined,
         message: 'Cihaz medyası taranıyor…',
@@ -1424,7 +1565,7 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
       );
     }
 
-    if (_assets.isEmpty && _loadError != null) {
+    if (_entries.isEmpty && _loadError != null) {
       return _LibraryStatus(
         icon: Icons.error_outline_rounded,
         message: 'Medya yüklenemedi: $_loadError',
@@ -1433,7 +1574,7 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
       );
     }
 
-    if (_assets.isEmpty && !_hasMore) {
+    if (_entries.isEmpty && !_hasMore) {
       return _LibraryStatus(
         icon: widget.type == RequestType.video
             ? Icons.video_library_outlined
@@ -1484,33 +1625,27 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
           );
         }
         return _MediaAssetTile(
-          asset: row.asset!,
+          entry: row.entry!,
           isVideo: widget.type == RequestType.video,
-          onTap: () {
-            if (widget.type == RequestType.video) {
-              _openVideo(row.asset!);
-            } else {
-              _openMusic(row.asset!);
-            }
-          },
+          onTap: () => _openEntry(row.entry!),
         );
       },
     );
   }
 
   List<_MediaListRow> _buildRows() {
-    final groups = <DateTime, List<AssetEntity>>{};
-    for (final asset in _assets) {
-      final createdAt = asset.createDateTime.toLocal();
+    final groups = <DateTime, List<_MediaItemEntry>>{};
+    for (final entry in _entries) {
+      final createdAt = entry.dateTime;
       final date = DateTime(createdAt.year, createdAt.month, createdAt.day);
-      groups.putIfAbsent(date, () => []).add(asset);
+      groups.putIfAbsent(date, () => []).add(entry);
     }
 
     final dates = groups.keys.toList()..sort((a, b) => b.compareTo(a));
     return [
       for (final date in dates) ...[
         _MediaListRow.header(_formatDate(date)),
-        for (final asset in groups[date]!) _MediaListRow.media(asset),
+        for (final entry in groups[date]!) _MediaListRow.media(entry),
       ],
     ];
   }
@@ -1539,21 +1674,21 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
 }
 
 class _MediaListRow {
-  const _MediaListRow.header(this.dateLabel) : asset = null;
-  const _MediaListRow.media(this.asset) : dateLabel = null;
+  const _MediaListRow.header(this.dateLabel) : entry = null;
+  const _MediaListRow.media(this.entry) : dateLabel = null;
 
   final String? dateLabel;
-  final AssetEntity? asset;
+  final _MediaItemEntry? entry;
 }
 
 class _MediaAssetTile extends StatefulWidget {
   const _MediaAssetTile({
-    required this.asset,
+    required this.entry,
     required this.isVideo,
     this.onTap,
   });
 
-  final AssetEntity asset;
+  final _MediaItemEntry entry;
   final bool isVideo;
   final VoidCallback? onTap;
 
@@ -1562,11 +1697,44 @@ class _MediaAssetTile extends StatefulWidget {
 }
 
 class _MediaAssetTileState extends State<_MediaAssetTile> {
-  late final Future<String> _titleFuture = widget.asset.titleAsync;
-  late final Future<int> _fileSizeFuture = widget.asset.fileSize;
+  late Future<String> _titleFuture;
+  late Future<int> _fileSizeFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _initFutures();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MediaAssetTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.entry.id != widget.entry.id) {
+      _initFutures();
+    }
+  }
+
+  void _initFutures() {
+    final entry = widget.entry;
+    if (entry.asset != null) {
+      _titleFuture = entry.asset!.titleAsync;
+      _fileSizeFuture = entry.asset!.fileSize;
+    } else {
+      _titleFuture = Future.value(
+        entry.title ?? entry.file?.uri.pathSegments.last ?? 'Adsız Medya',
+      );
+      _fileSizeFuture = Future.value(
+        entry.fileSizeInBytes ??
+            (entry.file?.existsSync() == true ? entry.file!.lengthSync() : 0),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final entry = widget.entry;
+    final durationSeconds = entry.durationSeconds;
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       color: Colors.white,
@@ -1601,53 +1769,73 @@ class _MediaAssetTileState extends State<_MediaAssetTile> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    FutureBuilder<String>(
-                      future: _titleFuture,
-                      builder: (context, snapshot) {
-                        final title = snapshot.hasError
-                            ? 'Ad okunamadı: ${snapshot.error}'
-                            : snapshot.data ??
+                    if (entry.asset != null)
+                      FutureBuilder<String>(
+                        future: _titleFuture,
+                        builder: (context, snapshot) {
+                          final title = snapshot.hasError
+                              ? 'Ad okunamadı: ${snapshot.error}'
+                              : snapshot.data ??
                                   (snapshot.connectionState ==
                                           ConnectionState.waiting
                                       ? 'Medya adı yükleniyor…'
                                       : 'Adsız medya');
-                        return Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF263943),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        );
-                      },
-                    ),
+                          return Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF263943),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          );
+                        },
+                      )
+                    else
+                      Text(
+                        entry.title ??
+                            entry.file?.uri.pathSegments.last ??
+                            'Adsız medya',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF263943),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     const SizedBox(height: 5),
                     Wrap(
                       spacing: 10,
                       runSpacing: 4,
                       children: [
-                        _MetadataText(_formatDuration(widget.asset.duration)),
-                        if (widget.isVideo)
+                        if (durationSeconds > 0)
+                          _MetadataText(_formatDuration(durationSeconds)),
+                        if (widget.isVideo && entry.asset != null)
                           _MetadataText(
-                            '${widget.asset.width} × ${widget.asset.height}',
+                            '${entry.asset!.width} × ${entry.asset!.height}',
                           ),
-                        FutureBuilder<int>(
-                          future: _fileSizeFuture,
-                          builder: (context, snapshot) {
-                            if (snapshot.hasError) {
+                        if (entry.asset != null)
+                          FutureBuilder<int>(
+                            future: _fileSizeFuture,
+                            builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                return _MetadataText(
+                                  'Boyut okunamadı: ${snapshot.error}',
+                                );
+                              }
+                              if (!snapshot.hasData) {
+                                return const _MetadataText('Boyut yükleniyor…');
+                              }
                               return _MetadataText(
-                                'Boyut okunamadı: ${snapshot.error}',
+                                '${(snapshot.data! / (1024 * 1024)).toStringAsFixed(2)} MB',
                               );
-                            }
-                            if (!snapshot.hasData) {
-                              return const _MetadataText('Boyut yükleniyor…');
-                            }
-                            return _MetadataText(
-                              '${(snapshot.data! / (1024 * 1024)).toStringAsFixed(2)} MB',
-                            );
-                          },
-                        ),
+                            },
+                          )
+                        else if (entry.fileSizeInBytes != null &&
+                            entry.fileSizeInBytes! > 0)
+                          _MetadataText(
+                            '${(entry.fileSizeInBytes! / (1024 * 1024)).toStringAsFixed(2)} MB',
+                          ),
                       ],
                     ),
                   ],

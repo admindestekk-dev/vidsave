@@ -17,15 +17,24 @@ class StorageService {
   static final ValueNotifier<List<DownloadItemModel>> downloadsNotifier =
       ValueNotifier<List<DownloadItemModel>>([]);
 
-  /// SharedPreferences örneğini getirir.
-  static Future<SharedPreferences> _getPrefs() async {
-    return await SharedPreferences.getInstance();
+  /// SharedPreferences örneğini getirir (test veya takılma durumlarında timeout ile güvenli).
+  static Future<SharedPreferences?> _getPrefs() async {
+    try {
+      return await SharedPreferences.getInstance().timeout(
+        const Duration(milliseconds: 250),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Yerel veritabanındaki tüm kayıtlı dosyaları çeker ve dinleyiciyi günceller.
   static Future<List<DownloadItemModel>> getItems() async {
     try {
       final prefs = await _getPrefs();
+      if (prefs == null) {
+        return downloadsNotifier.value;
+      }
       final List<String> rawList = prefs.getStringList(_storageKey) ?? [];
 
       final List<DownloadItemModel> items = rawList
@@ -71,7 +80,7 @@ class StorageService {
           .map((it) => jsonEncode(it.toJson()))
           .toList();
 
-      await prefs.setStringList(_storageKey, rawList);
+      await prefs?.setStringList(_storageKey, rawList);
       downloadsNotifier.value = List.unmodifiable(items);
       debugPrint(
         'StorageService: Dosya kaydedildi -> ${item.name} (${item.formattedSize})',
@@ -93,7 +102,7 @@ class StorageService {
           .map((it) => jsonEncode(it.toJson()))
           .toList();
 
-      await prefs.setStringList(_storageKey, rawList);
+      await prefs?.setStringList(_storageKey, rawList);
       downloadsNotifier.value = List.unmodifiable(items);
     } catch (e) {
       debugPrint('StorageService.removeItem hatası: $e');
@@ -104,7 +113,7 @@ class StorageService {
   static Future<void> clearAll() async {
     try {
       final prefs = await _getPrefs();
-      await prefs.remove(_storageKey);
+      await prefs?.remove(_storageKey);
       downloadsNotifier.value = [];
     } catch (e) {
       debugPrint('StorageService.clearAll hatası: $e');

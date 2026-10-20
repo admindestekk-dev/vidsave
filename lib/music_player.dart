@@ -199,7 +199,16 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         _player = provided;
         await _subscribe(provided);
       } else if (widget.file != null) {
-        final player = _AudioplayersMusicController();
+        final dummyAsset = widget.asset ??
+            AssetEntity(
+              id: widget.file!.path,
+              typeInt: AssetType.audio.index,
+              width: 0,
+              height: 0,
+              duration: 0,
+            );
+        final player = widget.playerFactory?.call(dummyAsset) ??
+            _AudioplayersMusicController();
         final source = DeviceFileSource(widget.file!.path);
         await player.setReleaseMode(ReleaseMode.stop);
         await player.setSource(source);
