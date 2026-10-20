@@ -12,6 +12,7 @@ import 'downloads_screen.dart';
 import 'media_downloader.dart';
 import 'storage_service.dart';
 import 'admob_service.dart';
+import 'batch_download_screen.dart';
 
 enum BulkItemStatus { pending, downloading, completed, error }
 
@@ -283,6 +284,23 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
           'Toplu İndirme (Bulk Download)',
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Dinamik Satır Modu (Batch)',
+            icon: const Icon(Icons.playlist_add_rounded),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => BatchDownloadScreen(
+                    resolver: widget.resolver,
+                    downloader: widget.downloader,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
