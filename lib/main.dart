@@ -337,7 +337,8 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('Direct download error: $e\n$stack');
       final errorMsg = switch (e) {
         MediaResolverException(:final message) => message,
         MediaDownloadException(:final message) => message,
@@ -733,11 +734,12 @@ class _DownloadPageState extends State<_DownloadPage> {
           ..progress = null
           ..status = 'İndirildi: $fileName';
       });
-    } catch (error) {
+    } catch (error, stack) {
+      debugPrint('Tile download error: $error\n$stack');
       final errorMsg = switch (error) {
         MediaResolverException(:final message) => message,
         MediaDownloadException(:final message) => message,
-        _ => 'İndirilemedi',
+        _ => 'İndirme tamamlanamadı: $error',
       };
       unawaited(
         DownloadNotificationService.instance.showError(

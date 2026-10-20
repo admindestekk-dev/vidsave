@@ -342,6 +342,7 @@ class ClientMediaResolver implements MediaResolver {
             url: muxed.url,
             fileName: '$sanitizedTitle.mp3',
             fileSizeInBytes: muxed.size.totalBytes,
+            byteStreamProvider: () => _yt.videos.streams.get(muxed),
             startTime: startTime,
             endTime: endTime,
             audioEffect: audioEffect,
@@ -352,6 +353,7 @@ class ClientMediaResolver implements MediaResolver {
           url: bestAudio.url,
           fileName: '$sanitizedTitle.mp3',
           fileSizeInBytes: bestAudio.size.totalBytes,
+          byteStreamProvider: () => _yt.videos.streams.get(bestAudio),
           startTime: startTime,
           endTime: endTime,
           audioEffect: audioEffect,
@@ -374,8 +376,12 @@ class ClientMediaResolver implements MediaResolver {
             url: videoStream.url,
             fileName: '$sanitizedTitle.mp4',
             fileSizeInBytes: videoStream.size.totalBytes,
+            byteStreamProvider: () => _yt.videos.streams.get(videoStream),
             audioUrl: audioStream?.url,
             audioFileSizeInBytes: audioStream?.size.totalBytes,
+            audioByteStreamProvider: audioStream != null
+                ? () => _yt.videos.streams.get(audioStream)
+                : null,
           );
         }
       }
@@ -390,6 +396,7 @@ class ClientMediaResolver implements MediaResolver {
             url: bestMuxed.url,
             fileName: '$sanitizedTitle.mp4',
             fileSizeInBytes: bestMuxed.size.totalBytes,
+            byteStreamProvider: () => _yt.videos.streams.get(bestMuxed),
           );
         }
       }
@@ -411,8 +418,12 @@ class ClientMediaResolver implements MediaResolver {
         url: bestVideo.url,
         fileName: '$sanitizedTitle.mp4',
         fileSizeInBytes: bestVideo.size.totalBytes,
+        byteStreamProvider: () => _yt.videos.streams.get(bestVideo),
         audioUrl: bestAudio?.url,
         audioFileSizeInBytes: bestAudio?.size.totalBytes,
+        audioByteStreamProvider: bestAudio != null
+            ? () => _yt.videos.streams.get(bestAudio)
+            : null,
       );
     } catch (e) {
       if (e is MediaResolverException) rethrow;
@@ -525,6 +536,26 @@ class ClientMediaResolver implements MediaResolver {
 
   Future<ResolvedMedia> _scrapeInstagram(Uri source) async {
     try {
+      // 1. Try ddinstagram / InstaFix proxy directly for high reliability
+      try {
+        final path = source.path;
+        final ddUri = Uri.parse('https://d.ddinstagram.com$path');
+        final headRes = await _dio.head(
+          ddUri.toString(),
+          options: Options(
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 400,
+          ),
+        );
+        final location = headRes.headers.value('location');
+        if (location != null && location.isNotEmpty) {
+          return ResolvedMedia(
+            url: Uri.parse(location),
+            fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.mp4',
+          );
+        }
+      } catch (_) {}
+
       final res = await _dio.get<String>(
         source.toString(),
         options: Options(

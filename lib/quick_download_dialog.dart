@@ -400,7 +400,8 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('QuickDownloadDialog download error: $e\n$stack');
       final errorMsg = switch (e) {
         MediaResolverException(:final message) => message,
         MediaDownloadException(:final message) => message,

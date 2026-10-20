@@ -111,6 +111,8 @@ class ResolvedMedia {
     this.startTime,
     this.endTime,
     this.audioEffect,
+    this.byteStreamProvider,
+    this.audioByteStreamProvider,
   });
 
   final Uri url;
@@ -123,6 +125,10 @@ class ResolvedMedia {
   final Uri? audioUrl;
   final int? audioFileSizeInBytes;
 
+  /// Optional direct `Stream<List<int>>` providers (e.g. youtube_explode_dart native stream pipe)
+  final Stream<List<int>> Function()? byteStreamProvider;
+  final Stream<List<int>> Function()? audioByteStreamProvider;
+
   /// Trimming parameters in seconds
   final double? startTime;
   final double? endTime;
@@ -130,7 +136,7 @@ class ResolvedMedia {
   /// Audio effect filter ("normal", "nightcore", "bassboost")
   final String? audioEffect;
 
-  bool get requiresMuxing => audioUrl != null;
+  bool get requiresMuxing => audioUrl != null || audioByteStreamProvider != null;
   bool get requiresAudioProcessing =>
       (startTime != null && startTime! > 0) ||
       (endTime != null && endTime! > 0) ||
@@ -574,7 +580,7 @@ class MediaDownloader {
     await directory.create(recursive: true);
 
     // Case 1: Separate video and audio streams require merging (e.g. YouTube 1080p+)
-    if (media.requiresMuxing && media.audioUrl != null) {
+    if (media.requiresMuxing) {
       return _downloadAndMerge(
         media,
         directory,
@@ -583,16 +589,25 @@ class MediaDownloader {
       );
     }
 
-    // Standard download
-    final downloadedFile = await _downloadSingleStream(
-      media.url,
-      media.fileName,
-      directory,
-      headers: media.downloadHeaders,
-      expectedSize: media.fileSizeInBytes,
-      onProgress: onProgress,
-      timeout: timeout,
-    );
+    // Standard download (from byteStreamProvider or HTTP stream)
+    final downloadedFile = media.byteStreamProvider != null
+        ? await _downloadFromByteStream(
+            media.byteStreamProvider!(),
+            media.fileName,
+            directory,
+            expectedSize: media.fileSizeInBytes,
+            onProgress: onProgress,
+            timeout: timeout,
+          )
+        : await _downloadSingleStream(
+            media.url,
+            media.fileName,
+            directory,
+            headers: media.downloadHeaders,
+            expectedSize: media.fileSizeInBytes,
+            onProgress: onProgress,
+            timeout: timeout,
+          );
 
     // Case 2: Post-processing needed for MP3 conversion, trimming or audio effects
     if (media.fileName.toLowerCase().endsWith('.mp3') ||
@@ -623,38 +638,74 @@ class MediaDownloader {
     int audioReceived = 0;
 
     // 1. Download video stream
-    final videoFile = await _downloadSingleStream(
-      media.url,
-      tempVideoName,
-      directory,
-      headers: media.downloadHeaders,
-      expectedSize: media.fileSizeInBytes,
-      onProgress: (received, total) {
-        videoReceived = received;
-        onProgress?.call(
-          videoReceived + audioReceived,
-          totalSize > 0 ? totalSize : null,
-        );
-      },
-      timeout: timeout,
-    );
+    final videoFile = media.byteStreamProvider != null
+        ? await _downloadFromByteStream(
+            media.byteStreamProvider!(),
+            tempVideoName,
+            directory,
+            expectedSize: media.fileSizeInBytes,
+            onProgress: (received, total) {
+              videoReceived = received;
+              onProgress?.call(
+                videoReceived + audioReceived,
+                totalSize > 0 ? totalSize : null,
+              );
+            },
+            timeout: timeout,
+          )
+        : await _downloadSingleStream(
+            media.url,
+            tempVideoName,
+            directory,
+            headers: media.downloadHeaders,
+            expectedSize: media.fileSizeInBytes,
+            onProgress: (received, total) {
+              videoReceived = received;
+              onProgress?.call(
+                videoReceived + audioReceived,
+                totalSize > 0 ? totalSize : null,
+              );
+            },
+            timeout: timeout,
+          );
 
     // 2. Download audio stream
-    final audioFile = await _downloadSingleStream(
-      media.audioUrl!,
-      tempAudioName,
-      directory,
-      headers: media.downloadHeaders,
-      expectedSize: media.audioFileSizeInBytes,
-      onProgress: (received, total) {
-        audioReceived = received;
-        onProgress?.call(
-          videoReceived + audioReceived,
-          totalSize > 0 ? totalSize : null,
-        );
-      },
-      timeout: timeout,
-    );
+    final audioFile = media.audioByteStreamProvider != null
+        ? await _downloadFromByteStream(
+            media.audioByteStreamProvider!(),
+            tempAudioName,
+            directory,
+            expectedSize: media.audioFileSizeInBytes,
+            onProgress: (received, total) {
+              audioReceived = received;
+              onProgress?.call(
+                videoReceived + audioReceived,
+                totalSize > 0 ? totalSize : null,
+              );
+            },
+            timeout: timeout,
+          )
+        : (media.audioUrl != null
+            ? await _downloadSingleStream(
+                media.audioUrl!,
+                tempAudioName,
+                directory,
+                headers: media.downloadHeaders,
+                expectedSize: media.audioFileSizeInBytes,
+                onProgress: (received, total) {
+                  audioReceived = received;
+                  onProgress?.call(
+                    videoReceived + audioReceived,
+                    totalSize > 0 ? totalSize : null,
+                  );
+                },
+                timeout: timeout,
+              )
+            : null);
+
+    if (audioFile == null) {
+      return videoFile;
+    }
 
     // 3. Merge streams locally with FFmpeg on CPU
     final finalFile = File(
@@ -725,6 +776,49 @@ class MediaDownloader {
   }
 
   /// Downloads a single HTTP stream to disk.
+  /// Downloads data directly from a Dart byte stream (e.g. YouTubeExplode native pipe).
+  Future<File> _downloadFromByteStream(
+    Stream<List<int>> stream,
+    String targetFileName,
+    Directory directory, {
+    int? expectedSize,
+    DownloadProgressCallback? onProgress,
+    Duration timeout = const Duration(minutes: 30),
+  }) async {
+    final file = File(
+      '${directory.path}${Platform.pathSeparator}'
+      '${_uniqueFileName(directory, targetFileName)}',
+    );
+
+    var received = 0;
+    final sink = file.openWrite();
+    try {
+      await for (final chunk in stream.timeout(timeout)) {
+        sink.add(chunk);
+        received += chunk.length;
+        onProgress?.call(received, expectedSize);
+      }
+      await sink.flush();
+    } on TimeoutException {
+      await sink.close();
+      if (await file.exists()) await file.delete();
+      throw const MediaDownloadException('İndirme sırasında bağlantı zaman aşımına uğradı.');
+    } catch (error) {
+      await sink.close();
+      if (await file.exists()) await file.delete();
+      throw MediaDownloadException('İndirme yarıda kaldı: $error');
+    } finally {
+      await sink.close();
+    }
+
+    if (received == 0) {
+      if (await file.exists()) await file.delete();
+      throw const MediaDownloadException('Boş dosya indirildi.');
+    }
+
+    return file;
+  }
+
   Future<File> _downloadSingleStream(
     Uri url,
     String targetFileName,
@@ -736,8 +830,10 @@ class MediaDownloader {
   }) async {
     final request = http.Request('GET', url);
     request.headers.addAll({
-      'User-Agent': 'VidSave/1.0',
+      'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': '*/*',
+      'Accept-Encoding': 'identity',
       ...headers,
     });
 
@@ -847,16 +943,50 @@ class MediaDownloader {
 /// directory on desktop/unsupported platforms.
 Future<Directory> _defaultDownloadDirectory() async {
   if (Platform.isAndroid) {
+    // 1. Try external storage public download directory first (MediaStore/Scoped Storage friendly)
+    try {
+      final extDownloads = await getExternalStorageDirectories(
+        type: StorageDirectory.downloads,
+      );
+      if (extDownloads != null && extDownloads.isNotEmpty) {
+        final dir = extDownloads.first;
+        if (await dir.exists() || (await dir.create(recursive: true).then((_) => true).catchError((_) => false))) {
+          return dir;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Try standard Android Download paths if accessible
     for (final path in const [
       '/storage/emulated/0/Download',
       '/sdcard/Download',
     ]) {
-      final directory = Directory(path);
-      if (await directory.exists()) return directory;
+      try {
+        final directory = Directory(path);
+        if (await directory.exists()) {
+          // Verify directory is writable
+          final testFile = File('${directory.path}${Platform.pathSeparator}.vidsave_write_test');
+          await testFile.writeAsString('test');
+          await testFile.delete();
+          return directory;
+        }
+      } catch (_) {
+        // Scoped storage restricted; fall through to app document directory
+      }
     }
   }
-  final base = await getApplicationDocumentsDirectory();
-  return Directory('${base.path}${Platform.pathSeparator}Download');
+
+  // 3. Guaranteed writable storage across all platforms and Android versions
+  try {
+    final base = await getApplicationDocumentsDirectory();
+    final downloadDir = Directory('${base.path}${Platform.pathSeparator}Download');
+    if (!await downloadDir.exists()) {
+      await downloadDir.create(recursive: true);
+    }
+    return downloadDir;
+  } catch (_) {
+    return Directory.systemTemp;
+  }
 }
 
 /// Human readable size used by the download UI, e.g. `12.4 MB`.
