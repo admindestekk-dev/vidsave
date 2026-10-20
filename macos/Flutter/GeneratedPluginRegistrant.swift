@@ -7,7 +7,7 @@ import Foundation
 
 import audioplayers_darwin
 import cryptography_flutter
-import ffmpeg_kit_flutter_min_gpl
+import ffmpeg_kit_flutter_new_min_gpl
 import flutter_local_notifications
 import flutter_secure_storage_darwin
 import google_sign_in_ios

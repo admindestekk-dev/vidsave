@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_linux
+  ffmpeg_kit_flutter_new_min_gpl
   flutter_secure_storage_linux
   record_linux
   url_launcher_linux

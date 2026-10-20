@@ -58,7 +58,7 @@ dependencies:
   url_launcher: ^6.3.1
   youtube_explode_dart: ^3.1.0
   dio: ^5.11.1
-  ffmpeg_kit_flutter_min_gpl: ^6.0.3
+  ffmpeg_kit_flutter_new_min_gpl: ^2.6.7
 dev_dependencies:
   flutter_test:
     sdk: flutter
