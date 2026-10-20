@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:dio/dio.dart' as dio;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import 'app_dio.dart';
 import 'ffmpeg_service.dart';
 
 /// Turns a social-media URL into a direct, downloadable media URL.
@@ -259,10 +261,10 @@ final List<Uri> _kResolverEndpoints = [
 ];
 
 /// Sent on every request so the upstream does not treat us as a bot.
-/// A realistic, desktop-browser UA dramatically reduces 403 responses.
+/// A realistic, mobile-browser Chrome UA dramatically reduces 403 responses.
 const String _kDefaultUserAgent =
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-    '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+    'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
 
 /// Default [MediaResolver]: posts the pasted link to the endpoints above and
 /// reads back the first direct media URL found in the JSON response.
@@ -294,11 +296,12 @@ class RemoteMediaResolver implements MediaResolver {
   /// gateways from returning 403 Forbidden.
   Map<String, String> _browserHeaders(Uri endpoint) => {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    'Accept': '*/*',
     'User-Agent': userAgent,
     'Origin': '${endpoint.scheme}://${endpoint.host}',
     'Referer': '${endpoint.scheme}://${endpoint.host}/',
-    'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8',
+    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Connection': 'keep-alive',
     if (apiKey != null && apiKey!.isNotEmpty)
       'Authorization': 'Api-Key $apiKey',
   };
@@ -617,11 +620,14 @@ class RemoteMediaResolver implements MediaResolver {
 class MediaDownloader {
   MediaDownloader({
     http.Client? client,
+    dio.Dio? dioClient,
     Future<Directory> Function()? directoryProvider,
   }) : _client = client ?? http.Client(),
+       _dio = dioClient ?? AppDio.instance,
        _directoryProvider = directoryProvider ?? _defaultDownloadDirectory;
 
   final http.Client _client;
+  final dio.Dio _dio;
   final Future<Directory> Function() _directoryProvider;
 
   /// How long the server may take to accept the connection and send its
@@ -910,13 +916,101 @@ class MediaDownloader {
   }) async {
     final safeUrlStr = evrenselTemizUrl(url.toString());
     final effectiveUri = Uri.tryParse(safeUrlStr) ?? url;
-    final request = http.Request('GET', effectiveUri);
-    request.headers.addAll({
+    final file = File(
+      '${directory.path}${Platform.pathSeparator}'
+      '${_uniqueFileName(directory, targetFileName)}',
+    );
+
+    // Platformların bot algılamasını ve 403 Forbidden engelini aşan yasal tarayıcı maskesi
+    final browserHeaders = <String, String>{
       'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Accept-Encoding': 'identity',
+      'Accept': 'video/webm,video/mp4,video/*,audio/*,*/*',
+      'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Referer': 'https://youtube.com', // Platform taklidi için dinamik değişebilir
+      'Origin': 'https://youtube.com',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'cross-site',
       ...headers,
+    };
+
+    // Dinamik platform taklidi: Hedef alan adına göre Referer ve Origin ayarlanır
+    final host = effectiveUri.host.toLowerCase();
+    if (host.contains('youtube.com') ||
+        host.contains('googlevideo.com') ||
+        host.contains('youtu.be')) {
+      browserHeaders['Referer'] = 'https://youtube.com';
+      browserHeaders['Origin'] = 'https://youtube.com';
+    } else if (host.contains('tiktok.com') ||
+        host.contains('tiktokcdn.com') ||
+        host.contains('byteoversea.com') ||
+        host.contains('ibytedtos.com')) {
+      browserHeaders['Referer'] = 'https://www.tiktok.com/';
+      browserHeaders['Origin'] = 'https://www.tiktok.com';
+    } else if (host.contains('instagram.com') ||
+        host.contains('cdninstagram.com') ||
+        host.contains('fbcdn.net')) {
+      browserHeaders['Referer'] = 'https://www.instagram.com/';
+      browserHeaders['Origin'] = 'https://www.instagram.com';
+    } else if (host.contains('facebook.com') || host.contains('fb.watch')) {
+      browserHeaders['Referer'] = 'https://www.facebook.com/';
+      browserHeaders['Origin'] = 'https://www.facebook.com';
+    } else if (host.contains('pinterest.com') || host.contains('pinimg.com')) {
+      browserHeaders['Referer'] = 'https://www.pinterest.com/';
+      browserHeaders['Origin'] = 'https://www.pinterest.com';
+    }
+
+    // Çerez havuzundaki geçerli çerezleri isteğe dahil et
+    final cookieHeader = AppDio.cookieJar.getCookieHeader(effectiveUri);
+    if (cookieHeader != null && cookieHeader.isNotEmpty) {
+      browserHeaders['Cookie'] = cookieHeader;
+    }
+
+    // 1. Birincil İndirme Denemesi: Global Dio motoru ile Set-Cookie + Browser Headers Maskesi
+    try {
+      await _dio.download(
+        effectiveUri.toString(),
+        file.path,
+        options: dio.Options(
+          headers: browserHeaders,
+          followRedirects: true,
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 300,
+        ),
+        onReceiveProgress: (received, total) {
+          final totalBytes = total > 0 ? total : expectedSize;
+          onProgress?.call(received, totalBytes);
+        },
+      ).timeout(timeout);
+
+      if (await file.exists() && await file.length() > 0) {
+        return file;
+      }
+    } on dio.DioException catch (e) {
+      if (await file.exists()) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+      final statusCode = e.response?.statusCode;
+      if (statusCode != null && (statusCode < 200 || statusCode >= 300)) {
+        throw MediaDownloadException(
+          'Medya indirilemedi (HTTP $statusCode).',
+        );
+      }
+    } catch (_) {
+      if (await file.exists()) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+    }
+
+    // 2. İkincil / Yedek İndirme Akışı (HTTP Client Streaming): Aynı başlık ve çerez maskesi ile
+    final request = http.Request('GET', effectiveUri);
+    request.headers.addAll({
+      ...browserHeaders,
+      'Accept-Encoding': 'identity',
     });
 
     final http.StreamedResponse response;
@@ -939,11 +1033,6 @@ class MediaDownloader {
     }
 
     final totalBytes = response.contentLength ?? expectedSize;
-    final file = File(
-      '${directory.path}${Platform.pathSeparator}'
-      '${_uniqueFileName(directory, targetFileName)}',
-    );
-
     var received = 0;
     final sink = file.openWrite();
     try {

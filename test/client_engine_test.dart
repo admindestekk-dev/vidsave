@@ -33,11 +33,18 @@ void main() {
       expect(preview.qualities.any((q) => q.label.contains('MP3')), isTrue);
     });
 
-    test('resolves generic URL directly', () async {
+    test('resolves generic URL directly with Chrome Mobile headers mask', () async {
       final uri = Uri.parse('https://example.com/direct_sample.mp4');
       final resolved = await resolver.resolve(uri, DownloadKind.video);
       expect(resolved.url, uri);
       expect(resolved.fileName.endsWith('.mp4'), isTrue);
+      expect(
+        resolved.downloadHeaders['User-Agent'],
+        'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      );
+      expect(resolved.downloadHeaders['Accept'], '*/*');
+      expect(resolved.downloadHeaders['Accept-Language'], 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7');
+      expect(resolved.downloadHeaders['Connection'], 'keep-alive');
     });
   });
 

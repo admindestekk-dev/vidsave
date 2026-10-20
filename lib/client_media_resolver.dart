@@ -2,7 +2,17 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_exp;
 
+import 'app_dio.dart';
 import 'media_downloader.dart';
+
+/// Sent on requests to perfectly mimic Chrome on Android and avoid 403 Forbidden / bot detection.
+const Map<String, String> kChromeMobileHeaders = {
+  'User-Agent':
+      'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+  'Accept': '*/*',
+  'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Connection': 'keep-alive',
+};
 
 /// Client-side media resolver that completely eliminates Python backend dependency.
 ///
@@ -14,23 +24,7 @@ class ClientMediaResolver implements MediaResolver {
   ClientMediaResolver({
     Dio? dioClient,
     yt_exp.YoutubeExplode? youtubeExplode,
-  })  : _dio = dioClient ??
-            Dio(
-              BaseOptions(
-                connectTimeout: const Duration(seconds: 15),
-                receiveTimeout: const Duration(seconds: 25),
-                followRedirects: true,
-                maxRedirects: 5,
-                headers: {
-                  'User-Agent':
-                      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                  'Accept':
-                      'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                  'Accept-Language': 'en-US,en;q=0.9,tr;q=0.8',
-                },
-              ),
-            ),
+  })  : _dio = dioClient ?? AppDio.instance,
         _yt = youtubeExplode ?? yt_exp.YoutubeExplode();
 
   final Dio _dio;
@@ -38,7 +32,6 @@ class ClientMediaResolver implements MediaResolver {
 
   void dispose() {
     _yt.close();
-    _dio.close();
   }
 
   // ---------------------------------------------------------------------------
@@ -311,6 +304,7 @@ class ClientMediaResolver implements MediaResolver {
     return ResolvedMedia(
       url: effectiveSource,
       fileName: 'vidsave_${DateTime.now().millisecondsSinceEpoch}$ext',
+      downloadHeaders: kChromeMobileHeaders,
     );
   }
 
@@ -466,8 +460,10 @@ class ClientMediaResolver implements MediaResolver {
         options: Options(
           headers: {
             'User-Agent':
-                'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 '
-                '(KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
           },
         ),
       );
@@ -487,7 +483,10 @@ class ClientMediaResolver implements MediaResolver {
           downloadHeaders: {
             'Referer': 'https://www.tiktok.com/',
             'User-Agent':
-                'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15',
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
           },
         );
       }
@@ -499,6 +498,14 @@ class ClientMediaResolver implements MediaResolver {
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'tiktok_${DateTime.now().millisecondsSinceEpoch}.mp4',
+          downloadHeaders: {
+            'Referer': 'https://www.tiktok.com/',
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+          },
         );
       }
 
@@ -508,6 +515,13 @@ class ClientMediaResolver implements MediaResolver {
         data: {'url': source.toString(), 'count': 12, 'cursor': 0, 'web': 1},
         options: Options(
           contentType: Headers.formUrlEncodedContentType,
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+          },
         ),
       );
 
@@ -523,6 +537,14 @@ class ClientMediaResolver implements MediaResolver {
           return ResolvedMedia(
             url: Uri.parse(cleanUrl),
             fileName: '${_sanitizeFileName(title)}.mp4',
+            downloadHeaders: {
+              'Referer': 'https://www.tiktok.com/',
+              'User-Agent':
+                  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+              'Accept': '*/*',
+              'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Connection': 'keep-alive',
+            },
           );
         }
       }
@@ -549,6 +571,13 @@ class ClientMediaResolver implements MediaResolver {
           options: Options(
             followRedirects: false,
             validateStatus: (status) => status != null && status < 400,
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+              'Accept': '*/*',
+              'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Connection': 'keep-alive',
+            },
           ),
         );
         final location = headRes.headers.value('location');
@@ -557,6 +586,14 @@ class ClientMediaResolver implements MediaResolver {
           return ResolvedMedia(
             url: Uri.parse(cleanLocation),
             fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.mp4',
+            downloadHeaders: {
+              'Referer': 'https://www.instagram.com/',
+              'User-Agent':
+                  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+              'Accept': '*/*',
+              'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Connection': 'keep-alive',
+            },
           );
         }
       } catch (_) {}
@@ -566,8 +603,10 @@ class ClientMediaResolver implements MediaResolver {
         options: Options(
           headers: {
             'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
           },
         ),
       );
@@ -584,6 +623,14 @@ class ClientMediaResolver implements MediaResolver {
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.mp4',
+          downloadHeaders: {
+            'Referer': 'https://www.instagram.com/',
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+          },
         );
       }
 
@@ -594,6 +641,14 @@ class ClientMediaResolver implements MediaResolver {
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.mp4',
+          downloadHeaders: {
+            'Referer': 'https://www.instagram.com/',
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+          },
         );
       }
 
@@ -605,6 +660,14 @@ class ClientMediaResolver implements MediaResolver {
         return ResolvedMedia(
           url: Uri.parse(imgUrl),
           fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          downloadHeaders: {
+            'Referer': 'https://www.instagram.com/',
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+          },
         );
       }
 
@@ -628,8 +691,10 @@ class ClientMediaResolver implements MediaResolver {
         options: Options(
           headers: {
             'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
           },
         ),
       );
@@ -648,6 +713,14 @@ class ClientMediaResolver implements MediaResolver {
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'facebook_${DateTime.now().millisecondsSinceEpoch}.mp4',
+          downloadHeaders: {
+            'Referer': 'https://www.facebook.com/',
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+          },
         );
       }
 
@@ -660,6 +733,14 @@ class ClientMediaResolver implements MediaResolver {
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'facebook_${DateTime.now().millisecondsSinceEpoch}.mp4',
+          downloadHeaders: {
+            'Referer': 'https://www.facebook.com/',
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+          },
         );
       }
 
@@ -681,8 +762,10 @@ class ClientMediaResolver implements MediaResolver {
         options: Options(
           headers: {
             'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
           },
         ),
       );
@@ -697,6 +780,14 @@ class ClientMediaResolver implements MediaResolver {
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'pinterest_${DateTime.now().millisecondsSinceEpoch}.mp4',
+          downloadHeaders: {
+            'Referer': 'https://www.pinterest.com/',
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+          },
         );
       }
 
@@ -710,6 +801,14 @@ class ClientMediaResolver implements MediaResolver {
         return ResolvedMedia(
           url: Uri.parse(imgUrl),
           fileName: 'pinterest_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          downloadHeaders: {
+            'Referer': 'https://www.pinterest.com/',
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+          },
         );
       }
 

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'admob_service.dart';
+import 'client_media_resolver.dart';
 import 'download_item_model.dart';
 import 'download_notification_service.dart';
 import 'media_downloader.dart';
@@ -258,8 +259,12 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
   }
 
   Future<void> _executeDownload(DownloadKind kind) async {
-    // Eğer harici bir resolver/downloader sağlanmamışsa eski callback'lere yönlendir
-    if (widget.resolver == null || widget.downloader == null) {
+    // Harici callback sağlanmışsa ve resolver/downloader verilmemişse eski callback'e yönlendir
+    final hasLegacyCallback = kind == DownloadKind.video
+        ? widget.onDownloadVideo != null
+        : widget.onDownloadMp3WithOptions != null;
+
+    if (widget.resolver == null && widget.downloader == null && hasLegacyCallback) {
       if (kind == DownloadKind.video) {
         Navigator.of(context).pop();
         widget.onDownloadVideo?.call();
@@ -273,6 +278,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
       }
       return;
     }
+
+    final effectiveResolver = widget.resolver ?? ClientMediaResolver();
+    final effectiveDownloader = widget.downloader ?? MediaDownloader();
 
     // 2. Butonların Dönüşümü: İndirme başladı, butonlar gizlenip progress bar görüntülenir
     setState(() {
@@ -293,7 +301,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
     try {
       final cleanUrl = evrenselTemizUrl(widget.videoTitle);
       final parsed = Uri.parse(cleanUrl);
-      final media = await widget.resolver!.resolve(
+      final media = await effectiveResolver.resolve(
         parsed,
         kind,
         startTime: _enableTrimming ? _currentRangeValues.start : null,
@@ -317,7 +325,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
       );
 
       // Cihaz içi indirme işlemi (youtube_explode_dart / Dio / FFmpeg)
-      final file = await widget.downloader!.download(
+      final file = await effectiveDownloader.download(
         media,
         onProgress: (received, total) {
           if (!mounted) return;
