@@ -57,5 +57,19 @@ void main() {
 
       ThemeService.themeModeNotifier.removeListener(listener);
     });
+
+    test('theme provides systemOverlayStyle with contrasting icon brightness', () {
+      final lightTheme = ThemeService.lightTheme;
+      expect(
+        lightTheme.appBarTheme.systemOverlayStyle?.statusBarIconBrightness,
+        Brightness.dark,
+      );
+
+      final darkTheme = ThemeService.darkTheme;
+      expect(
+        darkTheme.appBarTheme.systemOverlayStyle?.statusBarIconBrightness,
+        Brightness.light,
+      );
+    });
   });
 }

@@ -213,14 +213,63 @@ class _MoreScreenState extends State<MoreScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Başlık — gizli geliştirici modu buraya bağlı.
-              GestureDetector(
-                onTap: _handleTitleTap,
-                behavior: HitTestBehavior.opaque,
-                child: const Text(
-                  'VidSave',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
+              // Başlık — Sol üst köşede marka amblemi (assets/app_icon.png) ile şık başlık
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.asset(
+                      'assets/app_icon.png',
+                      width: 42,
+                      height: 42,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: _accent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.download_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _handleTitleTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'VidSave',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          Text(
+                            LocaleService.currentLanguageCode == 'tr'
+                                ? 'Ayarlar ve Tercihler'
+                                : 'Settings & Preferences',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
 
@@ -722,6 +771,9 @@ class _MoreScreenState extends State<MoreScreen> {
       await prefs.remove(SubscriptionScreen.prefKeyIsPremium);
       await prefs.remove(SubscriptionScreen.prefKeySubscribedAt);
       await prefs.remove(WelcomeScreen.prefKeyHasSeenWelcome);
+      await prefs.remove(SecureAuthTokenStore.prefKeyUserEmail);
+      await prefs.remove(SecureAuthTokenStore.prefKeyUserName);
+      await prefs.remove(SecureAuthTokenStore.prefKeyUserAvatarUrl);
       await UserIdentityService.clearUserId();
 
       if (!mounted) return;

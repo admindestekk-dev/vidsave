@@ -139,7 +139,7 @@ class DownloadNotificationService {
       final details = NotificationDetails(android: androidDetails);
       await _plugin.show(
         id: id,
-        title: 'İndirme Tamamlandı! Dosyanız hazır.',
+        title: 'İndirme Tamamlandı! Dosyanız Galeride.',
         body: fileName.isNotEmpty ? fileName : title,
         notificationDetails: details,
       );

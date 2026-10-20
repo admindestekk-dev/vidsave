@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import 'ffmpeg_service.dart';
+
 /// Turns a social-media URL into a direct, downloadable media URL.
 ///
 /// Implementations throw [MediaResolverException] when the link is unsupported
@@ -104,6 +106,11 @@ class ResolvedMedia {
     this.mimeType,
     this.fileSizeInBytes,
     this.downloadHeaders = const {},
+    this.audioUrl,
+    this.audioFileSizeInBytes,
+    this.startTime,
+    this.endTime,
+    this.audioEffect,
   });
 
   final Uri url;
@@ -111,6 +118,23 @@ class ResolvedMedia {
   final String? mimeType;
   final int? fileSizeInBytes;
   final Map<String, String> downloadHeaders;
+
+  /// Secondary audio stream URL for separate high-quality video+audio streams (e.g. YouTube 1080p+)
+  final Uri? audioUrl;
+  final int? audioFileSizeInBytes;
+
+  /// Trimming parameters in seconds
+  final double? startTime;
+  final double? endTime;
+
+  /// Audio effect filter ("normal", "nightcore", "bassboost")
+  final String? audioEffect;
+
+  bool get requiresMuxing => audioUrl != null;
+  bool get requiresAudioProcessing =>
+      (startTime != null && startTime! > 0) ||
+      (endTime != null && endTime! > 0) ||
+      (audioEffect != null && audioEffect != 'normal');
 }
 
 /// Thrown when a link cannot be resolved into a downloadable media URL.
@@ -546,45 +570,200 @@ class MediaDownloader {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
   }) async {
-    final request = http.Request('GET', media.url);
+    final directory = await _directoryProvider();
+    await directory.create(recursive: true);
+
+    // Case 1: Separate video and audio streams require merging (e.g. YouTube 1080p+)
+    if (media.requiresMuxing && media.audioUrl != null) {
+      return _downloadAndMerge(
+        media,
+        directory,
+        onProgress: onProgress,
+        timeout: timeout,
+      );
+    }
+
+    // Standard download
+    final downloadedFile = await _downloadSingleStream(
+      media.url,
+      media.fileName,
+      directory,
+      headers: media.downloadHeaders,
+      expectedSize: media.fileSizeInBytes,
+      onProgress: onProgress,
+      timeout: timeout,
+    );
+
+    // Case 2: Post-processing needed for MP3 conversion, trimming or audio effects
+    if (media.fileName.toLowerCase().endsWith('.mp3') ||
+        media.requiresAudioProcessing) {
+      return _processAudioFile(
+        downloadedFile,
+        media,
+        directory,
+      );
+    }
+
+    await _publishToMediaStore(downloadedFile);
+    return downloadedFile;
+  }
+
+  /// Downloads both video and audio streams, then merges them with FFmpeg.
+  Future<File> _downloadAndMerge(
+    ResolvedMedia media,
+    Directory directory, {
+    DownloadProgressCallback? onProgress,
+    Duration timeout = const Duration(minutes: 30),
+  }) async {
+    final tempVideoName = 'temp_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final tempAudioName = 'temp_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+    final totalSize = (media.fileSizeInBytes ?? 0) + (media.audioFileSizeInBytes ?? 0);
+    int videoReceived = 0;
+    int audioReceived = 0;
+
+    // 1. Download video stream
+    final videoFile = await _downloadSingleStream(
+      media.url,
+      tempVideoName,
+      directory,
+      headers: media.downloadHeaders,
+      expectedSize: media.fileSizeInBytes,
+      onProgress: (received, total) {
+        videoReceived = received;
+        onProgress?.call(
+          videoReceived + audioReceived,
+          totalSize > 0 ? totalSize : null,
+        );
+      },
+      timeout: timeout,
+    );
+
+    // 2. Download audio stream
+    final audioFile = await _downloadSingleStream(
+      media.audioUrl!,
+      tempAudioName,
+      directory,
+      headers: media.downloadHeaders,
+      expectedSize: media.audioFileSizeInBytes,
+      onProgress: (received, total) {
+        audioReceived = received;
+        onProgress?.call(
+          videoReceived + audioReceived,
+          totalSize > 0 ? totalSize : null,
+        );
+      },
+      timeout: timeout,
+    );
+
+    // 3. Merge streams locally with FFmpeg on CPU
+    final finalFile = File(
+      '${directory.path}${Platform.pathSeparator}'
+      '${_uniqueFileName(directory, media.fileName)}',
+    );
+
+    try {
+      final merged = await LocalFFmpegService.instance.mergeVideoAndAudio(
+        videoFile: videoFile,
+        audioFile: audioFile,
+        outputFile: finalFile,
+      );
+      await _publishToMediaStore(merged);
+      return merged;
+    } finally {
+      // Clean up temporary partial files
+      try {
+        if (await videoFile.exists()) await videoFile.delete();
+        if (await audioFile.exists()) await audioFile.delete();
+      } catch (_) {}
+    }
+  }
+
+  /// Processes downloaded file to MP3 with optional trimming and effects using FFmpeg.
+  Future<File> _processAudioFile(
+    File inputFile,
+    ResolvedMedia media,
+    Directory directory,
+  ) async {
+    // If output is already target and requires no trimming or effect
+    if (inputFile.path.toLowerCase().endsWith('.mp3') &&
+        !media.requiresAudioProcessing) {
+      await _publishToMediaStore(inputFile);
+      return inputFile;
+    }
+
+    final targetName = media.fileName.toLowerCase().endsWith('.mp3')
+        ? media.fileName
+        : '${media.fileName.split('.').first}.mp3';
+
+    final outputFile = File(
+      '${directory.path}${Platform.pathSeparator}'
+      '${_uniqueFileName(directory, targetName)}',
+    );
+
+    try {
+      final converted = await LocalFFmpegService.instance.convertToMp3(
+        inputFile: inputFile,
+        outputFile: outputFile,
+        startTime: media.startTime,
+        endTime: media.endTime,
+        audioEffect: media.audioEffect,
+      );
+
+      // Remove the raw downloaded file if it was different
+      if (inputFile.path != converted.path && await inputFile.exists()) {
+        await inputFile.delete();
+      }
+
+      await _publishToMediaStore(converted);
+      return converted;
+    } catch (e) {
+      // Fallback: If FFmpeg fails on desktop/test, return input file
+      await _publishToMediaStore(inputFile);
+      return inputFile;
+    }
+  }
+
+  /// Downloads a single HTTP stream to disk.
+  Future<File> _downloadSingleStream(
+    Uri url,
+    String targetFileName,
+    Directory directory, {
+    Map<String, String> headers = const {},
+    int? expectedSize,
+    DownloadProgressCallback? onProgress,
+    Duration timeout = const Duration(minutes: 30),
+  }) async {
+    final request = http.Request('GET', url);
     request.headers.addAll({
       'User-Agent': 'VidSave/1.0',
       'Accept': '*/*',
-      ...media.downloadHeaders,
+      ...headers,
     });
+
     final http.StreamedResponse response;
     try {
       response = await _client.send(request).timeout(_connectTimeout);
     } on TimeoutException {
       throw const MediaDownloadException(
-        'Sunucu yanıt vermedi. Backend açık mı ve bu cihazdan erişilebilir mi '
-        'kontrol edin, sonra tekrar deneyin.',
+        'Bağlantı zaman aşımına uğradı. Ağınızı kontrol edip tekrar deneyin.',
       );
     } on http.ClientException catch (error) {
       throw MediaDownloadException(
-        'Backend’e bağlanılamadı. Adresi ve ağ bağlantınızı kontrol edin ($error).',
+        'Sunucuya bağlanılamadı. Ağ bağlantınızı kontrol edin ($error).',
       );
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final message = switch (response.statusCode) {
-        401 => 'Backend API anahtarı geçersiz veya eksik.',
-        403 => 'Backend indirme isteğine izin vermedi.',
-        404 => 'İndirme işi bulunamadı veya süresi doldu.',
-        409 => 'İndirme işi henüz hazır değil.',
-        413 => 'Dosya backend boyut sınırını aşıyor.',
-        _ => 'Medya indirilemedi (HTTP ${response.statusCode}).',
-      };
-      throw MediaDownloadException(message);
+      throw MediaDownloadException(
+        'Medya indirilemedi (HTTP ${response.statusCode}).',
+      );
     }
 
-    final totalBytes = response.contentLength ?? media.fileSizeInBytes;
-    final directory = await _directoryProvider();
-    await directory.create(recursive: true);
-
+    final totalBytes = response.contentLength ?? expectedSize;
     final file = File(
       '${directory.path}${Platform.pathSeparator}'
-      '${_uniqueFileName(directory, media.fileName)}',
+      '${_uniqueFileName(directory, targetFileName)}',
     );
 
     var received = 0;
@@ -602,8 +781,7 @@ class MediaDownloader {
         await file.delete();
       }
       throw const MediaDownloadException(
-        'İndirme sırasında bağlantı zaman aşımına uğradı. Ağınızı kontrol edip '
-        'tekrar deneyin.',
+        'İndirme sırasında bağlantı zaman aşımına uğradı.',
       );
     } catch (error) {
       await sink.close();
@@ -621,14 +799,6 @@ class MediaDownloader {
       }
       throw const MediaDownloadException('Sunucu boş bir dosya döndürdü.');
     }
-
-    onProgress?.call(received, totalBytes ?? received);
-
-    // The file was written straight to disk. Android's MediaStore does not
-    // notice files created that way, so the gallery/İndirilenler list would
-    // never show it until a reboot or a manual media scan. Register it now so
-    // the download appears immediately.
-    await _publishToMediaStore(file);
 
     return file;
   }

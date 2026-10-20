@@ -11,6 +11,7 @@ import 'auth_service.dart';
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
 import 'bulk_download_screen.dart';
+import 'client_media_resolver.dart';
 import 'clipboard_auto_download_service.dart';
 import 'download_item_model.dart';
 import 'download_notification_service.dart';
@@ -50,41 +51,56 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeService.themeModeNotifier,
       builder: (context, currentThemeMode, _) {
-        return ValueListenableBuilder<Locale?>(
-          valueListenable: LocaleService.localeNotifier,
-          builder: (context, currentLocale, _) {
-            return MaterialApp(
-              title: 'VidSave',
-              debugShowCheckedModeBanner: false,
-              themeMode: currentThemeMode,
-              theme: ThemeService.lightTheme,
-              darkTheme: ThemeService.darkTheme,
-              locale: currentLocale,
-              localizationsDelegates: const [
-                AppLocalizations.delegate,
-                GlobalMaterialLocalizations.delegate,
-                GlobalWidgetsLocalizations.delegate,
-                GlobalCupertinoLocalizations.delegate,
-              ],
-              supportedLocales: AppLocalizations.supportedLocales,
-              localeResolutionCallback: (deviceLocale, supportedLocales) {
-                if (currentLocale != null) return currentLocale;
-                if (deviceLocale == null) return const Locale('en');
-                for (final supported in supportedLocales) {
-                  if (supported.languageCode == deviceLocale.languageCode) {
-                    return supported;
+        final isDark = currentThemeMode == ThemeMode.dark;
+        final systemOverlayStyle = SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+          systemNavigationBarColor: isDark
+              ? ThemeService.darkBackgroundColor
+              : ThemeService.lightBackgroundColor,
+          systemNavigationBarIconBrightness:
+              isDark ? Brightness.light : Brightness.dark,
+        );
+
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: systemOverlayStyle,
+          child: ValueListenableBuilder<Locale?>(
+            valueListenable: LocaleService.localeNotifier,
+            builder: (context, currentLocale, _) {
+              return MaterialApp(
+                title: 'VidSave',
+                debugShowCheckedModeBanner: false,
+                themeMode: currentThemeMode,
+                theme: ThemeService.lightTheme,
+                darkTheme: ThemeService.darkTheme,
+                locale: currentLocale,
+                localizationsDelegates: const [
+                  AppLocalizations.delegate,
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+                supportedLocales: AppLocalizations.supportedLocales,
+                localeResolutionCallback: (deviceLocale, supportedLocales) {
+                  if (currentLocale != null) return currentLocale;
+                  if (deviceLocale == null) return const Locale('en');
+                  for (final supported in supportedLocales) {
+                    if (supported.languageCode == deviceLocale.languageCode) {
+                      return supported;
+                    }
                   }
-                }
-                // Fallback olarak İngilizce ('en')
-                return const Locale('en');
-              },
-              home: AuthGate(
-                authService: authService,
-                authenticatedBuilder: (_) => const VidSaveHomePage(),
-                guestBuilder: (_) => const WelcomeScreen(),
-              ),
-            );
-          },
+                  // Fallback olarak İngilizce ('en')
+                  return const Locale('en');
+                },
+                home: AuthGate(
+                  authService: authService,
+                  authenticatedBuilder: (_) => const VidSaveHomePage(),
+                  guestBuilder: (_) => const WelcomeScreen(),
+                ),
+              );
+            },
+          ),
         );
       },
     );
@@ -127,8 +143,9 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   late final BackendMediaResolver _backendResolver = BackendMediaResolver(
     settingsStore: _backendSettingsStore,
   );
+  late final ClientMediaResolver _clientResolver = ClientMediaResolver();
   late final MediaResolver _mediaResolver =
-      widget.mediaResolver ?? _backendResolver;
+      widget.mediaResolver ?? _clientResolver;
   late final MediaDownloader _mediaDownloader =
       widget.mediaDownloader ?? MediaDownloader();
   final _videoLibraryKey = GlobalKey<_MediaLibraryPageState>();
@@ -151,6 +168,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _clientResolver.dispose();
     super.dispose();
   }
 
@@ -178,6 +196,18 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     QuickDownloadDialog.show(
       context: context,
       videoTitle: url,
+      resolver: _mediaResolver,
+      downloader: _mediaDownloader,
+      onDownloadCompleted: (file, kind) {
+        if (!mounted) return;
+        if (kind == DownloadKind.audio) {
+          _musicLibraryKey.currentState?.reload();
+          _onDestinationSelected(1);
+        } else {
+          _videoLibraryKey.currentState?.reload();
+          _onDestinationSelected(0);
+        }
+      },
       onDownloadVideo: () {
         _triggerDirectDownload(url, kind: DownloadKind.video);
       },
