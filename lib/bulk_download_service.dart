@@ -16,7 +16,7 @@ class BulkDownloadService {
 
     return text
         .split(RegExp(r'\r?\n'))
-        .map((line) => line.trim())
+        .map((line) => evrenselTemizUrl(line.trim()))
         .where(
           (line) =>
               line.isNotEmpty &&

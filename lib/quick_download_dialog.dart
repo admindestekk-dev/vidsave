@@ -291,7 +291,8 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
     int lastNotifPercent = -1;
 
     try {
-      final parsed = Uri.parse(widget.videoTitle);
+      final cleanUrl = evrenselTemizUrl(widget.videoTitle);
+      final parsed = Uri.parse(cleanUrl);
       final media = await widget.resolver!.resolve(
         parsed,
         kind,

@@ -143,6 +143,67 @@ class ResolvedMedia {
       (audioEffect != null && audioEffect != 'normal');
 }
 
+/// Gelen ham URL dizesindeki tırnakları (" veya '), JSON ters çizgilerini (\/),
+/// Unicode (\u002F) kodlarını, hatalı "u002F" metinlerini ve protokol biçim bozukluklarını
+/// temizleyerek standart, geçerli bir "https://..." URL'sine dönüştürür.
+String evrenselTemizUrl(String hamUrl) {
+  if (hamUrl.trim().isEmpty) return '';
+
+  // 1. Tırnak işaretlerini (" veya ') ve başta/sonda kalan boşlukları temizle
+  var link = hamUrl.replaceAll('"', '').replaceAll("'", '').trim();
+
+  // 2. HTML kaçışları (&amp;)
+  link = link.replaceAll('&amp;', '&');
+
+  // 3. \u0026, \u002F, \/, \\ ters eğik çizgi ve Unicode kaçışlarını düzelt
+  link = link
+      .replaceAll(r'\u0026', '&')
+      .replaceAll(r'\u002F', '/')
+      .replaceAll(r'\u002f', '/')
+      .replaceAll(r'\/', '/')
+      .replaceAll(r'\', '/');
+
+  // 4. Hatalı kırpılma sonucu metin olarak kalmış "u002F" veya "u002f" kalıntılarını temizle
+  link = link.replaceAll(RegExp(r'u002f', caseSensitive: false), '/');
+
+  // 5. Link başındaki ardışık eğik çizgileri temizle
+  while (link.startsWith('/')) {
+    link = link.substring(1);
+  }
+
+  // Eğer metin bir arama sorgusuysa (boşluk içeriyor ve URL özellikleri taşımıyorsa) protokol ekleme
+  final hasUrlTraits = link.contains('/') || link.contains('.') || link.startsWith('http');
+  if (!hasUrlTraits) {
+    return link;
+  }
+
+  // 6. Protokol bozukluklarını düzelt
+  if (link.startsWith('http://')) {
+    // geçerli http protokolü, koru
+  } else if (link.startsWith('https://')) {
+    // geçerli https protokolü, koru
+  } else if (RegExp(r'^https:/+', caseSensitive: false).hasMatch(link)) {
+    link = link.replaceFirst(RegExp(r'^https:/+', caseSensitive: false), 'https://');
+  } else if (RegExp(r'^http:/+', caseSensitive: false).hasMatch(link)) {
+    link = link.replaceFirst(RegExp(r'^http:/+', caseSensitive: false), 'http://');
+  } else {
+    link = 'https://$link';
+  }
+
+  // 7. Protokolden hemen sonraki (host öncesi) fazla eğik çizgileri temizle (örn. https:////v16... -> https://v16...)
+  final protoMatch = RegExp(r'^(https?://)(.*)$', caseSensitive: false).firstMatch(link);
+  if (protoMatch != null) {
+    final scheme = protoMatch.group(1)!;
+    var rest = protoMatch.group(2)!;
+    while (rest.startsWith('/')) {
+      rest = rest.substring(1);
+    }
+    link = '$scheme$rest';
+  }
+
+  return link.trim();
+}
+
 /// Thrown when a link cannot be resolved into a downloadable media URL.
 class MediaResolverException implements Exception {
   const MediaResolverException(this.message);
@@ -576,13 +637,32 @@ class MediaDownloader {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
   }) async {
+    final cleanUrl = Uri.tryParse(evrenselTemizUrl(media.url.toString())) ?? media.url;
+    final cleanAudioUrl = media.audioUrl != null
+        ? (Uri.tryParse(evrenselTemizUrl(media.audioUrl.toString())) ?? media.audioUrl)
+        : null;
+    final safeMedia = ResolvedMedia(
+      url: cleanUrl,
+      fileName: media.fileName,
+      mimeType: media.mimeType,
+      fileSizeInBytes: media.fileSizeInBytes,
+      downloadHeaders: media.downloadHeaders,
+      audioUrl: cleanAudioUrl,
+      audioFileSizeInBytes: media.audioFileSizeInBytes,
+      startTime: media.startTime,
+      endTime: media.endTime,
+      audioEffect: media.audioEffect,
+      byteStreamProvider: media.byteStreamProvider,
+      audioByteStreamProvider: media.audioByteStreamProvider,
+    );
+
     final directory = await _directoryProvider();
     await directory.create(recursive: true);
 
     // Case 1: Separate video and audio streams require merging (e.g. YouTube 1080p+)
-    if (media.requiresMuxing) {
+    if (safeMedia.requiresMuxing) {
       return _downloadAndMerge(
-        media,
+        safeMedia,
         directory,
         onProgress: onProgress,
         timeout: timeout,
@@ -590,31 +670,31 @@ class MediaDownloader {
     }
 
     // Standard download (from byteStreamProvider or HTTP stream)
-    final downloadedFile = media.byteStreamProvider != null
+    final downloadedFile = safeMedia.byteStreamProvider != null
         ? await _downloadFromByteStream(
-            media.byteStreamProvider!(),
-            media.fileName,
+            safeMedia.byteStreamProvider!(),
+            safeMedia.fileName,
             directory,
-            expectedSize: media.fileSizeInBytes,
+            expectedSize: safeMedia.fileSizeInBytes,
             onProgress: onProgress,
             timeout: timeout,
           )
         : await _downloadSingleStream(
-            media.url,
-            media.fileName,
+            safeMedia.url,
+            safeMedia.fileName,
             directory,
-            headers: media.downloadHeaders,
-            expectedSize: media.fileSizeInBytes,
+            headers: safeMedia.downloadHeaders,
+            expectedSize: safeMedia.fileSizeInBytes,
             onProgress: onProgress,
             timeout: timeout,
           );
 
     // Case 2: Post-processing needed for MP3 conversion, trimming or audio effects
-    if (media.fileName.toLowerCase().endsWith('.mp3') ||
-        media.requiresAudioProcessing) {
+    if (safeMedia.fileName.toLowerCase().endsWith('.mp3') ||
+        safeMedia.requiresAudioProcessing) {
       return _processAudioFile(
         downloadedFile,
-        media,
+        safeMedia,
         directory,
       );
     }
@@ -828,7 +908,9 @@ class MediaDownloader {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
   }) async {
-    final request = http.Request('GET', url);
+    final safeUrlStr = evrenselTemizUrl(url.toString());
+    final effectiveUri = Uri.tryParse(safeUrlStr) ?? url;
+    final request = http.Request('GET', effectiveUri);
     request.headers.addAll({
       'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',

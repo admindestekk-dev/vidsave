@@ -161,7 +161,8 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
           'Toplu $typeLabel İndirme ($currentNum/$_totalCount)';
 
       try {
-        final uri = Uri.parse(currentItem.url);
+        final cleanUrl = evrenselTemizUrl(currentItem.url);
+        final uri = Uri.parse(cleanUrl);
         final media = await widget.resolver.resolve(uri, _selectedKind);
         if (!mounted) return;
 

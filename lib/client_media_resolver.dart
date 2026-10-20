@@ -112,24 +112,26 @@ class ClientMediaResolver implements MediaResolver {
 
   @override
   Future<MediaPreview> preview(Uri source, DownloadKind kind) async {
-    if (_isYouTube(source)) {
-      return _previewYouTube(source, kind);
+    final cleanSourceStr = evrenselTemizUrl(source.toString());
+    final effectiveSource = Uri.tryParse(cleanSourceStr) ?? source;
+    if (_isYouTube(effectiveSource)) {
+      return _previewYouTube(effectiveSource, kind);
     }
-    if (_isTikTok(source)) {
-      return _previewTikTok(source);
+    if (_isTikTok(effectiveSource)) {
+      return _previewTikTok(effectiveSource);
     }
-    if (_isInstagram(source)) {
-      return _previewInstagram(source);
+    if (_isInstagram(effectiveSource)) {
+      return _previewInstagram(effectiveSource);
     }
-    if (_isFacebook(source)) {
-      return _previewFacebook(source);
+    if (_isFacebook(effectiveSource)) {
+      return _previewFacebook(effectiveSource);
     }
-    if (_isPinterest(source)) {
-      return _previewPinterest(source);
+    if (_isPinterest(effectiveSource)) {
+      return _previewPinterest(effectiveSource);
     }
 
     // Generic fallback preview
-    final urlStr = source.toString();
+    final urlStr = effectiveSource.toString();
     return MediaPreview(
       title: _extractGenericTitle(urlStr),
       qualities: _defaultQualities(kind),
@@ -279,9 +281,11 @@ class ClientMediaResolver implements MediaResolver {
     double? endTime,
     String? audioEffect,
   }) async {
-    if (_isYouTube(source)) {
+    final cleanSourceStr = evrenselTemizUrl(source.toString());
+    final effectiveSource = Uri.tryParse(cleanSourceStr) ?? source;
+    if (_isYouTube(effectiveSource)) {
       return _resolveYouTube(
-        source,
+        effectiveSource,
         kind,
         height: height,
         startTime: startTime,
@@ -289,23 +293,23 @@ class ClientMediaResolver implements MediaResolver {
         audioEffect: audioEffect,
       );
     }
-    if (_isTikTok(source)) {
-      return _scrapeTikTok(source);
+    if (_isTikTok(effectiveSource)) {
+      return _scrapeTikTok(effectiveSource);
     }
-    if (_isInstagram(source)) {
-      return _scrapeInstagram(source);
+    if (_isInstagram(effectiveSource)) {
+      return _scrapeInstagram(effectiveSource);
     }
-    if (_isFacebook(source)) {
-      return _scrapeFacebook(source);
+    if (_isFacebook(effectiveSource)) {
+      return _scrapeFacebook(effectiveSource);
     }
-    if (_isPinterest(source)) {
-      return _scrapePinterest(source);
+    if (_isPinterest(effectiveSource)) {
+      return _scrapePinterest(effectiveSource);
     }
 
     // Direct media link or generic fallback
     final ext = kind == DownloadKind.audio ? '.mp3' : '.mp4';
     return ResolvedMedia(
-      url: source,
+      url: effectiveSource,
       fileName: 'vidsave_${DateTime.now().millisecondsSinceEpoch}$ext',
     );
   }
@@ -476,8 +480,7 @@ class ClientMediaResolver implements MediaResolver {
           RegExp(r'"play_addr":\s*\{\s*"url_list":\s*\["([^"]+)"').firstMatch(html);
 
       if (playAddrMatch != null) {
-        var videoUrl = playAddrMatch.group(1)!;
-        videoUrl = videoUrl.replaceAll(r'\u0026', '&').replaceAll(r'\/', '/');
+        final videoUrl = evrenselTemizUrl(playAddrMatch.group(1)!);
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'tiktok_${DateTime.now().millisecondsSinceEpoch}.mp4',
@@ -492,7 +495,7 @@ class ClientMediaResolver implements MediaResolver {
       // 2. Fallback: Search for video tag src
       final videoTagMatch = RegExp(r'<video[^>]+src="([^"]+)"').firstMatch(html);
       if (videoTagMatch != null) {
-        final videoUrl = videoTagMatch.group(1)!.replaceAll('&amp;', '&');
+        final videoUrl = evrenselTemizUrl(videoTagMatch.group(1)!);
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'tiktok_${DateTime.now().millisecondsSinceEpoch}.mp4',
@@ -516,8 +519,9 @@ class ClientMediaResolver implements MediaResolver {
           final uriStr = playUrl.toString().startsWith('http')
               ? playUrl.toString()
               : 'https://www.tikwm.com$playUrl';
+          final cleanUrl = evrenselTemizUrl(uriStr);
           return ResolvedMedia(
-            url: Uri.parse(uriStr),
+            url: Uri.parse(cleanUrl),
             fileName: '${_sanitizeFileName(title)}.mp4',
           );
         }
@@ -549,8 +553,9 @@ class ClientMediaResolver implements MediaResolver {
         );
         final location = headRes.headers.value('location');
         if (location != null && location.isNotEmpty) {
+          final cleanLocation = evrenselTemizUrl(location);
           return ResolvedMedia(
-            url: Uri.parse(location),
+            url: Uri.parse(cleanLocation),
             fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.mp4',
           );
         }
@@ -575,7 +580,7 @@ class ClientMediaResolver implements MediaResolver {
           RegExp(r'<meta\s+content="([^"]+)"\s+property="og:video"')
               .firstMatch(html);
       if (ogVideo != null) {
-        final videoUrl = ogVideo.group(1)!.replaceAll('&amp;', '&');
+        final videoUrl = evrenselTemizUrl(ogVideo.group(1)!);
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.mp4',
@@ -585,8 +590,7 @@ class ClientMediaResolver implements MediaResolver {
       // Try video_url inside script JSON
       final videoUrlMatch = RegExp(r'"video_url":\s*"([^"]+)"').firstMatch(html);
       if (videoUrlMatch != null) {
-        var videoUrl = videoUrlMatch.group(1)!;
-        videoUrl = videoUrl.replaceAll(r'\u0026', '&').replaceAll(r'\/', '/');
+        final videoUrl = evrenselTemizUrl(videoUrlMatch.group(1)!);
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.mp4',
@@ -597,7 +601,7 @@ class ClientMediaResolver implements MediaResolver {
       final ogImage = RegExp(r'<meta\s+property="og:image"\s+content="([^"]+)"')
           .firstMatch(html);
       if (ogImage != null) {
-        final imgUrl = ogImage.group(1)!.replaceAll('&amp;', '&');
+        final imgUrl = evrenselTemizUrl(ogImage.group(1)!);
         return ResolvedMedia(
           url: Uri.parse(imgUrl),
           fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.jpg',
@@ -640,8 +644,7 @@ class ClientMediaResolver implements MediaResolver {
 
       final targetMatch = hdMatch ?? sdMatch;
       if (targetMatch != null) {
-        var videoUrl = targetMatch.group(1)!;
-        videoUrl = videoUrl.replaceAll(r'\u0026', '&').replaceAll(r'\/', '/');
+        final videoUrl = evrenselTemizUrl(targetMatch.group(1)!);
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'facebook_${DateTime.now().millisecondsSinceEpoch}.mp4',
@@ -653,7 +656,7 @@ class ClientMediaResolver implements MediaResolver {
           RegExp(r'<meta\s+property="og:video:url"\s+content="([^"]+)"')
               .firstMatch(html);
       if (ogVideo != null) {
-        final videoUrl = ogVideo.group(1)!.replaceAll('&amp;', '&');
+        final videoUrl = evrenselTemizUrl(ogVideo.group(1)!);
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'facebook_${DateTime.now().millisecondsSinceEpoch}.mp4',
@@ -690,8 +693,7 @@ class ClientMediaResolver implements MediaResolver {
       final videoMatch = RegExp(r'"url":\s*"(https://[^"]+\.mp4[^"]*)"').firstMatch(html) ??
           RegExp(r'<video[^>]+src="([^"]+)"').firstMatch(html);
       if (videoMatch != null) {
-        var videoUrl = videoMatch.group(1)!;
-        videoUrl = videoUrl.replaceAll(r'\u0026', '&').replaceAll(r'\/', '/');
+        final videoUrl = evrenselTemizUrl(videoMatch.group(1)!);
         return ResolvedMedia(
           url: Uri.parse(videoUrl),
           fileName: 'pinterest_${DateTime.now().millisecondsSinceEpoch}.mp4',
@@ -704,7 +706,7 @@ class ClientMediaResolver implements MediaResolver {
           RegExp(r'<meta\s+property="og:image"\s+content="([^"]+)"').firstMatch(html);
 
       if (imgMatch != null) {
-        final imgUrl = imgMatch.group(1)!.replaceAll('&amp;', '&');
+        final imgUrl = evrenselTemizUrl(imgMatch.group(1)!);
         return ResolvedMedia(
           url: Uri.parse(imgUrl),
           fileName: 'pinterest_${DateTime.now().millisecondsSinceEpoch}.jpg',
@@ -729,7 +731,7 @@ class ClientMediaResolver implements MediaResolver {
 
   String _extractGenericTitle(String url) {
     try {
-      final u = Uri.parse(url);
+      final u = Uri.parse(evrenselTemizUrl(url));
       final last = u.pathSegments.where((s) => s.isNotEmpty).lastOrNull;
       return last != null && last.isNotEmpty ? last : 'Medya İndirme';
     } catch (_) {

@@ -231,11 +231,12 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     double? endTime,
     String? audioEffect,
   }) async {
+    final cleanUrl = evrenselTemizUrl(url);
     await AdmobService.instance.showRewardedAdOrBypass(
       onRewardEarned: () async {
         if (!mounted) return;
         await _executeDirectDownload(
-          url,
+          cleanUrl,
           kind: kind,
           startTime: startTime,
           endTime: endTime,
@@ -255,6 +256,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     // İndir sekmesine geçiş yap
     _onDestinationSelected(2);
 
+    final cleanUrl = evrenselTemizUrl(url);
     final isAudio = kind == DownloadKind.audio;
     final notificationId = DownloadNotificationService.instance
         .allocateNotificationId();
@@ -263,7 +265,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
         : 'Otomatik Video İndirme';
 
     try {
-      final parsed = Uri.parse(url);
+      final parsed = Uri.parse(cleanUrl);
       final media = await _mediaResolver.resolve(
         parsed,
         kind,
@@ -597,8 +599,8 @@ class _DownloadPageState extends State<_DownloadPage> {
   /// square never depends on the Video/Ses selector above.
   Future<void> _downloadFromTile(DownloadPlatform platform) async {
     final controller = _tileUrlControllers[platform.label];
-    final text = controller?.text.trim() ?? '';
-    if (text.isEmpty) {
+    final rawText = controller?.text.trim() ?? '';
+    if (rawText.isEmpty) {
       setState(() {
         _stateOf(platform).status = 'Bağlantı girin';
       });
@@ -606,6 +608,7 @@ class _DownloadPageState extends State<_DownloadPage> {
       return;
     }
 
+    final text = evrenselTemizUrl(rawText);
     final parsed = Uri.tryParse(text);
     final looksLikeUrl =
         parsed != null &&
@@ -1907,8 +1910,8 @@ class _PlatformSearchDownloadModalState
   }
 
   Future<void> _handleSearch() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) {
+    final rawText = _controller.text.trim();
+    if (rawText.isEmpty) {
       setState(() {
         _statusMessage = 'Arama yapmak veya indirmek için bir şey yazın.';
         _statusIsError = true;
@@ -1916,6 +1919,7 @@ class _PlatformSearchDownloadModalState
       return;
     }
 
+    final text = evrenselTemizUrl(rawText);
     final parsed = Uri.tryParse(text);
     final isUrl =
         parsed != null &&
@@ -2021,14 +2025,15 @@ class _PlatformSearchDownloadModalState
   }
 
   Future<void> _executeDownloadMusicItem(SearchResultItem item) async {
-    final parsed = Uri.tryParse(item.url);
+    final cleanUrl = evrenselTemizUrl(item.url);
+    final parsed = Uri.tryParse(cleanUrl);
     final isUrl =
         parsed != null &&
         parsed.host.isNotEmpty &&
         (parsed.isScheme('http') || parsed.isScheme('https'));
     final source = isUrl
         ? parsed
-        : Uri(path: item.url.isNotEmpty ? item.url : item.baslik);
+        : Uri(path: cleanUrl.isNotEmpty ? cleanUrl : item.baslik);
 
     setState(() {
       _downloading = true;
@@ -2169,9 +2174,10 @@ class _PlatformSearchDownloadModalState
   }
 
   Future<void> _startDownloadQuality(VideoQuality quality) async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    final rawText = _controller.text.trim();
+    if (rawText.isEmpty) return;
 
+    final text = evrenselTemizUrl(rawText);
     final parsed = Uri.tryParse(text);
     final isUrl =
         parsed != null &&
@@ -2201,7 +2207,12 @@ class _PlatformSearchDownloadModalState
     Uri? parsed,
     bool isUrl,
   ) async {
-    final source = isUrl ? parsed! : Uri(path: text);
+    final cleanText = evrenselTemizUrl(text);
+    final effectiveUri = Uri.tryParse(cleanText);
+    final isEffectiveUrl = effectiveUri != null &&
+        effectiveUri.host.isNotEmpty &&
+        (effectiveUri.isScheme('http') || effectiveUri.isScheme('https'));
+    final source = isEffectiveUrl ? effectiveUri : (isUrl && parsed != null ? parsed : Uri(path: text));
     final kind = widget.platform.isAudio
         ? DownloadKind.audio
         : DownloadKind.video;
