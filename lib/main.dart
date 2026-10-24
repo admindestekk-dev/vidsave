@@ -28,12 +28,14 @@ import 'theme_service.dart';
 import 'locale_service.dart';
 import 'video_player_screen.dart';
 import 'auth_gate.dart';
+import 'remote_config_service.dart';
 import 'welcome_screen.dart';
 import 'home_screen.dart';
 import 'admob_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  unawaited(RemoteConfigService.instance.initialize());
   unawaited(AdmobService.instance.initialize());
   unawaited(DownloadNotificationService.instance.initialize());
   unawaited(StorageService.getItems());

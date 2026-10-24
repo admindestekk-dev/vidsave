@@ -9,6 +9,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_exp;
 import 'app_dio.dart';
 import 'download_exception_handler.dart';
 import 'media_downloader.dart';
+import 'remote_config_service.dart';
 
 /// Tarayıcı çerezlerini ve kimliğini simüle eden güncel User-Agent dizeleri.
 const String kUniversalDesktopUserAgent =
@@ -208,6 +209,11 @@ class UniversalScraper {
           final host = uri.host.toLowerCase();
 
           // A) Dinamik Platform Köken ve Referans Parametreleri
+          final dynamicUserAgent = RemoteConfigService.instance.userAgent;
+          if (dynamicUserAgent.isNotEmpty) {
+            options.headers['User-Agent'] = dynamicUserAgent;
+          }
+
           if (host.contains('youtube.com') ||
               host.contains('googlevideo.com') ||
               host.contains('youtu.be')) {
@@ -422,20 +428,32 @@ class UniversalScraper {
       final res = await _dio.get<String>(source.toString());
       final html = res.data ?? '';
 
-      // 1. Script etiketlerindeki download_url, playAddr, downloadAddr regex kalıpları
-      final patterns = [
+      // 1. Dinamik Remote Config ve yerel Script etiketlerindeki regex kalıpları
+      final patterns = <RegExp>[];
+      final remotePattern = RemoteConfigService.instance.tiktokRegex;
+      if (remotePattern.isNotEmpty) {
+        for (final p in remotePattern.split('|')) {
+          if (p.trim().isNotEmpty) {
+            try {
+              patterns.add(RegExp(p.trim()));
+            } catch (_) {}
+          }
+        }
+      }
+
+      patterns.addAll([
         RegExp(r'"download_url":"(.*?)"'),
         RegExp(r'"playAddr":\s*"([^"]+)"'),
         RegExp(r'"downloadAddr":\s*"([^"]+)"'),
         RegExp(r'"play_addr":\s*\{\s*"url_list":\s*\["([^"]+)"'),
         RegExp(r'"url":\s*"(https://[^"]*tiktokcdn\.com[^"]+\.mp4[^"]*)"'),
         RegExp(r'<video[^>]+src="([^"]+)"'),
-      ];
+      ]);
 
       for (final pattern in patterns) {
         final match = pattern.firstMatch(html);
         if (match != null) {
-          final rawUrl = match.group(1)!;
+          final rawUrl = (match.groupCount >= 1 ? match.group(1) : null) ?? match.group(0)!;
           final cleanUrl = evrenselTemizUrlShield(rawUrl);
           if (cleanUrl.isNotEmpty && cleanUrl.startsWith('http')) {
             return ResolvedMedia(
@@ -443,7 +461,9 @@ class UniversalScraper {
               fileName: 'tiktok_${DateTime.now().millisecondsSinceEpoch}.mp4',
               downloadHeaders: {
                 'Referer': 'https://www.tiktok.com/',
-                'User-Agent': kUniversalMobileUserAgent,
+                'User-Agent': RemoteConfigService.instance.userAgent.isNotEmpty
+                    ? RemoteConfigService.instance.userAgent
+                    : kUniversalMobileUserAgent,
                 'Sec-Fetch-Mode': 'navigate',
               },
             );
@@ -498,17 +518,28 @@ class UniversalScraper {
       final html = res.data ?? '';
 
       // 1. Video URL Regex Kalıpları
-      final videoPatterns = [
+      final videoPatterns = <RegExp>[];
+      final remotePinterest = RemoteConfigService.instance.pinterestRegex;
+      if (remotePinterest.isNotEmpty) {
+        for (final p in remotePinterest.split('|')) {
+          if (p.trim().isNotEmpty) {
+            try {
+              videoPatterns.add(RegExp(p.trim()));
+            } catch (_) {}
+          }
+        }
+      }
+      videoPatterns.addAll([
         RegExp(r'"download_url":"(.*?)"'),
         RegExp(r'"url":\s*"(https://[^"]+\.mp4[^"]*)"'),
         RegExp(r'<video[^>]+src="([^"]+)"'),
         RegExp(r'<meta\s+property="og:video"\s+content="([^"]+)"'),
-      ];
+      ]);
 
       for (final pattern in videoPatterns) {
         final match = pattern.firstMatch(html);
         if (match != null) {
-          final rawUrl = match.group(1)!;
+          final rawUrl = (match.groupCount >= 1 ? match.group(1) : null) ?? match.group(0)!;
           final cleanUrl = evrenselTemizUrlShield(rawUrl);
           if (cleanUrl.isNotEmpty && cleanUrl.contains('.mp4')) {
             return ResolvedMedia(
@@ -517,7 +548,9 @@ class UniversalScraper {
                   'pinterest_${DateTime.now().millisecondsSinceEpoch}.mp4',
               downloadHeaders: {
                 'Referer': 'https://www.pinterest.com/',
-                'User-Agent': kUniversalDesktopUserAgent,
+                'User-Agent': RemoteConfigService.instance.userAgent.isNotEmpty
+                    ? RemoteConfigService.instance.userAgent
+                    : kUniversalDesktopUserAgent,
               },
             );
           }
@@ -601,13 +634,24 @@ class UniversalScraper {
       final res = await _dio.get<String>(source.toString());
       final html = res.data ?? '';
 
-      final twPatterns = [
+      final twPatterns = <RegExp>[];
+      final remoteTwitter = RemoteConfigService.instance.twitterRegex;
+      if (remoteTwitter.isNotEmpty) {
+        for (final p in remoteTwitter.split('|')) {
+          if (p.trim().isNotEmpty) {
+            try {
+              twPatterns.add(RegExp(p.trim()));
+            } catch (_) {}
+          }
+        }
+      }
+      twPatterns.addAll([
         RegExp(r'"download_url":"(.*?)"'),
         RegExp(r'(https://video\.twimg\.com/[^"\\]+\.mp4[^"\\]*)'),
         RegExp(r'"video_url":\s*"([^"]+)"'),
         RegExp(r'<meta\s+property="og:video:url"\s+content="([^"]+)"'),
         RegExp(r'<meta\s+property="og:video"\s+content="([^"]+)"'),
-      ];
+      ]);
 
       for (final pattern in twPatterns) {
         final match = pattern.firstMatch(html);
@@ -671,23 +715,37 @@ class UniversalScraper {
       final res = await _dio.get<String>(source.toString());
       final html = res.data ?? '';
 
-      final igPatterns = [
+      final igPatterns = <RegExp>[];
+      final remoteIg = RemoteConfigService.instance.instagramRegex;
+      if (remoteIg.isNotEmpty) {
+        for (final p in remoteIg.split('|')) {
+          if (p.trim().isNotEmpty) {
+            try {
+              igPatterns.add(RegExp(p.trim()));
+            } catch (_) {}
+          }
+        }
+      }
+      igPatterns.addAll([
         RegExp(r'"download_url":"(.*?)"'),
         RegExp(r'<meta\s+property="og:video"\s+content="([^"]+)"'),
         RegExp(r'<meta\s+content="([^"]+)"\s+property="og:video"'),
         RegExp(r'"video_url":\s*"([^"]+)"'),
-      ];
+      ]);
 
       for (final pattern in igPatterns) {
         final match = pattern.firstMatch(html);
         if (match != null) {
-          final cleanUrl = evrenselTemizUrlShield(match.group(1)!);
+          final rawUrl = (match.groupCount >= 1 ? match.group(1) : null) ?? match.group(0)!;
+          final cleanUrl = evrenselTemizUrlShield(rawUrl);
           return ResolvedMedia(
             url: Uri.parse(cleanUrl),
             fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.mp4',
             downloadHeaders: {
               'Referer': 'https://www.instagram.com/',
-              'User-Agent': kUniversalMobileUserAgent,
+              'User-Agent': RemoteConfigService.instance.userAgent.isNotEmpty
+                  ? RemoteConfigService.instance.userAgent
+                  : kUniversalMobileUserAgent,
             },
           );
         }
@@ -724,7 +782,18 @@ class UniversalScraper {
       final res = await _dio.get<String>(source.toString());
       final html = res.data ?? '';
 
-      final fbPatterns = [
+      final fbPatterns = <RegExp>[];
+      final remoteFb = RemoteConfigService.instance.facebookRegex;
+      if (remoteFb.isNotEmpty) {
+        for (final p in remoteFb.split('|')) {
+          if (p.trim().isNotEmpty) {
+            try {
+              fbPatterns.add(RegExp(p.trim()));
+            } catch (_) {}
+          }
+        }
+      }
+      fbPatterns.addAll([
         RegExp(r'"download_url":"(.*?)"'),
         RegExp(r'"playable_url_quality_hd":\s*"([^"]+)"'),
         RegExp(r'"hd_src":\s*"([^"]+)"'),
@@ -732,18 +801,21 @@ class UniversalScraper {
         RegExp(r'"sd_src":\s*"([^"]+)"'),
         RegExp(r'<meta\s+property="og:video"\s+content="([^"]+)"'),
         RegExp(r'<meta\s+property="og:video:url"\s+content="([^"]+)"'),
-      ];
+      ]);
 
       for (final pattern in fbPatterns) {
         final match = pattern.firstMatch(html);
         if (match != null) {
-          final cleanUrl = evrenselTemizUrlShield(match.group(1)!);
+          final rawUrl = (match.groupCount >= 1 ? match.group(1) : null) ?? match.group(0)!;
+          final cleanUrl = evrenselTemizUrlShield(rawUrl);
           return ResolvedMedia(
             url: Uri.parse(cleanUrl),
             fileName: 'facebook_${DateTime.now().millisecondsSinceEpoch}.mp4',
             downloadHeaders: {
               'Referer': 'https://www.facebook.com/',
-              'User-Agent': kUniversalDesktopUserAgent,
+              'User-Agent': RemoteConfigService.instance.userAgent.isNotEmpty
+                  ? RemoteConfigService.instance.userAgent
+                  : kUniversalDesktopUserAgent,
             },
           );
         }
@@ -967,6 +1039,70 @@ class UniversalScraper {
     );
   }
 
+  /// K) PYTHON BACKEND YEDEK GÜVENCESİ (Fallback URL):
+  /// Cihaz içi tüm regex ve kazıma algoritmaları başarısız olursa, Remote Config'den
+  /// gelen `backup_api_url` adresine istek göndererek medyayı garantili çözer.
+  Future<ResolvedMedia> extractWithBackendFallback(
+    Uri source,
+    DownloadKind kind, {
+    required String backupApiUrl,
+    int? height,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
+  }) async {
+    final baseUri = Uri.parse(evrenselTemizUrlShield(backupApiUrl));
+    final body = <String, dynamic>{
+      'url': source.toString(),
+      'kind': kind == DownloadKind.audio ? 'audio' : 'video',
+      if (height != null && height > 0) 'height': height,
+      if (startTime != null && startTime > 0) 'start_time': startTime,
+      if (endTime != null && endTime > 0) 'end_time': endTime,
+      if (audioEffect != null && audioEffect.isNotEmpty) 'audio_effect': audioEffect,
+    };
+
+    final res = await _dio.post<Map<String, dynamic>>(
+      baseUri.resolve('/api/resolve').toString(),
+      data: body,
+      options: Options(
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': kUniversalDesktopUserAgent,
+        },
+      ),
+    );
+
+    final data = res.data;
+    if (data == null) {
+      throw const MediaResolverException('Yedek backend boş yanıt döndürdü.');
+    }
+
+    final status = (data['status'] as String? ?? '').toLowerCase();
+    if (status == 'ready' || status == 'ok') {
+      final downloadUrl = data['url']?.toString();
+      if (downloadUrl != null && downloadUrl.isNotEmpty) {
+        final parsedUrl = Uri.tryParse(downloadUrl);
+        final effectiveUrl = (parsedUrl != null && parsedUrl.hasScheme)
+            ? parsedUrl
+            : baseUri.resolve(downloadUrl);
+        final title = data['title']?.toString() ?? 'media';
+        final ext = kind == DownloadKind.audio ? '.mp3' : '.mp4';
+        return ResolvedMedia(
+          url: effectiveUrl,
+          fileName: '${_sanitizeFileName(title)}$ext',
+          downloadHeaders: {
+            'User-Agent': kUniversalDesktopUserAgent,
+          },
+        );
+      }
+    }
+
+    throw MediaResolverException(
+      data['error']?.toString() ?? 'Yedek backend medyayı çözemedi.',
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // EVRENSEL DİREKSİYON (Universal Dispatcher)
   // ---------------------------------------------------------------------------
@@ -1034,7 +1170,30 @@ class UniversalScraper {
       }
     }
 
-    // 3. İki motor da başarısız olduysa kontrollü ve güvenli hata fırlat
+    // 3. PYTHON BACKEND YEDEK GÜVENCESİ (FALLBACK URL)
+    // Eğer buluttan gelen tüm yerel regex kalıpları başarısız olursa, Remote Config üzerinden
+    // yönetilen backup_api_url parametresine isteği yönlendirerek garantili çöz
+    if (result == null) {
+      final backupUrl = RemoteConfigService.instance.backupApiUrl.trim();
+      if (backupUrl.isNotEmpty) {
+        try {
+          debugPrint('UniversalScraper: Python Backend Yedek Güvencesine (backup_api_url) yönlendiriliyor: $backupUrl');
+          result = await extractWithBackendFallback(
+            effectiveSource,
+            kind,
+            backupApiUrl: backupUrl,
+            height: height,
+            startTime: startTime,
+            endTime: endTime,
+            audioEffect: audioEffect,
+          );
+        } catch (backendError) {
+          debugPrint('UniversalScraper: Python Backend Yedek API de başarısız oldu: $backendError');
+        }
+      }
+    }
+
+    // 4. Tüm motorlar başarısız olduysa kontrollü ve güvenli hata fırlat
     if (result == null) {
       throw DownloadExceptionHandler.mapToResolverException(primaryError, effectiveSource);
     }

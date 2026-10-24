@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vid_downloader_app/app_dio.dart';
 import 'package:vid_downloader_app/download_exception_handler.dart';
 import 'package:vid_downloader_app/media_downloader.dart';
+import 'package:vid_downloader_app/remote_config_service.dart';
 import 'package:vid_downloader_app/universal_scraper.dart';
 
 void main() {
@@ -523,6 +524,73 @@ void main() {
         DownloadExceptionHandler.getFriendlyMessage(typeErr, null),
         contains('formatta'),
       );
+    });
+  });
+
+  group('5. Firebase Remote Config & Dinamik Regex & Backend Fallback Testleri', () {
+    test('RemoteConfigService varsayılan fallback değerleri eksiksiz tanımlıdır', () {
+      final service = RemoteConfigService.instance;
+      expect(service.tiktokRegex.isNotEmpty, isTrue);
+      expect(service.instagramRegex.isNotEmpty, isTrue);
+      expect(service.facebookRegex.isNotEmpty, isTrue);
+      expect(service.twitterRegex.isNotEmpty, isTrue);
+      expect(service.pinterestRegex.isNotEmpty, isTrue);
+      expect(service.userAgent.isNotEmpty, isTrue);
+    });
+
+    test('RemoteConfigService setOverride ile dinamik regex güncellenebilir', () {
+      final service = RemoteConfigService.instance;
+      service.setOverride('tiktok_regex', r'"custom_remote_url":"(.*?)"');
+      expect(service.tiktokRegex, equals(r'"custom_remote_url":"(.*?)"'));
+      service.clearOverrides();
+    });
+
+    test('Lokal motor ve regex fallback başarısız olursa backup_api_url Python backend devreye girer', () async {
+      final dio = Dio();
+      final scraper = UniversalScraper(dioClient: dio);
+
+      RemoteConfigService.instance.setOverride('backup_api_url', 'https://api.vidsave.fake/backend');
+
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            final uri = opts.uri.toString();
+            // Eğer backup api isteğiyse başarılı yanıt simüle et
+            if (uri.contains('/api/resolve')) {
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: {
+                    'status': 'ok',
+                    'url': 'https://storage.vidsave.fake/videos/python_resolved_video.mp4',
+                    'title': 'Garantili Python Video',
+                  },
+                ),
+              );
+            } else {
+              // Lokal istek başarısız olsun ve boş/bozuk veri döndürsün
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: '<html>Bozuk ve link içermeyen sayfa</html>',
+                ),
+              );
+            }
+          },
+        ),
+      );
+
+      final result = await scraper.resolve(
+        Uri.parse('https://www.tiktok.com/@user/video/fail_case'),
+        DownloadKind.video,
+      );
+
+      expect(result.url.toString(), 'https://storage.vidsave.fake/videos/python_resolved_video.mp4');
+      expect(result.fileName, contains('Garantili Python Video'));
+
+      RemoteConfigService.instance.clearOverrides();
     });
   });
 }
