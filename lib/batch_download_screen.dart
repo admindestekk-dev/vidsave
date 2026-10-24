@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'admob_service.dart';
 import 'app_dio.dart';
 import 'client_media_resolver.dart';
+import 'download_exception_handler.dart';
 import 'download_item_model.dart';
 import 'download_notification_service.dart';
 import 'downloads_screen.dart';
@@ -36,11 +37,7 @@ class BatchRowState {
 /// Premium AdMob ödüllü reklam onaylı ve Dio 403 tarayıcı başlıklarıyla
 /// tüm medyaları cihaz içinde (Client-Side) sırayla indiren Toplu İndirme Ekranı.
 class BatchDownloadScreen extends StatefulWidget {
-  const BatchDownloadScreen({
-    super.key,
-    this.resolver,
-    this.downloader,
-  });
+  const BatchDownloadScreen({super.key, this.resolver, this.downloader});
 
   final MediaResolver? resolver;
   final MediaDownloader? downloader;
@@ -129,7 +126,9 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
     if (filledIndices.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Lütfen indirmek için en az bir geçerli video veya müzik linki girin.'),
+          content: Text(
+            'Lütfen indirmek için en az bir geçerli video veya müzik linki girin.',
+          ),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -156,7 +155,9 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Reklam tamamlanmadığı için toplu indirme başlatılamadı.'),
+              content: Text(
+                'Reklam tamamlanmadığı için toplu indirme başlatılamadı.',
+              ),
               backgroundColor: Colors.redAccent,
             ),
           );
@@ -175,9 +176,7 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
       context: context,
       barrierDismissible: true,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: isDark ? const Color(0xFF1E2630) : Colors.white,
         title: const Row(
           children: [
@@ -190,10 +189,7 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
             Expanded(
               child: Text(
                 'Ücretsiz İndirme Hakkı Kazan!',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -214,7 +210,9 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
                 child: TextButton(
                   onPressed: () => Navigator.of(dialogCtx).pop(false),
                   style: TextButton.styleFrom(
-                    foregroundColor: isDark ? Colors.white60 : Colors.grey.shade700,
+                    foregroundColor: isDark
+                        ? Colors.white60
+                        : Colors.grey.shade700,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -247,10 +245,7 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
                   child: const Text(
                     'Reklamı İzle ve Başlat',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
@@ -292,15 +287,17 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
 
       // İndirilen satırı işaretle
       setState(() {
-        _overallStatusText = '$currentNum/$_totalActiveCount $typeLabel İndiriliyor…';
+        _overallStatusText =
+            '$currentNum/$_totalActiveCount $typeLabel İndiriliyor…';
         _rowStates[rowIndex].status = BatchItemStatus.downloading;
         _rowStates[rowIndex].progress = null;
         _rowStates[rowIndex].error = null;
       });
 
-      final notificationId =
-          DownloadNotificationService.instance.allocateNotificationId();
-      final defaultNotifTitle = 'Toplu $typeLabel İndirme ($currentNum/$_totalActiveCount)';
+      final notificationId = DownloadNotificationService.instance
+          .allocateNotificationId();
+      final defaultNotifTitle =
+          'Toplu $typeLabel İndirme ($currentNum/$_totalActiveCount)';
 
       try {
         // A) EVRENSEL URL TEMİZLEME KALKANI
@@ -336,8 +333,9 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
             if (!mounted) return;
             final pct = downloadPercent(received, total);
             setState(() {
-              _rowStates[rowIndex].progress =
-                  (total == null || total <= 0) ? null : received / total;
+              _rowStates[rowIndex].progress = (total == null || total <= 0)
+                  ? null
+                  : received / total;
             });
             if (pct != null) {
               unawaited(
@@ -387,11 +385,8 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
           _completedCount++;
         });
       } catch (err) {
-        final errorMsg = switch (err) {
-          MediaResolverException(:final message) => message,
-          MediaDownloadException(:final message) => message,
-          _ => 'İndirme başarısız oldu.',
-        };
+        final errorMsg =
+            DownloadExceptionHandler.getFriendlyMessage(err, context);
 
         unawaited(
           DownloadNotificationService.instance.showError(
@@ -528,7 +523,11 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
       ),
       child: const Row(
         children: [
-          Icon(Icons.layers_rounded, color: ThemeService.primaryColor, size: 26),
+          Icon(
+            Icons.layers_rounded,
+            color: ThemeService.primaryColor,
+            size: 26,
+          ),
           SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -628,10 +627,16 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
-                value: _totalActiveCount > 0 ? _completedCount / _totalActiveCount : 0,
+                value: _totalActiveCount > 0
+                    ? _completedCount / _totalActiveCount
+                    : 0,
                 minHeight: 6,
-                backgroundColor: ThemeService.primaryColor.withValues(alpha: 0.15),
-                valueColor: const AlwaysStoppedAnimation<Color>(ThemeService.primaryColor),
+                backgroundColor: ThemeService.primaryColor.withValues(
+                  alpha: 0.15,
+                ),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  ThemeService.primaryColor,
+                ),
               ),
             ),
           ],
@@ -646,7 +651,9 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
   /// Sağ: Canlı CircularProgressIndicator, Durum İkonu veya Kırmızı Silme Butonu
   Widget _buildRowItem(int index, bool isDark) {
     final controller = _controllers[index];
-    final rowState = index < _rowStates.length ? _rowStates[index] : BatchRowState();
+    final rowState = index < _rowStates.length
+        ? _rowStates[index]
+        : BatchRowState();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10.0),
@@ -732,9 +739,7 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
           SizedBox(
             width: 40,
             height: 40,
-            child: Center(
-              child: _buildRowTrailing(index, rowState),
-            ),
+            child: Center(child: _buildRowTrailing(index, rowState)),
           ),
         ],
       ),
@@ -752,7 +757,9 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
           child: CircularProgressIndicator(
             strokeWidth: 2.5,
             value: state.progress,
-            valueColor: const AlwaysStoppedAnimation<Color>(ThemeService.primaryColor),
+            valueColor: const AlwaysStoppedAnimation<Color>(
+              ThemeService.primaryColor,
+            ),
           ),
         );
       case BatchItemStatus.completed:
@@ -800,16 +807,16 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
       style: OutlinedButton.styleFrom(
         side: const BorderSide(color: ThemeService.primaryColor, width: 1.5),
         padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 20),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }
 
   /// Ekranın en altındaki büyük, oval ve canlı turuncu renkli 'Toplu İndirmeyi Başlat' (ElevatedButton)
   Widget _buildStartBulkDownloadButton() {
-    final activeCount = _controllers.where((c) => c.text.trim().isNotEmpty).length;
+    final activeCount = _controllers
+        .where((c) => c.text.trim().isNotEmpty)
+        .length;
 
     return SizedBox(
       width: double.infinity,
@@ -830,8 +837,8 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
           _isDownloading
               ? 'Toplu İndirme Devam Ediyor… ($_completedCount/$_totalActiveCount)'
               : (activeCount > 0
-                  ? 'Toplu İndirmeyi Başlat ($activeCount Link)'
-                  : 'Toplu İndirmeyi Başlat'),
+                    ? 'Toplu İndirmeyi Başlat ($activeCount Link)'
+                    : 'Toplu İndirmeyi Başlat'),
           style: const TextStyle(
             fontSize: 15.5,
             fontWeight: FontWeight.bold,

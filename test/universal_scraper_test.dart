@@ -1,0 +1,528 @@
+import 'package:dio/dio.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vid_downloader_app/app_dio.dart';
+import 'package:vid_downloader_app/download_exception_handler.dart';
+import 'package:vid_downloader_app/media_downloader.dart';
+import 'package:vid_downloader_app/universal_scraper.dart';
+
+void main() {
+  group('1. Global Kazıyıcı Motor Yapılandırması (universal_scraper.dart)', () {
+    late UniversalScraper scraper;
+
+    setUp(() {
+      scraper = UniversalScraper();
+    });
+
+    tearDown(() {
+      scraper.dispose();
+    });
+
+    test('Dio motoru istenen kalıcı ayarlarla yapılandırılmıştır', () {
+      final options = scraper.dio.options;
+
+      // followRedirects: true
+      expect(options.followRedirects, isTrue);
+
+      // maxRedirects: 8
+      expect(options.maxRedirects, equals(8));
+
+      // validateStatus: (status) => status! < 500
+      expect(options.validateStatus(200), isTrue);
+      expect(options.validateStatus(400), isTrue);
+      expect(options.validateStatus(403), isTrue);
+      expect(options.validateStatus(404), isTrue);
+      expect(options.validateStatus(499), isTrue);
+      expect(options.validateStatus(500), isFalse);
+      expect(options.validateStatus(502), isFalse);
+
+      // Headers: User-Agent, Sec-Fetch-Mode: navigate
+      expect(options.headers['User-Agent'], equals(kUniversalDesktopUserAgent));
+      expect(options.headers['Sec-Fetch-Mode'], equals('navigate'));
+      expect(options.headers['Sec-Fetch-Site'], equals('cross-site'));
+    });
+
+    test('Dinamik Interceptor platform bazlı Referer ve Origin başlıklarını üretir', () async {
+      final dio = scraper.dio;
+      RequestOptions? capturedOptions;
+
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            capturedOptions = opts;
+            handler.resolve(
+              Response(
+                requestOptions: opts,
+                statusCode: 200,
+                data: '<html>ok</html>',
+              ),
+            );
+          },
+        ),
+      );
+
+      // TikTok
+      await dio.get<dynamic>('https://www.tiktok.com/@user/video/123');
+      expect(capturedOptions?.headers['Referer'], 'https://www.tiktok.com/');
+      expect(capturedOptions?.headers['Origin'], 'https://www.tiktok.com');
+
+      // Instagram
+      await dio.get<dynamic>('https://www.instagram.com/reel/xyz/');
+      expect(capturedOptions?.headers['Referer'], 'https://www.instagram.com/');
+      expect(capturedOptions?.headers['Origin'], 'https://www.instagram.com');
+
+      // Facebook
+      await dio.get<dynamic>('https://www.facebook.com/watch/?v=999');
+      expect(capturedOptions?.headers['Referer'], 'https://www.facebook.com/');
+      expect(capturedOptions?.headers['Origin'], 'https://www.facebook.com');
+
+      // Pinterest
+      await dio.get<dynamic>('https://www.pinterest.com/pin/123/');
+      expect(capturedOptions?.headers['Referer'], 'https://www.pinterest.com/');
+      expect(capturedOptions?.headers['Origin'], 'https://www.pinterest.com');
+
+      // Twitter / X
+      await dio.get<dynamic>('https://twitter.com/user/status/456');
+      expect(capturedOptions?.headers['Referer'], 'https://twitter.com/');
+      expect(capturedOptions?.headers['Origin'], 'https://twitter.com');
+
+      // Vimeo
+      await dio.get<dynamic>('https://vimeo.com/789');
+      expect(capturedOptions?.headers['Referer'], 'https://vimeo.com/');
+      expect(capturedOptions?.headers['Origin'], 'https://vimeo.com');
+
+      // Dailymotion
+      await dio.get<dynamic>('https://www.dailymotion.com/video/x123');
+      expect(
+        capturedOptions?.headers['Referer'],
+        'https://www.dailymotion.com/',
+      );
+      expect(capturedOptions?.headers['Origin'], 'https://www.dailymotion.com');
+    });
+
+    test('CookieManager oturum çerezlerini hafızadan okuyup Cookie başlığına enjekte eder', () async {
+      final jar = InMemoryCookieJar();
+      final cookieManager = UniversalCookieManager(memoryJar: jar);
+      final scraperWithJar = UniversalScraper(cookieManager: cookieManager);
+
+      // Instagram oturum çerezleri
+      cookieManager.saveCookie(
+        'instagram.com',
+        'sessionid',
+        'mock_session_123',
+      );
+      cookieManager.saveCookie('instagram.com', 'ds_user_id', '987654');
+
+      RequestOptions? captured;
+      scraperWithJar.dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            captured = options;
+            handler.resolve(
+              Response(requestOptions: options, statusCode: 200, data: 'ok'),
+            );
+          },
+        ),
+      );
+
+      await scraperWithJar.dio.get<dynamic>(
+        'https://www.instagram.com/p/mock/',
+      );
+
+      expect(
+        captured?.headers['Cookie'],
+        contains('sessionid=mock_session_123'),
+      );
+      expect(captured?.headers['Cookie'], contains('ds_user_id=987654'));
+    });
+  });
+
+  group('2. Evrensel URL Temizlik Kalkanı (evrenselTemizUrlShield)', () {
+    test('Tırnak işaretlerini (" veya \') otomatik ayıklar', () {
+      expect(
+        evrenselTemizUrlShield('"https://example.com/video.mp4"'),
+        'https://example.com/video.mp4',
+      );
+      expect(
+        evrenselTemizUrlShield("'https://example.com/audio.mp3'"),
+        'https://example.com/audio.mp3',
+      );
+    });
+
+    test(r'JSON kaçış çizgilerini (\/) ve Unicode (\u002F, \u0026) kalıntılarını temizler', () {
+      const rawJson =
+          r'https:\/\/v16-webapp.tiktokcdn.com\/video\/test.mp4?param=1\u0026v=2';
+      expect(
+        evrenselTemizUrlShield(rawJson),
+        'https://v16-webapp.tiktokcdn.com/video/test.mp4?param=1&v=2',
+      );
+    });
+
+    test('Metin kalıntısı "u002F" durumunu tamir eder', () {
+      const raw = 'https://u002F/u002Fv16-webapp-prime.tiktokcdn.com/video.mp4';
+      expect(
+        evrenselTemizUrlShield(raw),
+        'https://v16-webapp-prime.tiktokcdn.com/video.mp4',
+      );
+    });
+
+    test('Eksik protokollerin başına https: ekler ve protokol anomalilerini düzeltir', () {
+      expect(
+        evrenselTemizUrlShield('//v16.tiktokcdn.com/video.mp4'),
+        'https://v16.tiktokcdn.com/video.mp4',
+      );
+      expect(
+        evrenselTemizUrlShield('https:///v16.tiktokcdn.com/video.mp4'),
+        'https://v16.tiktokcdn.com/video.mp4',
+      );
+      expect(
+        evrenselTemizUrlShield('https:/v16.tiktokcdn.com/video.mp4'),
+        'https://v16.tiktokcdn.com/video.mp4',
+      );
+      expect(
+        evrenselTemizUrlShield('instagram.com/reel/12345'),
+        'https://instagram.com/reel/12345',
+      );
+    });
+  });
+
+  group('3. Platform Kazıyıcıları & Regex Çözümleme Testleri', () {
+    test(
+      'TikTok HTML içindeki script regexleri ve download_url kalıplarını çözer',
+      () async {
+        final dio = Dio();
+        dio.interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (opts, handler) {
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: '''
+                <html>
+                  <script id="SIGI_STATE">
+                    {"ItemModule":{"123":{"playAddr":"https:\\/\\/v16-webapp.tiktokcdn.com\\/video.mp4"}}}
+                  </script>
+                </html>
+                ''',
+                ),
+              );
+            },
+          ),
+        );
+
+        final scraper = UniversalScraper(dioClient: dio);
+        final result = await scraper.extractTikTok(
+          Uri.parse('https://www.tiktok.com/@test/video/123'),
+        );
+
+        expect(
+          result.url.toString(),
+          'https://v16-webapp.tiktokcdn.com/video.mp4',
+        );
+        expect(result.fileName.endsWith('.mp4'), isTrue);
+      },
+    );
+
+    test(
+      'Pinterest HTML içindeki download_url veya mp4 regexini çözer',
+      () async {
+        final dio = Dio();
+        dio.interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (opts, handler) {
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: '''
+                <html>
+                  <script>
+                    var data = {"download_url":"https:\\/\\/v.pinimg.com\\/videos\\/mc\\/720p\\/pin.mp4"};
+                  </script>
+                </html>
+                ''',
+                ),
+              );
+            },
+          ),
+        );
+
+        final scraper = UniversalScraper(dioClient: dio);
+        final result = await scraper.extractPinterest(
+          Uri.parse('https://pin.it/abc'),
+        );
+
+        expect(
+          result.url.toString(),
+          'https://v.pinimg.com/videos/mc/720p/pin.mp4',
+        );
+        expect(result.fileName.endsWith('.mp4'), isTrue);
+      },
+    );
+
+    test('Twitter HTML içindeki twimg video regexini çözer', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            handler.resolve(
+              Response(
+                requestOptions: opts,
+                statusCode: 200,
+                data: '''
+                <html>
+                  <meta property="og:video:url" content="https://video.twimg.com/ext_tw_video/123/pu/vid/720x1280/clip.mp4" />
+                </html>
+                ''',
+              ),
+            );
+          },
+        ),
+      );
+
+      final scraper = UniversalScraper(dioClient: dio);
+      final result = await scraper.extractTwitter(
+        Uri.parse('https://x.com/user/status/123'),
+      );
+
+      expect(result.url.toString(), contains('video.twimg.com'));
+      expect(result.fileName.endsWith('.mp4'), isTrue);
+    });
+
+    test(
+      'Facebook HTML içindeki playable_url_quality_hd regexini çözer',
+      () async {
+        final dio = Dio();
+        dio.interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (opts, handler) {
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: r'''
+                <html>
+                  <script>
+                    "playable_url_quality_hd":"https:\/\/video.xx.fbcdn.net\/v\/t39\/fb_hd.mp4"
+                  </script>
+                </html>
+                ''',
+                ),
+              );
+            },
+          ),
+        );
+
+        final scraper = UniversalScraper(dioClient: dio);
+        final result = await scraper.extractFacebook(
+          Uri.parse('https://www.facebook.com/watch/?v=123'),
+        );
+
+        expect(
+          result.url.toString(),
+          'https://video.xx.fbcdn.net/v/t39/fb_hd.mp4',
+        );
+        expect(result.fileName.endsWith('.mp4'), isTrue);
+      },
+    );
+
+    test('Vimeo progressive JSON config formatını çözer', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            handler.resolve(
+              Response(
+                requestOptions: opts,
+                statusCode: 200,
+                data: {
+                  'request': {
+                    'files': {
+                      'progressive': [
+                        {
+                          'quality': '1080p',
+                          'url': 'https://vod-progressive.akamaized.net/vimeo_1080p.mp4',
+                        },
+                      ],
+                    },
+                  },
+                },
+              ),
+            );
+          },
+        ),
+      );
+
+      final scraper = UniversalScraper(dioClient: dio);
+      final result = await scraper.extractVimeo(
+        Uri.parse('https://vimeo.com/123456'),
+      );
+
+      expect(
+        result.url.toString(),
+        'https://vod-progressive.akamaized.net/vimeo_1080p.mp4',
+      );
+    });
+
+    test('Dailymotion metadata JSON formatını çözer', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            handler.resolve(
+              Response(
+                requestOptions: opts,
+                statusCode: 200,
+                data: {
+                  'qualities': {
+                    'auto': [
+                      {
+                        'type': 'video/mp4',
+                        'url': 'https://www.dailymotion.com/cdn/dm_video.mp4',
+                      },
+                    ],
+                  },
+                },
+              ),
+            );
+          },
+        ),
+      );
+
+      final scraper = UniversalScraper(dioClient: dio);
+      final result = await scraper.extractDailymotion(
+        Uri.parse('https://www.dailymotion.com/video/x8mock'),
+      );
+
+      expect(
+        result.url.toString(),
+        'https://www.dailymotion.com/cdn/dm_video.mp4',
+      );
+    });
+
+    test(
+      'resolve() tüm çıktıları evrenselTemizUrlShield süzgecinden geçirir',
+      () async {
+        final scraper = UniversalScraper();
+        final sample = Uri.parse('https://example.com/test.mp4');
+        final resolved = await scraper.resolve(sample, DownloadKind.video);
+
+        expect(resolved.url.isScheme('https'), isTrue);
+        expect(resolved.downloadHeaders.isNotEmpty, isTrue);
+      },
+    );
+  });
+
+  group('4. Evrensel Hata Yakalama ve Regex Fallback (Emniyet Supabı) Testleri', () {
+    test('extractWithRegexFallback ham HTML içindeki .mp4 linkini başarıyla cımbızlar', () async {
+      final dio = Dio();
+      final scraper = UniversalScraper(dioClient: dio);
+
+      const mockHtml = '''
+        <html>
+          <div>Bazı bozuk scriptler...</div>
+          <script>
+            var config = {
+              "video_url": "https:\\/\\/cdn.example.com\\/videos\\/source_video.mp4?token=123"
+            };
+          </script>
+        </html>
+      ''';
+
+      final result = await scraper.extractWithRegexFallback(
+        Uri.parse('https://example.com/video_post'),
+        DownloadKind.video,
+        rawData: mockHtml,
+      );
+
+      expect(result.url.toString(), 'https://cdn.example.com/videos/source_video.mp4?token=123');
+      expect(result.fileName.endsWith('.mp4'), isTrue);
+    });
+
+    test('extractWithRegexFallback ham HTML içindeki .mp3 ses linkini başarıyla cımbızlar', () async {
+      final dio = Dio();
+      final scraper = UniversalScraper(dioClient: dio);
+
+      const mockHtml = '''
+        <html>
+          <audio src="https://cdn.example.com/music/track_audio.mp3"></audio>
+        </html>
+      ''';
+
+      final result = await scraper.extractWithRegexFallback(
+        Uri.parse('https://example.com/audio_post'),
+        DownloadKind.audio,
+        rawData: mockHtml,
+      );
+
+      expect(result.url.toString(), 'https://cdn.example.com/music/track_audio.mp3');
+      expect(result.fileName.endsWith('.mp3'), isTrue);
+    });
+
+    test('Ana çözümleyici DioException aldığında otomatik Regex Fallback devreye girer', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            // Ana TikTok isteklerinde hata simülasyonu yap ama HTML'de yedek video linki barındır
+            handler.resolve(
+              Response(
+                requestOptions: opts,
+                statusCode: 200,
+                data: '''
+                <html>
+                  <script>
+                    var obj = {"download_url": "https://cdn.fallback.com/video/recovered.mp4"};
+                  </script>
+                </html>
+                ''',
+              ),
+            );
+          },
+        ),
+      );
+
+      final scraper = UniversalScraper(dioClient: dio);
+      // TikTok regex kalıpları eşleşmese bile fallback devreye girip linki cımbızlar
+      final result = await scraper.resolve(
+        Uri.parse('https://www.tiktok.com/@user/video/fallback_test'),
+        DownloadKind.video,
+      );
+
+      expect(result.url.toString(), contains('recovered.mp4'));
+    });
+
+    test('DownloadExceptionHandler DioException, FormatException ve TypeError için güvenli mesaj üretir', () {
+      final dioTimeout = DioException(
+        requestOptions: RequestOptions(path: ''),
+        type: DioExceptionType.connectionTimeout,
+      );
+      expect(
+        DownloadExceptionHandler.getFriendlyMessage(dioTimeout, null),
+        contains('zaman aşımına'),
+      );
+
+      final dioForbidden = DioException(
+        requestOptions: RequestOptions(path: ''),
+        type: DioExceptionType.badResponse,
+        response: Response(requestOptions: RequestOptions(path: ''), statusCode: 403),
+      );
+      expect(
+        DownloadExceptionHandler.getFriendlyMessage(dioForbidden, null),
+        contains('403 Forbidden'),
+      );
+
+      final formatErr = const FormatException('Invalid JSON format');
+      expect(
+        DownloadExceptionHandler.getFriendlyMessage(formatErr, null),
+        contains('ayrıştırılamadı'),
+      );
+
+      final typeErr = TypeError();
+      expect(
+        DownloadExceptionHandler.getFriendlyMessage(typeErr, null),
+        contains('formatta'),
+      );
+    });
+  });
+}

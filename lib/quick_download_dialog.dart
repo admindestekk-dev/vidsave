@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'admob_service.dart';
 import 'client_media_resolver.dart';
+import 'download_exception_handler.dart';
 import 'download_item_model.dart';
 import 'download_notification_service.dart';
 import 'media_downloader.dart';
@@ -411,11 +412,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
       );
     } catch (e, stack) {
       debugPrint('QuickDownloadDialog download error: $e\n$stack');
-      final errorMsg = switch (e) {
-        MediaResolverException(:final message) => message,
-        MediaDownloadException(:final message) => message,
-        _ => 'İndirme tamamlanamadı: $e',
-      };
+      final errorMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
 
       unawaited(
         DownloadNotificationService.instance.showError(
@@ -429,15 +426,11 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
       setState(() {
         _isDownloading = false;
+        _downloadProgress = 0.0;
+        _downloadSpeed = '0 MB/s';
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      DownloadExceptionHandler.showErrorSnackBar(context, e);
     }
   }
 

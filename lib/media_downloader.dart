@@ -958,6 +958,17 @@ class MediaDownloader {
     } else if (host.contains('pinterest.com') || host.contains('pinimg.com')) {
       browserHeaders['Referer'] = 'https://www.pinterest.com/';
       browserHeaders['Origin'] = 'https://www.pinterest.com';
+    } else if (host.contains('twitter.com') ||
+        host.contains('x.com') ||
+        host.contains('twimg.com')) {
+      browserHeaders['Referer'] = 'https://twitter.com/';
+      browserHeaders['Origin'] = 'https://twitter.com';
+    } else if (host.contains('vimeo.com') || host.contains('vimeocdn.com')) {
+      browserHeaders['Referer'] = 'https://vimeo.com/';
+      browserHeaders['Origin'] = 'https://vimeo.com';
+    } else if (host.contains('dailymotion.com') || host.contains('dmcdn.net')) {
+      browserHeaders['Referer'] = 'https://www.dailymotion.com/';
+      browserHeaders['Origin'] = 'https://www.dailymotion.com';
     }
 
     // Çerez havuzundaki geçerli çerezleri isteğe dahil et

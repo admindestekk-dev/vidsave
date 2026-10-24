@@ -97,6 +97,13 @@ class AppLocalizations {
       'all_cleared': 'Tüm indirme geçmişi temizlendi.',
       'platform_mismatch':
           'Bu bağlantı seçilen platforma ait değil! Lütfen doğru bağlantı yapıştırın.',
+      'err_download_failed': 'İndirme tamamlanamadı. Lütfen tekrar deneyin.',
+      'err_connection_timeout': 'Bağlantı zaman aşımına uğradı. Ağınızı kontrol edin.',
+      'err_connection': 'Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.',
+      'err_access_denied': 'Erişim engellendi veya içerik korumalı (403 Forbidden).',
+      'err_not_found': 'Medya veya sayfa bulunamadı (404 Not Found).',
+      'err_server': 'Medya sunucusunda geçici bir hata oluştu.',
+      'err_format': 'Medya formatı ayrıştırılamadı.',
     },
     'en': {
       'app_title': 'VidSave',
@@ -148,6 +155,13 @@ class AppLocalizations {
       'all_cleared': 'All download history cleared.',
       'platform_mismatch':
           'This link does not belong to the selected platform! Please paste a valid link.',
+      'err_download_failed': 'Download failed. Please try again.',
+      'err_connection_timeout': 'Connection timed out. Check your network.',
+      'err_connection': 'Could not connect to server. Check your internet connection.',
+      'err_access_denied': 'Access denied or content is protected (403 Forbidden).',
+      'err_not_found': 'Media or page not found (404 Not Found).',
+      'err_server': 'Temporary error on the media server.',
+      'err_format': 'Media format could not be parsed.',
     },
     'de': {
       'app_title': 'VidSave',

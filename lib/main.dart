@@ -13,6 +13,7 @@ import 'backend_settings.dart';
 import 'bulk_download_screen.dart';
 import 'client_media_resolver.dart';
 import 'clipboard_auto_download_service.dart';
+import 'download_exception_handler.dart';
 import 'download_item_model.dart';
 import 'download_notification_service.dart';
 import 'download_platforms.dart';
@@ -341,11 +342,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       );
     } catch (e, stack) {
       debugPrint('Direct download error: $e\n$stack');
-      final errorMsg = switch (e) {
-        MediaResolverException(:final message) => message,
-        MediaDownloadException(:final message) => message,
-        _ => 'İndirme tamamlanamadı: $e',
-      };
+      final errorMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
 
       unawaited(
         DownloadNotificationService.instance.showError(
@@ -356,13 +353,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      DownloadExceptionHandler.showErrorSnackBar(context, e);
     }
   }
 
@@ -739,11 +730,8 @@ class _DownloadPageState extends State<_DownloadPage> {
       });
     } catch (error, stack) {
       debugPrint('Tile download error: $error\n$stack');
-      final errorMsg = switch (error) {
-        MediaResolverException(:final message) => message,
-        MediaDownloadException(:final message) => message,
-        _ => 'İndirme tamamlanamadı: $error',
-      };
+      final errorMsg =
+          DownloadExceptionHandler.getFriendlyMessage(error, context);
       unawaited(
         DownloadNotificationService.instance.showError(
           id: notificationId,
@@ -758,6 +746,7 @@ class _DownloadPageState extends State<_DownloadPage> {
           ..progress = null
           ..status = errorMsg;
       });
+      DownloadExceptionHandler.showErrorSnackBar(context, error);
     }
   }
 
@@ -2338,11 +2327,8 @@ class _PlatformSearchDownloadModalState
         }
       });
     } catch (error) {
-      final errorMsg = switch (error) {
-        MediaResolverException(:final message) => message,
-        MediaDownloadException(:final message) => message,
-        _ => 'İndirme tamamlanamadı: $error',
-      };
+      final errorMsg =
+          DownloadExceptionHandler.getFriendlyMessage(error, context);
       unawaited(
         DownloadNotificationService.instance.showError(
           id: notificationId,
@@ -2355,9 +2341,11 @@ class _PlatformSearchDownloadModalState
         _downloading = false;
         _downloadingUrl = null;
         _downloadProgress = null;
+        _downloadSpeed = null;
         _statusMessage = errorMsg;
         _statusIsError = true;
       });
+      DownloadExceptionHandler.showErrorSnackBar(context, error);
     }
   }
 
@@ -2526,11 +2514,8 @@ class _PlatformSearchDownloadModalState
         }
       });
     } catch (error) {
-      final errorMsg = switch (error) {
-        MediaResolverException(:final message) => message,
-        MediaDownloadException(:final message) => message,
-        _ => 'İndirme tamamlanamadı: $error',
-      };
+      final errorMsg =
+          DownloadExceptionHandler.getFriendlyMessage(error, context);
       unawaited(
         DownloadNotificationService.instance.showError(
           id: notificationId,
@@ -2543,9 +2528,11 @@ class _PlatformSearchDownloadModalState
         _downloading = false;
         _downloadingHeight = null;
         _downloadProgress = null;
+        _downloadSpeed = null;
         _statusMessage = errorMsg;
         _statusIsError = true;
       });
+      DownloadExceptionHandler.showErrorSnackBar(context, error);
     }
   }
 

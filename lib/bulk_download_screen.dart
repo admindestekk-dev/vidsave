@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'backend_settings.dart';
 import 'bulk_download_service.dart';
+import 'download_exception_handler.dart';
 import 'download_item_model.dart';
 import 'download_notification_service.dart';
 import 'downloads_screen.dart';
@@ -238,11 +239,8 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
           currentItem.progress = 1.0;
         });
       } catch (err) {
-        final errorMsg = switch (err) {
-          MediaResolverException(:final message) => message,
-          MediaDownloadException(:final message) => message,
-          _ => 'İndirilemedi',
-        };
+        final errorMsg =
+            DownloadExceptionHandler.getFriendlyMessage(err, context);
 
         unawaited(
           DownloadNotificationService.instance.showError(

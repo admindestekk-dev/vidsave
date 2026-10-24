@@ -75,6 +75,19 @@ class InMemoryCookieJar {
       } else if ((host.contains('facebook.com') || host.contains('fbcdn.net')) &&
           (domain.contains('facebook.com') || domain.contains('fbcdn.net'))) {
         matchedCookies.addAll(entry.value);
+      } else if ((host.contains('twitter.com') ||
+              host.contains('x.com') ||
+              host.contains('twimg.com')) &&
+          (domain.contains('twitter.com') ||
+              domain.contains('x.com') ||
+              domain.contains('twimg.com'))) {
+        matchedCookies.addAll(entry.value);
+      } else if ((host.contains('vimeo.com') || host.contains('vimeocdn.com')) &&
+          (domain.contains('vimeo.com') || domain.contains('vimeocdn.com'))) {
+        matchedCookies.addAll(entry.value);
+      } else if ((host.contains('dailymotion.com') || host.contains('dmcdn.net')) &&
+          (domain.contains('dailymotion.com') || domain.contains('dmcdn.net'))) {
+        matchedCookies.addAll(entry.value);
       }
     }
 
@@ -82,6 +95,21 @@ class InMemoryCookieJar {
     return matchedCookies.entries
         .map((e) => '${e.key}=${e.value}')
         .join('; ');
+  }
+
+  /// Manually saves or overrides a cookie key-value pair for a domain.
+  void saveCookie(String domain, String name, String value) {
+    var d = domain.trim().toLowerCase();
+    if (d.startsWith('.')) d = d.substring(1);
+    if (d.isNotEmpty && name.trim().isNotEmpty) {
+      _cookiesByDomain.putIfAbsent(d, () => <String, String>{});
+      _cookiesByDomain[d]![name.trim()] = value.trim();
+    }
+  }
+
+  /// Saves multiple cookies at once for a given domain.
+  void setCookies(String domain, Map<String, String> cookies) {
+    cookies.forEach((k, v) => saveCookie(domain, k, v));
   }
 
   /// Returns an immutable copy of all cached cookies for debugging or testing.
@@ -129,6 +157,17 @@ class CookieAndMaskingInterceptor extends Interceptor {
     } else if (host.contains('pinterest.com') || host.contains('pinimg.com')) {
       options.headers['Referer'] = 'https://www.pinterest.com/';
       options.headers['Origin'] = 'https://www.pinterest.com';
+    } else if (host.contains('twitter.com') ||
+        host.contains('x.com') ||
+        host.contains('twimg.com')) {
+      options.headers['Referer'] = 'https://twitter.com/';
+      options.headers['Origin'] = 'https://twitter.com';
+    } else if (host.contains('vimeo.com') || host.contains('vimeocdn.com')) {
+      options.headers['Referer'] = 'https://vimeo.com/';
+      options.headers['Origin'] = 'https://vimeo.com';
+    } else if (host.contains('dailymotion.com') || host.contains('dmcdn.net')) {
+      options.headers['Referer'] = 'https://www.dailymotion.com/';
+      options.headers['Origin'] = 'https://www.dailymotion.com';
     } else if (!options.headers.containsKey('Referer')) {
       options.headers['Referer'] = '${uri.scheme}://${uri.host}';
       options.headers['Origin'] = '${uri.scheme}://${uri.host}';
@@ -188,7 +227,8 @@ class AppDio {
         connectTimeout: const Duration(seconds: 30),
         receiveTimeout: const Duration(minutes: 30),
         followRedirects: true,
-        maxRedirects: 10,
+        maxRedirects: 8,
+        validateStatus: (status) => status != null && status < 500,
         headers: {
           'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
