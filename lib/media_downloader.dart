@@ -4,12 +4,14 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart' as dio;
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import 'app_dio.dart';
 import 'ffmpeg_service.dart';
+import 'remote_config_service.dart';
 
 /// Turns a social-media URL into a direct, downloadable media URL.
 ///
@@ -216,11 +218,35 @@ class MediaResolverException implements Exception {
   String toString() => message;
 }
 
+/// Minimum geçerli medya dosya boyutu güvenlik sigortası eşiği (1 MB = 1024 * 1024 bayt).
+/// Sahte HTML hata sayfaları (2 KB - 50 KB) bu eşiğe takılarak cihaz hafızasına yazılması engellenir.
+const int kMinValidMediaBytes = 1024 * 1024;
+
 /// Thrown when the resolved media URL cannot be downloaded to disk.
 class MediaDownloadException implements Exception {
   const MediaDownloadException(this.message);
 
   final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// 3 Aşamalı Güvenlik Kalkanı İstisnası:
+/// Sunucudan video/audio yerine HTML/JSON/metin veya 1 MB altı sahte dosya
+/// döndüğünde fırlatılır; dosyanın cihaza yazılmasını ve video oynatıcıda
+/// PlatformException(VideoError, Source error) çökmesini kalıcı olarak engeller.
+class MediaVerificationException extends MediaDownloadException {
+  const MediaVerificationException(
+    super.message, {
+    this.contentType,
+    this.contentLength,
+    this.isBotBlock = false,
+  });
+
+  final String? contentType;
+  final int? contentLength;
+  final bool isBotBlock;
 
   @override
   String toString() => message;
@@ -977,6 +1003,101 @@ class MediaDownloader {
       browserHeaders['Cookie'] = cookieHeader;
     }
 
+    // =========================================================================
+    // 3 AŞAMALI MUTLAK GÜVENLİK KALKANI:
+    // 1. AŞAMA: İNDİRME ÖNCESİ "HEAD RESPONSE" DENETİMİ
+    // 2. AŞAMA: DOSYA BOYUTU GÜVENLİK SİGORTASI (1 MB ALTI BLOKE)
+    // 3. AŞAMA: OTOMATİK TAMİR SİNYALİ (REMOTE CONFIG ENTEGRASYONU)
+    // =========================================================================
+    try {
+      final headResponse = await _dio.head<dynamic>(
+        effectiveUri.toString(),
+        options: dio.Options(
+          headers: browserHeaders,
+          followRedirects: true,
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      ).timeout(const Duration(seconds: 15));
+
+      final contentTypeHeader =
+          (headResponse.headers.value('content-type') ?? '').toLowerCase().trim();
+      final contentLengthStr = headResponse.headers.value('content-length');
+      final contentLengthVal =
+          contentLengthStr != null ? int.tryParse(contentLengthStr) : null;
+
+      // 1. AŞAMA DENETİMİ: Content-Type kontrolü
+      final isBannedContentType = contentTypeHeader.contains('text/html') ||
+          contentTypeHeader.contains('application/json') ||
+          contentTypeHeader.contains('text/plain');
+
+      final isMediaContentType = contentTypeHeader.startsWith('video/') ||
+          contentTypeHeader.startsWith('audio/') ||
+          contentTypeHeader.contains('application/octet-stream') ||
+          contentTypeHeader.contains('application/x-mpegurl') ||
+          contentTypeHeader.contains('application/vnd.apple.mpegurl');
+
+      if (contentTypeHeader.isNotEmpty && (isBannedContentType || !isMediaContentType)) {
+        // Derhal indirmeyi iptal et (abort), dosyayı diske yazma!
+        if (await file.exists()) {
+          try {
+            await file.delete();
+          } catch (_) {}
+        }
+
+        // 3. AŞAMA: Remote Config'e gizli hata sinyali bildir
+        unawaited(
+          RemoteConfigService.instance.reportBotBlockSignal(
+            failedUrl: effectiveUri,
+            reason: 'Banned or non-media content-type: $contentTypeHeader',
+            contentType: contentTypeHeader,
+            contentLength: contentLengthVal,
+          ),
+        );
+
+        throw MediaVerificationException(
+          'Geçersiz içerik türü tespit edildi ($contentTypeHeader). İndirme güvenlik kalkanı tarafından durduruldu.',
+          contentType: contentTypeHeader,
+          contentLength: contentLengthVal,
+          isBotBlock: true,
+        );
+      }
+
+      // 2. AŞAMA DENETİMİ: Content-Length dosya boyutu güvenlik sigortası
+      // Gelen HTML hata sayfaları genellikle 2 KB - 50 KB arasıdır.
+      // 1 MB'tan küçükse indirmeyi durdur ve kullanıcıya uyarı fırlat.
+      if (contentLengthVal != null && contentLengthVal > 0 && contentLengthVal < kMinValidMediaBytes) {
+        if (await file.exists()) {
+          try {
+            await file.delete();
+          } catch (_) {}
+        }
+
+        // 3. AŞAMA: Remote Config'e gizli hata sinyali bildir
+        unawaited(
+          RemoteConfigService.instance.reportBotBlockSignal(
+            failedUrl: effectiveUri,
+            reason: 'Media size too small (<1MB): $contentLengthVal bytes',
+            contentType: contentTypeHeader,
+            contentLength: contentLengthVal,
+          ),
+        );
+
+        throw MediaVerificationException(
+          'Medya kaynağı çok küçük veya geçersiz, lütfen linki yenileyip tekrar deneyin',
+          contentType: contentTypeHeader,
+          contentLength: contentLengthVal,
+          isBotBlock: true,
+        );
+      }
+    } on MediaVerificationException {
+      rethrow;
+    } catch (headError) {
+      // Sunucu HEAD isteğini desteklemiyorsa (405 Method Not Allowed / 403 vb.)
+      // veya zaman aşımına uğradıysa logla ve doğrudan indirme aşamasına devam et.
+      // İndirme sonrasında dosya boyutu kontrolü 2. sigorta olarak çalışacaktır.
+      debugPrint('MediaDownloader HEAD denetim uyarısı: $headError');
+    }
+
     // 1. Birincil İndirme Denemesi: Global Dio motoru ile Set-Cookie + Browser Headers Maskesi
     try {
       await _dio.download(
@@ -994,9 +1115,34 @@ class MediaDownloader {
         },
       ).timeout(timeout);
 
-      if (await file.exists() && await file.length() > 0) {
+      if (await file.exists()) {
+        final downloadedLength = await file.length();
+
+        // 2. AŞAMA POST-DOWNLOAD SİGORTASI: İndirilen dosya 1 MB altındaysa veya HTML içeriyorsa sil
+        if (downloadedLength < kMinValidMediaBytes) {
+          try {
+            await file.delete();
+          } catch (_) {}
+
+          unawaited(
+            RemoteConfigService.instance.reportBotBlockSignal(
+              failedUrl: effectiveUri,
+              reason: 'Downloaded file smaller than 1MB: $downloadedLength bytes',
+              contentLength: downloadedLength,
+            ),
+          );
+
+          throw MediaVerificationException(
+            'Medya kaynağı çok küçük veya geçersiz, lütfen linki yenileyip tekrar deneyin',
+            contentLength: downloadedLength,
+            isBotBlock: true,
+          );
+        }
+
         return file;
       }
+    } on MediaVerificationException {
+      rethrow;
     } on dio.DioException catch (e) {
       if (await file.exists()) {
         try {
@@ -1076,6 +1222,27 @@ class MediaDownloader {
         await file.delete();
       }
       throw const MediaDownloadException('Sunucu boş bir dosya döndürdü.');
+    }
+
+    // 2. AŞAMA POST-DOWNLOAD SİGORTASI (HTTP Streaming için):
+    // İndirilen dosya 1 MB altındaysa veya HTML hata sayfasıysa sil ve kullanıcıyı uyar
+    final downloadedLength = await file.length();
+    if (downloadedLength < kMinValidMediaBytes) {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      unawaited(
+        RemoteConfigService.instance.reportBotBlockSignal(
+          failedUrl: effectiveUri,
+          reason: 'Streamed file smaller than 1MB: $downloadedLength bytes',
+          contentLength: downloadedLength,
+        ),
+      );
+      throw MediaVerificationException(
+        'Medya kaynağı çok küçük veya geçersiz, lütfen linki yenileyip tekrar deneyin',
+        contentLength: downloadedLength,
+        isBotBlock: true,
+      );
     }
 
     return file;

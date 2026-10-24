@@ -404,7 +404,29 @@ void main() {
     test(
       'resolve() tüm çıktıları evrenselTemizUrlShield süzgecinden geçirir',
       () async {
-        final scraper = UniversalScraper();
+        final dio = Dio();
+        final scraper = UniversalScraper(dioClient: dio);
+        dio.interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (opts, handler) {
+              if (opts.method == 'HEAD') {
+                handler.resolve(
+                  Response(
+                    requestOptions: opts,
+                    statusCode: 200,
+                    headers: Headers.fromMap({
+                      'content-type': ['video/mp4'],
+                      'content-length': ['5242880'], // 5 MB
+                    }),
+                  ),
+                );
+              } else {
+                handler.next(opts);
+              }
+            },
+          ),
+        );
+
         final sample = Uri.parse('https://example.com/test.mp4');
         final resolved = await scraper.resolve(sample, DownloadKind.video);
 
@@ -589,6 +611,128 @@ void main() {
 
       expect(result.url.toString(), 'https://storage.vidsave.fake/videos/python_resolved_video.mp4');
       expect(result.fileName, contains('Garantili Python Video'));
+
+      RemoteConfigService.instance.clearOverrides();
+    });
+
+    test('3 Aşamalı Güvenlik Kalkanı: HEAD yanıtında text/html tespit edildiğinde yedek hat devreye girer', () async {
+      final dio = Dio();
+      final scraper = UniversalScraper(dioClient: dio);
+
+      RemoteConfigService.instance.setOverride('backup_api_url', 'https://api.vidsave.fake/backend');
+
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            final uri = opts.uri.toString();
+            if (opts.method == 'HEAD' && uri.contains('tiktokcdn.com')) {
+              // Bot koruması: platform HTML sayfası döndürüyor (sahte dosya tuzağı)
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  headers: Headers.fromMap({
+                    'content-type': ['text/html; charset=utf-8'],
+                    'content-length': ['12450'], // 12 KB HTML hata sayfası
+                  }),
+                ),
+              );
+            } else if (uri.contains('/api/resolve')) {
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: {
+                    'status': 'ok',
+                    'url': 'https://storage.vidsave.fake/videos/python_repaired.mp4',
+                    'title': 'Onarilmis Guvenli Video',
+                  },
+                ),
+              );
+            } else if (uri.contains('tiktok.com')) {
+              // Sayfa HTML'i içinde sahte video linki var
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: '<html>"playAddr":"https://v16-webapp-prime.tiktokcdn.com/bot_trap.mp4"</html>',
+                ),
+              );
+            } else {
+              handler.next(opts);
+            }
+          },
+        ),
+      );
+
+      final result = await scraper.resolve(
+        Uri.parse('https://www.tiktok.com/@user/video/bot_trap_case'),
+        DownloadKind.video,
+      );
+
+      // Bot korumalı sahte link HEAD denetiminde elenip Remote Config backup_api_url hattından garantili çözülmeli
+      expect(result.url.toString(), 'https://storage.vidsave.fake/videos/python_repaired.mp4');
+      expect(result.fileName, contains('Onarilmis Guvenli Video'));
+
+      RemoteConfigService.instance.clearOverrides();
+    });
+
+    test('3 Aşamalı Güvenlik Kalkanı: HEAD yanıtında dosya boyutu 1 MB altı (<1024*1024) tespit edildiğinde yedek hat devreye girer', () async {
+      final dio = Dio();
+      final scraper = UniversalScraper(dioClient: dio);
+
+      RemoteConfigService.instance.setOverride('backup_api_url', 'https://api.vidsave.fake/backend');
+
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            final uri = opts.uri.toString();
+            if (opts.method == 'HEAD' && uri.contains('tiny_video.mp4')) {
+              // 50 KB sahte video / hata sayfası
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  headers: Headers.fromMap({
+                    'content-type': ['video/mp4'],
+                    'content-length': ['51200'], // 50 KB (< 1 MB)
+                  }),
+                ),
+              );
+            } else if (uri.contains('/api/resolve')) {
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: {
+                    'status': 'ok',
+                    'url': 'https://storage.vidsave.fake/videos/python_repaired_size.mp4',
+                    'title': 'Onarilmis Boyut Guvenli Video',
+                  },
+                ),
+              );
+            } else if (uri.contains('instagram.com')) {
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: '<html><meta property="og:video" content="https://instagram.com/cdn/tiny_video.mp4" /></html>',
+                ),
+              );
+            } else {
+              handler.next(opts);
+            }
+          },
+        ),
+      );
+
+      final result = await scraper.resolve(
+        Uri.parse('https://www.instagram.com/reel/tiny_reel/'),
+        DownloadKind.video,
+      );
+
+      expect(result.url.toString(), 'https://storage.vidsave.fake/videos/python_repaired_size.mp4');
+      expect(result.fileName, contains('Onarilmis Boyut Guvenli Video'));
 
       RemoteConfigService.instance.clearOverrides();
     });

@@ -1103,6 +1103,77 @@ class UniversalScraper {
     );
   }
 
+  /// 3 AŞAMALI GÜVENLİK KALKANI: MEDYA DOĞRULAMA FONKSİYONU
+  ///
+  /// İndirme başlamadan önce linke hafif bir dio.head() isteği atarak Content-Type
+  /// ve Content-Length başlıklarını okur.
+  /// • Eğer tür text/html, application/json veya text/plain ise,
+  /// • Veya boyut 1 MB'tan (1024 * 1024 bayt) küçükse,
+  /// Remote Config servisine gizli hata sinyali raporlar ve `false` döndürür.
+  Future<bool> _verifyResolvedMediaSecurity(ResolvedMedia media, Uri originalSource) async {
+    // ByteStreamProvider (Örn. YoutubeExplode doğrudan pipe akışı) varsa HTTP HEAD gerekmez
+    if (media.byteStreamProvider != null) {
+      return true;
+    }
+
+    try {
+      final response = await _dio.head<dynamic>(
+        media.url.toString(),
+        options: Options(
+          headers: media.downloadHeaders,
+          followRedirects: true,
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      ).timeout(const Duration(seconds: 10));
+
+      final contentType =
+          (response.headers.value('content-type') ?? '').toLowerCase().trim();
+      final lengthStr = response.headers.value('content-length');
+      final length = lengthStr != null ? int.tryParse(lengthStr) : null;
+
+      final isBanned = contentType.contains('text/html') ||
+          contentType.contains('application/json') ||
+          contentType.contains('text/plain');
+
+      final isMedia = contentType.startsWith('video/') ||
+          contentType.startsWith('audio/') ||
+          contentType.contains('application/octet-stream') ||
+          contentType.contains('application/x-mpegurl') ||
+          contentType.contains('application/vnd.apple.mpegurl');
+
+      if (contentType.isNotEmpty && (isBanned || !isMedia)) {
+        unawaited(
+          RemoteConfigService.instance.reportBotBlockSignal(
+            failedUrl: media.url,
+            reason: 'Scraper HEAD returned banned or non-media contentType: $contentType',
+            contentType: contentType,
+            contentLength: length,
+          ),
+        );
+        return false;
+      }
+
+      if (length != null && length > 0 && length < kMinValidMediaBytes) {
+        unawaited(
+          RemoteConfigService.instance.reportBotBlockSignal(
+            failedUrl: media.url,
+            reason: 'Scraper HEAD returned size < 1MB: $length bytes',
+            contentType: contentType,
+            contentLength: length,
+          ),
+        );
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      // HEAD isteği başarısız olduysa (örn. 405 Method Not Allowed) akışı kesme,
+      // asıl Dio.download katmanındaki güvenlik sigortası korumayı tamamlar.
+      debugPrint('UniversalScraper _verifyResolvedMediaSecurity uyarısı: $e');
+      return true;
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // EVRENSEL DİREKSİYON (Universal Dispatcher)
   // ---------------------------------------------------------------------------
@@ -1155,6 +1226,32 @@ class UniversalScraper {
       } else {
         result = await extractGeneric(effectiveSource, kind);
       }
+
+      // Güvenlik Kalkanı 1. ve 2. Aşama Denetimi:
+      // Eğer birincil motor bir HTTP linki döndürdüyse (ve bilinen platform kazıyıcılarından geldiyse),
+      // sahte HTML/JSON veya <1MB bot engeli mi kontrol et
+      final isGeneric = !host.contains('youtube.com') &&
+          !host.contains('youtu.be') &&
+          !host.contains('tiktok.com') &&
+          !host.contains('douyin.com') &&
+          !host.contains('instagram.com') &&
+          !host.contains('facebook.com') &&
+          !host.contains('fb.watch') &&
+          !host.contains('fb.com') &&
+          !host.contains('pinterest.com') &&
+          !host.contains('pin.it') &&
+          !host.contains('twitter.com') &&
+          !host.contains('x.com') &&
+          !host.contains('vimeo.com') &&
+          !host.contains('dailymotion.com');
+
+      if (!isGeneric && result.byteStreamProvider == null && result.url.hasScheme) {
+        final isSecure = await _verifyResolvedMediaSecurity(result, effectiveSource);
+        if (!isSecure) {
+          debugPrint('UniversalScraper: Birincil motor sahte HTML / bot kalkanına takıldı! Otomatik tamir ve yedek hatta yönlendiriliyor...');
+          result = null;
+        }
+      }
     } catch (e, stack) {
       debugPrint('UniversalScraper: Ana çözümleyici hata verdi ($e), Yedek Regex Çözümleyiciye geçiliyor...\n$stack');
       primaryError = e;
@@ -1164,15 +1261,21 @@ class UniversalScraper {
     // Eğer ana çözümleyici motoru hata verirse, otomatik devreye girer
     if (result == null) {
       try {
-        result = await extractWithRegexFallback(effectiveSource, kind);
+        final regexResult = await extractWithRegexFallback(effectiveSource, kind);
+        final isSecure = await _verifyResolvedMediaSecurity(regexResult, effectiveSource);
+        if (isSecure) {
+          result = regexResult;
+        } else {
+          debugPrint('UniversalScraper: Regex fallback sonucu da sahte HTML veya <1MB bot tuzağı!');
+        }
       } catch (fallbackError) {
         debugPrint('UniversalScraper: Yedek regex çözümleyici de başarısız oldu: $fallbackError');
       }
     }
 
-    // 3. PYTHON BACKEND YEDEK GÜVENCESİ (FALLBACK URL)
-    // Eğer buluttan gelen tüm yerel regex kalıpları başarısız olursa, Remote Config üzerinden
-    // yönetilen backup_api_url parametresine isteği yönlendirerek garantili çöz
+    // 3. PYTHON BACKEND YEDEK GÜVENCESİ (FALLBACK URL - OTOMATİK TAMİR SİNYALİ)
+    // Eğer buluttan gelen tüm yerel regex kalıpları başarısız olursa veya sahte HTML tespit edilirse,
+    // Remote Config üzerinden yönetilen backup_api_url parametresine isteği yönlendirerek garantili çöz
     if (result == null) {
       final backupUrl = RemoteConfigService.instance.backupApiUrl.trim();
       if (backupUrl.isNotEmpty) {

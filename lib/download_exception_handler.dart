@@ -31,6 +31,9 @@ class DownloadExceptionHandler {
     }
 
     // 1. Zaten özelleştirilmiş çözücü ve indirme istisnaları
+    if (error is MediaVerificationException) {
+      return error.message;
+    }
     if (error is MediaResolverException) {
       return error.message;
     }
@@ -93,7 +96,8 @@ class DownloadExceptionHandler {
 
     // 4. Genel Geri Dönüş
     final errStr = error.toString();
-    if (errStr.contains('MediaResolverException:') ||
+    if (errStr.contains('MediaVerificationException:') ||
+        errStr.contains('MediaResolverException:') ||
         errStr.contains('MediaDownloadException:')) {
       return errStr.replaceFirst(RegExp(r'^.*?Exception:\s*'), '');
     }
@@ -140,9 +144,7 @@ class DownloadExceptionHandler {
         backgroundColor: const Color(0xFFD32F2F),
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 4),
       ),
     );

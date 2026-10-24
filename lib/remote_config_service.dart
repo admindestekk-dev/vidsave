@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
@@ -24,18 +25,12 @@ class RemoteConfigService {
 
   /// Yerel varsayılan (fallback) kurallar
   static const Map<String, dynamic> _defaultParameters = {
-    'tiktok_regex':
-        r'"download_url":"(.*?)"|"playAddr":\s*"([^"]+)"|"downloadAddr":\s*"([^"]+)"|"url":\s*"(https://[^"]*tiktokcdn\.com[^"]+\.mp4[^"]*)"',
-    'instagram_regex':
-        r'"download_url":"(.*?)"|<meta\s+property="og:video"\s+content="([^"]+)"|<meta\s+content="([^"]+)"\s+property="og:video"|"video_url":\s*"([^"]+)"',
-    'facebook_regex':
-        r'"download_url":"(.*?)"|"playable_url_quality_hd":\s*"([^"]+)"|"hd_src":\s*"([^"]+)"|"playable_url":\s*"([^"]+)"|"sd_src":\s*"([^"]+)"',
-    'twitter_regex':
-        r'"download_url":"(.*?)"|(https://video\.twimg\.com/[^"\\]+\.mp4[^"\\]*)|"video_url":\s*"([^"]+)"|<meta\s+property="og:video:url"\s+content="([^"]+)"',
-    'pinterest_regex':
-        r'"download_url":"(.*?)"|"url":\s*"(https://[^"]+\.mp4[^"]*)"|"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
-    'user_agent_string':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'tiktok_regex': r'"download_url":"(.*?)"|"playAddr":\s*"([^"]+)"|"downloadAddr":\s*"([^"]+)"|"url":\s*"(https://[^"]*tiktokcdn\.com[^"]+\.mp4[^"]*)"',
+    'instagram_regex': r'"download_url":"(.*?)"|<meta\s+property="og:video"\s+content="([^"]+)"|<meta\s+content="([^"]+)"\s+property="og:video"|"video_url":\s*"([^"]+)"',
+    'facebook_regex': r'"download_url":"(.*?)"|"playable_url_quality_hd":\s*"([^"]+)"|"hd_src":\s*"([^"]+)"|"playable_url":\s*"([^"]+)"|"sd_src":\s*"([^"]+)"',
+    'twitter_regex': r'"download_url":"(.*?)"|(https://video\.twimg\.com/[^"\\]+\.mp4[^"\\]*)|"video_url":\s*"([^"]+)"|<meta\s+property="og:video:url"\s+content="([^"]+)"',
+    'pinterest_regex': r'"download_url":"(.*?)"|"url":\s*"(https://[^"]+\.mp4[^"]*)"|"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
+    'user_agent_string': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'backup_api_url': '',
   };
 
@@ -74,9 +69,13 @@ class RemoteConfigService {
       await _remoteConfig!.setDefaults(_defaultParameters);
       await fetchAndActivate();
       _initialized = true;
-      debugPrint('RemoteConfigService: Firebase Remote Config başarıyla hazırlandı.');
+      debugPrint(
+        'RemoteConfigService: Firebase Remote Config başarıyla hazırlandı.',
+      );
     } catch (e) {
-      debugPrint('RemoteConfigService başlatma uyarısı (Varsayılan yerel kurallar kullanılacak): $e');
+      debugPrint(
+        'RemoteConfigService başlatma uyarısı (Varsayılan yerel kurallar kullanılacak): $e',
+      );
       _initialized = true;
     }
   }
@@ -86,7 +85,9 @@ class RemoteConfigService {
     if (_remoteConfig == null) return false;
     try {
       final updated = await _remoteConfig!.fetchAndActivate();
-      debugPrint('RemoteConfigService: fetchAndActivate tamamlandı (Güncelleme: $updated)');
+      debugPrint(
+        'RemoteConfigService: fetchAndActivate tamamlandı (Güncelleme: $updated)',
+      );
       return updated;
     } catch (e) {
       debugPrint('RemoteConfigService fetch hatası: $e');
@@ -96,7 +97,8 @@ class RemoteConfigService {
 
   /// Parametreyi dinamik olarak okur (Bulut -> Yerel Fallback)
   String getString(String key) {
-    if (_customOverrides.containsKey(key) && _customOverrides[key]!.isNotEmpty) {
+    if (_customOverrides.containsKey(key) &&
+        _customOverrides[key]!.isNotEmpty) {
       return _customOverrides[key]!;
     }
 
@@ -118,6 +120,30 @@ class RemoteConfigService {
   /// Override temizleme
   void clearOverrides() {
     _customOverrides.clear();
+  }
+
+  /// 3. AŞAMA: OTOMATİK TAMİR SİNYALİ (REMOTE CONFIG ENTEGRASYONU)
+  ///
+  /// Eğer bir link güvenlik kalkanına takılırsa (sahte HTML, bot koruması, 1 MB altı vb.),
+  /// bu metot Remote Config servisine gizlice hata sinyali raporlar ve buluttan en güncel
+  /// konfigürasyonu (yedek hat `backup_api_url` vb.) anında yenileyip çeker.
+  Future<void> reportBotBlockSignal({
+    required Uri failedUrl,
+    required String reason,
+    String? contentType,
+    int? contentLength,
+  }) async {
+    debugPrint(
+      'RemoteConfigService [GİZLİ HATA SİNYALİ]: Bot koruması veya sahte HTML tespit edildi! '
+      'Link: $failedUrl | Sebep: $reason | Type: $contentType | Length: $contentLength bayt',
+    );
+
+    // Buluttan en güncel ayarları hemen yenile (anlık fetch & activate)
+    try {
+      await fetchAndActivate();
+    } catch (e) {
+      debugPrint('RemoteConfigService: Sinyal sonrası fetch uyarısı: $e');
+    }
   }
 
   // Kolay erişim metotları
