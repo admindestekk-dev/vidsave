@@ -54,7 +54,14 @@ class BulkDownloadService {
           'Backend yanıt vermedi (${response.statusCode}): ${response.body}',
         );
       }
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      return Map<String, dynamic>.from(decoded as Map);
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Toplu indirme yanıtı ayrıştırılamadı: $e');
     } finally {
       if (client == null) {
         httpClient.close();

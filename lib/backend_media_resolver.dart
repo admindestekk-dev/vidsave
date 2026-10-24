@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'backend_settings.dart';
@@ -218,17 +219,21 @@ class BackendMediaResolver implements MediaResolver {
         )
         .timeout(const Duration(seconds: 35));
 
-    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-    if (response.statusCode >= 200 && response.statusCode < 300 && decoded is List) {
-      return decoded
-          .whereType<Map<String, dynamic>>()
-          .map(SearchResultItem.fromJson)
-          .toList();
-    }
-    if (decoded is List) {
-      return decoded
-          .map((e) => SearchResultItem.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
+    try {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (response.statusCode >= 200 && response.statusCode < 300 && decoded is List) {
+        return decoded
+            .whereType<Map<String, dynamic>>()
+            .map(SearchResultItem.fromJson)
+            .toList();
+      }
+      if (decoded is List) {
+        return decoded
+            .map((e) => SearchResultItem.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('BackendMediaResolver search JSON ayrıştırma hatası: $e');
     }
     return const [];
   }

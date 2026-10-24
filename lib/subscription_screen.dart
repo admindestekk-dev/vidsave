@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'auth_service.dart';
 import 'backend_settings.dart';
 import 'locale_service.dart';
+import 'privacy_policy_screen.dart';
 
 /// VidSave Premium Aylık Abonelik Ekranı
 ///
@@ -236,7 +238,18 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           )
           .timeout(const Duration(seconds: 15));
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      Map<String, dynamic> data = {};
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          data = decoded;
+        } else if (decoded is Map) {
+          data = Map<String, dynamic>.from(decoded);
+        }
+      } catch (jsonErr) {
+        debugPrint('Abonelik doğrulama JSON ayrıştırma hatası: $jsonErr');
+      }
+
       final isSuccess =
           response.statusCode == 200 &&
           (data['success'] == true || data['verified'] == true);
@@ -894,6 +907,21 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
         ),
         actions: [
+          TextButton(
+            onPressed: () async {
+              final uri = Uri.parse(PrivacyPolicyScreen.publicPolicyUrl);
+              try {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } catch (_) {}
+            },
+            child: const Text(
+              'Web Sayfasında Aç',
+              style: TextStyle(
+                color: Color(0xFF64B5F6),
+                fontSize: 13,
+              ),
+            ),
+          ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text(

@@ -619,8 +619,8 @@ class VidSaveBrandTitle extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             child: Image.asset(
               'assets/app_icon.png',
-              height: 34,
-              width: 34,
+              height: 36,
+              width: 36,
               fit: BoxFit.cover,
             ),
           ),
