@@ -1137,6 +1137,7 @@ class UniversalScraper {
 
       final isMedia = contentType.startsWith('video/') ||
           contentType.startsWith('audio/') ||
+          contentType.startsWith('image/') ||
           contentType.contains('application/octet-stream') ||
           contentType.contains('application/x-mpegurl') ||
           contentType.contains('application/vnd.apple.mpegurl');

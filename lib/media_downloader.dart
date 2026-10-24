@@ -1032,6 +1032,7 @@ class MediaDownloader {
 
       final isMediaContentType = contentTypeHeader.startsWith('video/') ||
           contentTypeHeader.startsWith('audio/') ||
+          contentTypeHeader.startsWith('image/') ||
           contentTypeHeader.contains('application/octet-stream') ||
           contentTypeHeader.contains('application/x-mpegurl') ||
           contentTypeHeader.contains('application/vnd.apple.mpegurl');
@@ -1262,6 +1263,12 @@ class MediaDownloader {
           : '';
       if (_videoExtensions.contains(extension)) {
         await PhotoManager.editor.saveVideo(file, title: name);
+      } else if (_imageExtensions.contains(extension)) {
+        await PhotoManager.editor.saveImage(
+          await file.readAsBytes(),
+          filename: name,
+          title: name,
+        );
       }
       // Invalidate PhotoManager's internal cache so newly created files appear.
       await PhotoManager.clearFileCache();
@@ -1271,6 +1278,7 @@ class MediaDownloader {
   }
 
   static const _videoExtensions = {'mp4', 'mov', 'webm', 'mkv', 'avi'};
+  static const _imageExtensions = {'jpg', 'jpeg', 'png', 'webp', 'gif'};
 
   /// Appends `_1`, `_2`, … so repeated downloads never overwrite each other.
   String _uniqueFileName(Directory directory, String fileName) {
