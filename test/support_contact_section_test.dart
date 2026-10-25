@@ -12,9 +12,9 @@ import 'package:vid_downloader_app/more_screen.dart';
 class _FakeSettingsStore implements BackendSettingsStore {
   @override
   Future<BackendSettings> load() async => const BackendSettings(
-        baseUrl: 'https://example.test',
-        apiKey: 'test-key',
-      );
+    baseUrl: 'https://example.test',
+    apiKey: 'test-key',
+  );
 
   @override
   Future<void> save(BackendSettings settings) async {}
