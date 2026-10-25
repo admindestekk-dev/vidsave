@@ -720,8 +720,12 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
       if (!mounted) return;
 
-      // DURUM A: Sunucudan temiz download_url adresi başarıyla geldi
-      if (analyzeResult != null) {
+      final isSegmentedManifest = analyzeResult != null &&
+          (analyzeResult.downloadUrl.toLowerCase().contains('.m3u8') ||
+              analyzeResult.downloadUrl.toLowerCase().contains('.mpd'));
+
+      // DURUM A: Sunucudan doğrudan oynatılabilir MP4/MP3 indirme adresi geldi
+      if (analyzeResult != null && !isSegmentedManifest) {
         setState(() {
           _isAnalyzing = false;
           _isDownloading = true;

@@ -2241,8 +2241,12 @@ def api_analyze() -> Response | tuple[Response, int]:
                 title = job.title or title
                 ext = job.ext or ext
                 duration = job.duration or duration
+            elif is_segmented_manifest:
+                clean_download_url = None
         except Exception as job_err:
             logging.warning("Server fallback job failed: %s", job_err)
+            if is_segmented_manifest:
+                clean_download_url = None
 
     if not clean_download_url:
         return jsonify(

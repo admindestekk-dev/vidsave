@@ -493,6 +493,39 @@ void main() {
       expect(result.fileName.endsWith('.mp4'), isTrue);
     });
 
+    test('Vimeo HLS .m3u8 akışını byteStreamProvider ile çözer', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            handler.resolve(
+              Response(
+                requestOptions: opts,
+                statusCode: 200,
+                data: r'''
+                <html>
+                  <script>
+                    window.playerConfig = {"request":{"files":{"hls":{"default_cdn":"fastly","cdns":{"fastly":{"url":"https://skyfire.vimeocdn.com/master.m3u8"}}}}}};
+                  </script>
+                </html>
+                ''',
+              ),
+            );
+          },
+        ),
+      );
+
+      final scraper = UniversalScraper(dioClient: dio);
+      final result = await scraper.extractVimeo(
+        Uri.parse('https://vimeo.com/76979871'),
+      );
+
+      expect(result.url.toString(), contains('skyfire.vimeocdn.com/master.m3u8'));
+      expect(result.byteStreamProvider, isNotNull);
+      expect(result.fileName.endsWith('.mp4'), isTrue);
+      expect(result.downloadHeaders['Referer'], equals('https://player.vimeo.com/'));
+    });
+
     test('Dailymotion metadata JSON formatını çözer', () async {
       final dio = Dio();
       dio.interceptors.add(

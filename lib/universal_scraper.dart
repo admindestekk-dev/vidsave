@@ -1148,10 +1148,17 @@ class UniversalScraper {
                   url: Uri.parse(cleanHlsUrl),
                   fileName: 'vimeo_${fileSuffix}_${DateTime.now().millisecondsSinceEpoch}.mp4',
                   downloadHeaders: {
-                    'Referer': 'https://vimeo.com/',
+                    'Referer': 'https://player.vimeo.com/',
                     'User-Agent': kUniversalDesktopUserAgent,
                   },
-                  byteStreamProvider: () => _streamDailymotionHls(cleanHlsUrl),
+                  byteStreamProvider: () => _streamHlsSegments(
+                    cleanHlsUrl,
+                    customHeaders: {
+                      'User-Agent': kUniversalDesktopUserAgent,
+                      'Referer': 'https://player.vimeo.com/',
+                      'Origin': 'https://player.vimeo.com',
+                    },
+                  ),
                 );
               }
             }
@@ -1193,7 +1200,7 @@ class UniversalScraper {
                   'Referer': 'https://www.dailymotion.com/',
                   'User-Agent': kUniversalDesktopUserAgent,
                 },
-                byteStreamProvider: () => _streamDailymotionHls(cleanUrl),
+              byteStreamProvider: () => _streamHlsSegments(cleanUrl),
               );
             }
           }
@@ -1225,10 +1232,13 @@ class UniversalScraper {
     }
   }
 
-  /// Dailymotion HLS (.m3u8) yayınını parça parça çekip birleşik mp4 bayt akışı olarak sunar.
-  Stream<List<int>> _streamDailymotionHls(String masterM3u8Url) async* {
+  /// HLS (.m3u8) yayınını parça parça çekip birleşik mp4 bayt akışı olarak sunar.
+  Stream<List<int>> _streamHlsSegments(
+    String masterM3u8Url, {
+    Map<String, String>? customHeaders,
+  }) async* {
     final masterUri = Uri.parse(masterM3u8Url);
-    final headers = {
+    final headers = customHeaders ?? {
       'User-Agent': kUniversalDesktopUserAgent,
       'Referer': 'https://www.dailymotion.com/',
       'Origin': 'https://www.dailymotion.com',
@@ -1258,7 +1268,7 @@ class UniversalScraper {
     }
 
     if (chosenPlaylistUrl == null) {
-      throw const MediaResolverException('Dailymotion video oynatma listesi bulunamadı.');
+      throw const MediaResolverException('Video oynatma listesi bulunamadı.');
     }
 
     final subUri = Uri.parse(chosenPlaylistUrl);
