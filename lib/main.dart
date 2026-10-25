@@ -797,6 +797,8 @@ class _DownloadPageState extends State<_DownloadPage> {
               const PremiumBanner(),
               const SizedBox(height: 14),
             ],
+            const QuickDownloadWindow(),
+            const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -925,6 +927,7 @@ class _DownloadPageState extends State<_DownloadPage> {
                   child: SizedBox(
                     height: 168,
                     child: DownloadCategoryCard(
+                      key: const ValueKey('video_category_card'),
                       category: kVideoCategory,
                       onTap: () {
                         Navigator.push(
@@ -943,6 +946,7 @@ class _DownloadPageState extends State<_DownloadPage> {
                   child: SizedBox(
                     height: 168,
                     child: DownloadCategoryCard(
+                      key: const ValueKey('audio_category_card'),
                       category: kAudioCategory,
                       onTap: () {
                         Navigator.push(
@@ -1957,6 +1961,7 @@ class _PlatformGrid extends StatelessWidget {
         final platform = kDownloadPlatforms[index];
         final tileState = states[platform.label];
         return _PlatformTile(
+          key: ValueKey('platform_tile_${platform.label}'),
           platform: platform,
           enabled: enabled,
           selected: platform == selected,
@@ -1974,6 +1979,7 @@ class _PlatformGrid extends StatelessWidget {
 /// One square in the platform grid: a logo, label and its own İNDİR button.
 class _PlatformTile extends StatelessWidget {
   const _PlatformTile({
+    super.key,
     required this.platform,
     required this.onDownload,
     this.onTap,
@@ -2598,6 +2604,7 @@ class _PlatformSearchDownloadModalState
                   ),
                 ),
                 IconButton(
+                  key: const ValueKey('platform_modal_close_button'),
                   onPressed: () => Navigator.of(context).pop(),
                   icon: const Icon(
                     Icons.close_rounded,

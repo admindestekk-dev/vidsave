@@ -112,8 +112,8 @@ void main() {
       await tester.pumpWidget(_buildMoreScreenApp(authService: authService));
       await tester.pumpAndSettle();
 
-      // 1. Destek Kodu (User ID) başlığını ve kullanıcının ID'sini doğrula
-      final supportCodeTitle = find.text('Destek Kodu (User ID)');
+      // 1. Destek Kodu / Kullanıcı Kimliği başlığını ve kullanıcının ID'sini doğrula
+      final supportCodeTitle = find.text('Kullanıcı Kimliğiniz (ID)');
       expect(supportCodeTitle, findsOneWidget);
       await tester.ensureVisible(supportCodeTitle);
 

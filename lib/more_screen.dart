@@ -460,6 +460,13 @@ class _MoreScreenState extends State<MoreScreen> {
               // =============================================================
               // DESTEK VE İLETİŞİM (SUPPORT & CONTACT)
               // =============================================================
+              Text(
+                LocaleService.currentLanguageCode == 'tr'
+                    ? 'Destek & İletişim'
+                    : 'Support & Contact',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
               FutureBuilder<String>(
                 future: _getEffectiveUserId(),
                 builder: (context, snapshot) {
@@ -485,7 +492,7 @@ class _MoreScreenState extends State<MoreScreen> {
                           ),
                         ),
                         title: Text(
-                          isTr ? 'Destek Kodu (User ID)' : 'Support Code (User ID)',
+                          isTr ? 'Kullanıcı Kimliğiniz (ID)' : 'Support Code (User ID)',
                           style: const TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 14,

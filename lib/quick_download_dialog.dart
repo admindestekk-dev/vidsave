@@ -401,7 +401,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
       if (!mounted) return;
 
       // İndirme bittiğinde dialog otomatik kapansın
-      Navigator.of(context).pop();
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -466,6 +468,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
+                  key: const ValueKey('quick_download_dialog_close_button'),
                   borderRadius: BorderRadius.circular(20),
                   onTap: () => Navigator.of(context).pop(),
                   child: Container(
@@ -762,6 +765,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                         width: double.infinity,
                         height: 46,
                         child: ElevatedButton.icon(
+                          key: const ValueKey('quick_dialog_video_button'),
                           onPressed: () => _startDownload(DownloadKind.video),
                           icon: const Icon(
                             Icons.movie_creation_rounded,
