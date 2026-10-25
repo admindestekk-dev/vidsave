@@ -120,16 +120,19 @@ class ApiService {
           dioClient ??
           Dio(
             BaseOptions(
-              connectTimeout: const Duration(seconds: 30),
+              connectTimeout: const Duration(seconds: 60),
               receiveTimeout: const Duration(seconds: 60),
-              sendTimeout: const Duration(seconds: 30),
+              sendTimeout: const Duration(seconds: 60),
               headers: const {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
                 'User-Agent': 'VidSave-App/1.0 (Android/iOS; Flutter)',
               },
             ),
-          );
+          ) {
+    _dio.options.connectTimeout = const Duration(seconds: 60);
+    _dio.options.receiveTimeout = const Duration(seconds: 60);
+  }
 
   static ApiService? _instance;
 
