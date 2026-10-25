@@ -4,9 +4,11 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import 'backend_settings.dart';
+
 /// Varsayılan sunucu adresi (Geliştirici kendi sunucu IP adresini buradan
 /// veya [ApiService.setBaseUrl] metoduyla değiştirebilir).
-const String kDefaultServerBaseUrl = 'http://SUNUCU_IP_ADRESINIZ:8787';
+const String kDefaultServerBaseUrl = BackendSettings.defaultBaseUrl;
 
 /// Sunucu tabanlı medya analiz sonucunu temsil eden veri modeli.
 class AnalyzeResult {
@@ -31,16 +33,18 @@ class AnalyzeResult {
   });
 
   factory AnalyzeResult.fromJson(Map<String, dynamic> json) {
-    final rawUrl = json['download_url']?.toString() ??
-        json['url']?.toString() ??
-        '';
+    final rawUrl =
+        json['download_url']?.toString() ?? json['url']?.toString() ?? '';
     if (rawUrl.isEmpty) {
-      throw const FormatException('Sunucudan geçerli bir download_url gelmedi.');
+      throw const FormatException(
+        'Sunucudan geçerli bir download_url gelmedi.',
+      );
     }
 
     final rawTitle = json['title']?.toString() ?? 'vidsave_media';
     final rawType = json['type']?.toString().toLowerCase() ?? 'video';
-    final rawExt = json['ext']?.toString().toLowerCase() ??
+    final rawExt =
+        json['ext']?.toString().toLowerCase() ??
         (rawType == 'mp3' ? 'mp3' : 'mp4');
     final rawFilename = json['filename']?.toString() ?? '$rawTitle.$rawExt';
 
@@ -73,15 +77,15 @@ class AnalyzeResult {
   }
 
   Map<String, dynamic> toJson() => {
-        'download_url': downloadUrl,
-        'title': title,
-        'filename': filename,
-        'thumbnail': thumbnail,
-        'duration': duration,
-        'type': type,
-        'ext': ext,
-        'headers': headers,
-      };
+    'download_url': downloadUrl,
+    'title': title,
+    'filename': filename,
+    'thumbnail': thumbnail,
+    'duration': duration,
+    'type': type,
+    'ext': ext,
+    'headers': headers,
+  };
 }
 
 /// Sunucu isteklerinde karşılaşılan özel hata istisnası.
@@ -102,23 +106,30 @@ class ApiException implements Exception {
 /// YouTube, TikTok, Facebook, Vimeo ve diğer platformların şifrelerini sunucuda
 /// çözer ve doğrudan indirilebilir temiz bir [AnalyzeResult] döndürür.
 class ApiService {
-  ApiService({
-    String? baseUrl,
-    Dio? dioClient,
-  })  : _baseUrl = (baseUrl ?? kDefaultServerBaseUrl).replaceAll(RegExp(r'/+$'), ''),
-        _dio = dioClient ??
-            Dio(
-              BaseOptions(
-                connectTimeout: const Duration(seconds: 30),
-                receiveTimeout: const Duration(seconds: 60),
-                sendTimeout: const Duration(seconds: 30),
-                headers: const {
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                  'User-Agent': 'VidSave-App/1.0 (Android/iOS; Flutter)',
-                },
-              ),
-            );
+  static String cleanBaseUrl(String? url) {
+    final candidate = (url ?? '').trim();
+    if (candidate.isEmpty || candidate.contains('SUNUCU_IP_ADRESINIZ')) {
+      return BackendSettings.defaultBaseUrl.replaceAll(RegExp(r'/+$'), '');
+    }
+    return candidate.replaceAll(RegExp(r'/+$'), '');
+  }
+
+  ApiService({String? baseUrl, Dio? dioClient})
+    : _baseUrl = cleanBaseUrl(baseUrl),
+      _dio =
+          dioClient ??
+          Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 30),
+              receiveTimeout: const Duration(seconds: 60),
+              sendTimeout: const Duration(seconds: 30),
+              headers: const {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'VidSave-App/1.0 (Android/iOS; Flutter)',
+              },
+            ),
+          );
 
   static ApiService? _instance;
 
@@ -195,15 +206,16 @@ class ApiService {
 
       return AnalyzeResult.fromJson(map);
     } on DioException catch (dioErr) {
-      debugPrint('ApiService DioException: ${dioErr.type} -> ${dioErr.message}');
+      debugPrint(
+        'ApiService DioException: ${dioErr.type} -> ${dioErr.message}',
+      );
       String friendlyMessage = 'Sunucuya bağlanılamadı.';
 
       switch (dioErr.type) {
         case DioExceptionType.connectionTimeout:
         case DioExceptionType.sendTimeout:
         case DioExceptionType.receiveTimeout:
-          friendlyMessage =
-              'Sunucu yanıt verme süresi aşıldı. Lütfen internet bağlantınızı veya sunucu durumunu kontrol edin.';
+          friendlyMessage = 'Sunucu yanıt verme süresi aşıldı. Lütfen internet bağlantınızı veya sunucu durumunu kontrol edin.';
           break;
         case DioExceptionType.connectionError:
           friendlyMessage =
@@ -220,7 +232,10 @@ class ApiService {
           friendlyMessage = 'Ağ hatası: ${dioErr.message}';
           break;
       }
-      throw ApiException(friendlyMessage, statusCode: dioErr.response?.statusCode);
+      throw ApiException(
+        friendlyMessage,
+        statusCode: dioErr.response?.statusCode,
+      );
     } catch (e) {
       if (e is ApiException) rethrow;
       throw ApiException('Beklenmeyen bir hata oluştu: $e');

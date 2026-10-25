@@ -2105,14 +2105,18 @@ def api_analyze() -> Response | tuple[Response, int]:
             title = fallback.get("title") or title
             ext = fallback.get("ext") or ext
 
-    # 3. If direct stream is still not found (e.g. YouTube DASH requiring server merge/transcode),
-    # start a server job and return the server stream endpoint!
-    if not clean_download_url:
+    # 3. If direct stream is still not found or is a segmented manifest (e.g. .m3u8 / .mpd or YouTube DASH),
+    # start a server job to merge/transcode and return the server stream endpoint!
+    is_segmented_manifest = clean_download_url and (
+        ".m3u8" in clean_download_url.lower() or ".mpd" in clean_download_url.lower()
+    )
+
+    if not clean_download_url or is_segmented_manifest:
         try:
             job = _new_job(kind, target_url)
             job.mode = "url"
             threading.Thread(target=_work, args=(job,), daemon=True).start()
-            deadline = time.time() + 20
+            deadline = time.time() + 25
             while time.time() < deadline:
                 if job.status in ("ready", "error"):
                     break

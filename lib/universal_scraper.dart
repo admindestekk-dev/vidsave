@@ -843,6 +843,7 @@ class UniversalScraper {
       // 2. Aday URL: Doğrudan video sayfası HTML kaynağı
       final targetUrls = <String>[
         if (videoId != null) 'https://player.vimeo.com/video/$videoId/config',
+        if (videoId != null) 'https://player.vimeo.com/video/$videoId',
         source.toString(),
       ];
 
@@ -937,6 +938,32 @@ class UniversalScraper {
                   'User-Agent': kUniversalDesktopUserAgent,
                 },
               );
+            }
+          }
+
+          // 4. HLS (.m3u8) Akışı Adayı: Progressive MP4 yoksa parçalı HLS yayınını MP4 olarak akıt
+          final hlsPatterns = [
+            RegExp(r'"url":\s*"(https://[^"]*(?:skyfire|vimeocdn|akfire|fastly)[^"]*\.m3u8[^"]*)"'),
+            RegExp(r'"default_cdn":\s*"[^"]*",.*?"url":\s*"(https://[^"]+\.m3u8[^"]*)"'),
+            RegExp(r'"avc_url":\s*"(https://[^"]+\.m3u8[^"]*)"'),
+          ];
+          for (final pattern in hlsPatterns) {
+            final hlsMatch = pattern.firstMatch(hamMetin);
+            if (hlsMatch != null) {
+              final rawHls = hlsMatch.group(1);
+              if (rawHls != null && rawHls.isNotEmpty) {
+                final cleanHlsUrl = evrenselTemizUrlShield(rawHls);
+                final fileSuffix = videoId ?? DateTime.now().millisecondsSinceEpoch.toString();
+                return ResolvedMedia(
+                  url: Uri.parse(cleanHlsUrl),
+                  fileName: 'vimeo_${fileSuffix}_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                  downloadHeaders: {
+                    'Referer': 'https://vimeo.com/',
+                    'User-Agent': kUniversalDesktopUserAgent,
+                  },
+                  byteStreamProvider: () => _streamDailymotionHls(cleanHlsUrl),
+                );
+              }
             }
           }
         } catch (targetErr) {
@@ -1282,44 +1309,46 @@ class UniversalScraper {
         ),
       ).timeout(const Duration(seconds: 10));
 
-      final contentType =
-          (response.headers.value('content-type') ?? '').toLowerCase().trim();
-      final lengthStr = response.headers.value('content-length');
-      final length = lengthStr != null ? int.tryParse(lengthStr) : null;
+      if (response.statusCode == 200 || response.statusCode == 206) {
+        final contentType =
+            (response.headers.value('content-type') ?? '').toLowerCase().trim();
+        final lengthStr = response.headers.value('content-length');
+        final length = lengthStr != null ? int.tryParse(lengthStr) : null;
 
-      final isBanned = contentType.contains('text/html') ||
-          contentType.contains('application/json') ||
-          contentType.contains('text/plain');
+        final isBanned = contentType.contains('text/html') ||
+            contentType.contains('application/json') ||
+            contentType.contains('text/plain');
 
-      final isMedia = contentType.startsWith('video/') ||
-          contentType.startsWith('audio/') ||
-          contentType.startsWith('image/') ||
-          contentType.contains('application/octet-stream') ||
-          contentType.contains('application/x-mpegurl') ||
-          contentType.contains('application/vnd.apple.mpegurl');
+        final isMedia = contentType.startsWith('video/') ||
+            contentType.startsWith('audio/') ||
+            contentType.startsWith('image/') ||
+            contentType.contains('application/octet-stream') ||
+            contentType.contains('application/x-mpegurl') ||
+            contentType.contains('application/vnd.apple.mpegurl');
 
-      if (contentType.isNotEmpty && (isBanned || !isMedia)) {
-        unawaited(
-          RemoteConfigService.instance.reportBotBlockSignal(
-            failedUrl: media.url,
-            reason: 'Scraper HEAD returned banned or non-media contentType: $contentType',
-            contentType: contentType,
-            contentLength: length,
-          ),
-        );
-        return false;
-      }
+        if (contentType.isNotEmpty && (isBanned || !isMedia)) {
+          unawaited(
+            RemoteConfigService.instance.reportBotBlockSignal(
+              failedUrl: media.url,
+              reason: 'Scraper HEAD returned banned or non-media contentType: $contentType',
+              contentType: contentType,
+              contentLength: length,
+            ),
+          );
+          return false;
+        }
 
-      if (length != null && length > 0 && length < kMinValidMediaBytes) {
-        unawaited(
-          RemoteConfigService.instance.reportBotBlockSignal(
-            failedUrl: media.url,
-            reason: 'Scraper HEAD returned size < 1MB: $length bytes',
-            contentType: contentType,
-            contentLength: length,
-          ),
-        );
-        return false;
+        if (length != null && length > 0 && length < kMinValidMediaBytes) {
+          unawaited(
+            RemoteConfigService.instance.reportBotBlockSignal(
+              failedUrl: media.url,
+              reason: 'Scraper HEAD returned size < 1MB: $length bytes',
+              contentType: contentType,
+              contentLength: length,
+            ),
+          );
+          return false;
+        }
       }
 
       return true;

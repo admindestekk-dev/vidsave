@@ -1019,76 +1019,78 @@ class MediaDownloader {
         ),
       ).timeout(const Duration(seconds: 15));
 
-      final contentTypeHeader =
-          (headResponse.headers.value('content-type') ?? '').toLowerCase().trim();
-      final contentLengthStr = headResponse.headers.value('content-length');
-      final contentLengthVal =
-          contentLengthStr != null ? int.tryParse(contentLengthStr) : null;
+      if (headResponse.statusCode == 200 || headResponse.statusCode == 206) {
+        final contentTypeHeader =
+            (headResponse.headers.value('content-type') ?? '').toLowerCase().trim();
+        final contentLengthStr = headResponse.headers.value('content-length');
+        final contentLengthVal =
+            contentLengthStr != null ? int.tryParse(contentLengthStr) : null;
 
-      // 1. AŞAMA DENETİMİ: Content-Type kontrolü
-      final isBannedContentType = contentTypeHeader.contains('text/html') ||
-          contentTypeHeader.contains('application/json') ||
-          contentTypeHeader.contains('text/plain');
+        // 1. AŞAMA DENETİMİ: Content-Type kontrolü
+        final isBannedContentType = contentTypeHeader.contains('text/html') ||
+            contentTypeHeader.contains('application/json') ||
+            contentTypeHeader.contains('text/plain');
 
-      final isMediaContentType = contentTypeHeader.startsWith('video/') ||
-          contentTypeHeader.startsWith('audio/') ||
-          contentTypeHeader.startsWith('image/') ||
-          contentTypeHeader.contains('application/octet-stream') ||
-          contentTypeHeader.contains('application/x-mpegurl') ||
-          contentTypeHeader.contains('application/vnd.apple.mpegurl');
+        final isMediaContentType = contentTypeHeader.startsWith('video/') ||
+            contentTypeHeader.startsWith('audio/') ||
+            contentTypeHeader.startsWith('image/') ||
+            contentTypeHeader.contains('application/octet-stream') ||
+            contentTypeHeader.contains('application/x-mpegurl') ||
+            contentTypeHeader.contains('application/vnd.apple.mpegurl');
 
-      if (contentTypeHeader.isNotEmpty && (isBannedContentType || !isMediaContentType)) {
-        // Derhal indirmeyi iptal et (abort), dosyayı diske yazma!
-        if (await file.exists()) {
-          try {
-            await file.delete();
-          } catch (_) {}
-        }
+        if (contentTypeHeader.isNotEmpty && (isBannedContentType || !isMediaContentType)) {
+          // Derhal indirmeyi iptal et (abort), dosyayı diske yazma!
+          if (await file.exists()) {
+            try {
+              await file.delete();
+            } catch (_) {}
+          }
 
-        // 3. AŞAMA: Remote Config'e gizli hata sinyali bildir
-        unawaited(
-          RemoteConfigService.instance.reportBotBlockSignal(
-            failedUrl: effectiveUri,
-            reason: 'Banned or non-media content-type: $contentTypeHeader',
+          // 3. AŞAMA: Remote Config'e gizli hata sinyali bildir
+          unawaited(
+            RemoteConfigService.instance.reportBotBlockSignal(
+              failedUrl: effectiveUri,
+              reason: 'Banned or non-media content-type: $contentTypeHeader',
+              contentType: contentTypeHeader,
+              contentLength: contentLengthVal,
+            ),
+          );
+
+          throw MediaVerificationException(
+            'Geçersiz içerik türü tespit edildi ($contentTypeHeader). İndirme güvenlik kalkanı tarafından durduruldu.',
             contentType: contentTypeHeader,
             contentLength: contentLengthVal,
-          ),
-        );
-
-        throw MediaVerificationException(
-          'Geçersiz içerik türü tespit edildi ($contentTypeHeader). İndirme güvenlik kalkanı tarafından durduruldu.',
-          contentType: contentTypeHeader,
-          contentLength: contentLengthVal,
-          isBotBlock: true,
-        );
-      }
-
-      // 2. AŞAMA DENETİMİ: Content-Length dosya boyutu güvenlik sigortası
-      // Gelen HTML hata sayfaları genellikle 2 KB - 50 KB arasıdır.
-      // 1 MB'tan küçükse indirmeyi durdur ve kullanıcıya uyarı fırlat.
-      if (contentLengthVal != null && contentLengthVal > 0 && contentLengthVal < kMinValidMediaBytes) {
-        if (await file.exists()) {
-          try {
-            await file.delete();
-          } catch (_) {}
+            isBotBlock: true,
+          );
         }
 
-        // 3. AŞAMA: Remote Config'e gizli hata sinyali bildir
-        unawaited(
-          RemoteConfigService.instance.reportBotBlockSignal(
-            failedUrl: effectiveUri,
-            reason: 'Media size too small (<1MB): $contentLengthVal bytes',
+        // 2. AŞAMA DENETİMİ: Content-Length dosya boyutu güvenlik sigortası
+        // Gelen HTML hata sayfaları genellikle 2 KB - 50 KB arasıdır.
+        // 1 MB'tan küçükse indirmeyi durdur ve kullanıcıya uyarı fırlat.
+        if (contentLengthVal != null && contentLengthVal > 0 && contentLengthVal < kMinValidMediaBytes) {
+          if (await file.exists()) {
+            try {
+              await file.delete();
+            } catch (_) {}
+          }
+
+          // 3. AŞAMA: Remote Config'e gizli hata sinyali bildir
+          unawaited(
+            RemoteConfigService.instance.reportBotBlockSignal(
+              failedUrl: effectiveUri,
+              reason: 'Media size too small (<1MB): $contentLengthVal bytes',
+              contentType: contentTypeHeader,
+              contentLength: contentLengthVal,
+            ),
+          );
+
+          throw MediaVerificationException(
+            'Medya kaynağı çok küçük veya geçersiz, lütfen linki yenileyip tekrar deneyin',
             contentType: contentTypeHeader,
             contentLength: contentLengthVal,
-          ),
-        );
-
-        throw MediaVerificationException(
-          'Medya kaynağı çok küçük veya geçersiz, lütfen linki yenileyip tekrar deneyin',
-          contentType: contentTypeHeader,
-          contentLength: contentLengthVal,
-          isBotBlock: true,
-        );
+            isBotBlock: true,
+          );
+        }
       }
     } on MediaVerificationException {
       rethrow;

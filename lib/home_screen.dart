@@ -13,6 +13,7 @@ import 'admob_service.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
 import 'backend_settings.dart';
+import 'client_media_resolver.dart';
 import 'download_item_model.dart';
 import 'download_notification_service.dart';
 import 'media_downloader.dart';
@@ -704,132 +705,262 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     int lastNotifPercent = -1;
 
     try {
-      // 2. Linki api_service.dart üzerinden Python sunucumuza fırlat
-      final analyzeResult = await ApiService.instance.analyze(
-        url: rawUrl,
-        type: type,
-      );
+      // 2. Linki önce api_service.dart üzerinden Python sunucumuza fırlat
+      AnalyzeResult? analyzeResult;
+      try {
+        analyzeResult = await ApiService.instance.analyze(
+          url: rawUrl,
+          type: type,
+        );
+      } catch (serverErr) {
+        debugPrint(
+          'QuickDownloadWindow: Sunucu analizi yapılamadı ($serverErr), cihaz içi lokal motora geçiliyor...',
+        );
+      }
 
       if (!mounted) return;
 
-      // 3. Sunucudan temiz download_url adresi geldiği an butonlar gizlensin;
-      // yerlerine LinearProgressIndicator ve anlık indirme hızı paneli gelsin.
-      setState(() {
-        _isAnalyzing = false;
-        _isDownloading = true;
-        _activeTitle = analyzeResult.title;
-        _statusMessage = 'İndirme başlatılıyor…';
-      });
+      // DURUM A: Sunucudan temiz download_url adresi başarıyla geldi
+      if (analyzeResult != null) {
+        setState(() {
+          _isAnalyzing = false;
+          _isDownloading = true;
+          _activeTitle = analyzeResult!.title;
+          _statusMessage = 'İndirme başlatılıyor…';
+        });
 
-      // Telefonun üst bildirim çubuğunu başlat
-      unawaited(
-        notifService.showProgress(
-          id: notificationId,
-          title: analyzeResult.title,
-          percent: null,
-        ),
-      );
+        // Telefonun üst bildirim çubuğunu başlat
+        unawaited(
+          notifService.showProgress(
+            id: notificationId,
+            title: analyzeResult.title,
+            percent: null,
+          ),
+        );
 
-      // İndirilecek hedef dosya yolu
-      final appDir = await getApplicationDocumentsDirectory();
-      final targetFileName = analyzeResult.filename;
-      final savePath = '${appDir.path}${Platform.pathSeparator}$targetFileName';
+        // İndirilecek hedef dosya yolu
+        final appDir = await getApplicationDocumentsDirectory();
+        final targetFileName = analyzeResult.filename;
+        final savePath =
+            '${appDir.path}${Platform.pathSeparator}$targetFileName';
 
-      // 4. Dosya indirme işlemi telefonun kendi hafızasına (Dio.download) akarken
-      final downloadedFile = await ApiService.instance.downloadFile(
-        downloadUrl: analyzeResult.downloadUrl,
-        savePath: savePath,
-        headers: analyzeResult.headers,
-        onProgress: (received, total) {
-          if (!mounted) return;
+        // Dosya indirme işlemi telefonun kendi hafızasına (Dio.download) akarken
+        final downloadedFile = await ApiService.instance.downloadFile(
+          downloadUrl: analyzeResult.downloadUrl,
+          savePath: savePath,
+          headers: analyzeResult.headers,
+          onProgress: (received, total) {
+            if (!mounted) return;
 
-          final now = DateTime.now();
-          if (_lastProgressTime != null && _lastReceivedBytes != null) {
-            final diffMs = now.difference(_lastProgressTime!).inMilliseconds;
-            if (diffMs >= 500) {
-              final bytesDiff = received - _lastReceivedBytes!;
-              final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
-              _downloadSpeed = '${formatBytes(bytesPerSec)}/s';
+            final now = DateTime.now();
+            if (_lastProgressTime != null && _lastReceivedBytes != null) {
+              final diffMs = now.difference(_lastProgressTime!).inMilliseconds;
+              if (diffMs >= 500) {
+                final bytesDiff = received - _lastReceivedBytes!;
+                final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
+                _downloadSpeed = '${formatBytes(bytesPerSec)}/s';
+                _lastProgressTime = now;
+                _lastReceivedBytes = received;
+              }
+            } else {
               _lastProgressTime = now;
               _lastReceivedBytes = received;
             }
-          } else {
-            _lastProgressTime = now;
-            _lastReceivedBytes = received;
-          }
 
-          final percent = downloadPercent(received, total);
+            final percent = downloadPercent(received, total);
 
-          setState(() {
-            _receivedBytes = received;
-            _totalBytes = total > 0 ? total : null;
-            _downloadProgress = percent != null ? percent.toDouble() : 0.0;
-            _statusMessage = percent != null
-                ? '%$percent İndiriliyor…'
-                : 'İndiriliyor…';
-          });
+            setState(() {
+              _receivedBytes = received;
+              _totalBytes = total > 0 ? total : null;
+              _downloadProgress = percent != null ? percent.toDouble() : 0.0;
+              _statusMessage = percent != null
+                  ? '%$percent İndiriliyor…'
+                  : 'İndiriliyor…';
+            });
 
-          // Üst bildirim çubuğunu canlı yüzdelerle güncelle
-          if (percent != null && percent != lastNotifPercent) {
-            lastNotifPercent = percent;
-            unawaited(
-              notifService.showProgress(
-                id: notificationId,
-                title: analyzeResult.title,
-                percent: percent,
-                speed: _downloadSpeed,
-              ),
-            );
-          }
-        },
-      );
+            // Üst bildirim çubuğunu canlı yüzdelerle güncelle
+            if (percent != null && percent != lastNotifPercent) {
+              lastNotifPercent = percent;
+              unawaited(
+                notifService.showProgress(
+                  id: notificationId,
+                  title: analyzeResult!.title,
+                  percent: percent,
+                  speed: _downloadSpeed,
+                ),
+              );
+            }
+          },
+        );
 
-      // Veritabanına kaydet
-      int fileSize = 0;
-      try {
-        fileSize = downloadedFile.lengthSync();
-      } catch (_) {}
+        // Veritabanına kaydet
+        int fileSize = 0;
+        try {
+          fileSize = downloadedFile.lengthSync();
+        } catch (_) {}
 
-      await StorageService.addItem(
-        DownloadItemModel(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          name: targetFileName,
-          type: type == 'mp3' ? 'audio' : 'video',
-          sizeInBytes: fileSize,
-          filePath: downloadedFile.path,
-          downloadedAt: DateTime.now(),
-          sourceUrl: rawUrl,
-        ),
-      );
+        await StorageService.addItem(
+          DownloadItemModel(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            name: targetFileName,
+            type: type == 'mp3' ? 'audio' : 'video',
+            sizeInBytes: fileSize,
+            filePath: downloadedFile.path,
+            downloadedAt: DateTime.now(),
+            sourceUrl: rawUrl,
+          ),
+        );
 
-      // 5. İndirme bitince sesli onay bildirimi fırlatıp panel kapansın
-      await notifService.showCompleted(
-        id: notificationId,
-        title: analyzeResult.title,
-        fileName: targetFileName,
-      );
+        // İndirme bitince sesli onay bildirimi fırlatıp panel kapansın
+        await notifService.showCompleted(
+          id: notificationId,
+          title: analyzeResult.title,
+          fileName: targetFileName,
+        );
 
-      widget.onDownloadCompleted?.call(downloadedFile, type);
+        widget.onDownloadCompleted?.call(downloadedFile, type);
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Başarıyla indirildi: $targetFileName'),
-          backgroundColor: const Color(0xFF20B8C5),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Başarıyla indirildi: $targetFileName'),
+            backgroundColor: const Color(0xFF20B8C5),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
 
-      // Panel durumunu temizle
-      setState(() {
-        _isDownloading = false;
-        _isAnalyzing = false;
-        _downloadProgress = 0.0;
-        _downloadSpeed = '0 KB/s';
-        _statusMessage = '';
-        _controller.clear();
-      });
+        // Panel durumunu temizle
+        setState(() {
+          _isDownloading = false;
+          _isAnalyzing = false;
+          _downloadProgress = 0.0;
+          _downloadSpeed = '0 KB/s';
+          _statusMessage = '';
+          _controller.clear();
+        });
+      } else {
+        // DURUM B: Sunucu kapalı veya ulaşılamazsa Cihaz İçi Motor (ClientMediaResolver) ile indir
+        setState(() {
+          _statusMessage = 'Cihaz içi motorla çözülüyor…';
+        });
+
+        final kind = type == 'mp3' ? DownloadKind.audio : DownloadKind.video;
+        final cleanText = evrenselTemizUrl(rawUrl);
+        final effectiveUri = Uri.tryParse(cleanText) ?? Uri.parse(rawUrl);
+
+        final resolver = ClientMediaResolver();
+        final media = await resolver.resolve(effectiveUri, kind);
+
+        if (!mounted) return;
+
+        setState(() {
+          _isAnalyzing = false;
+          _isDownloading = true;
+          _activeTitle = media.fileName;
+          _statusMessage = 'İndirme başlatılıyor…';
+        });
+
+        unawaited(
+          notifService.showProgress(
+            id: notificationId,
+            title: media.fileName,
+            percent: null,
+          ),
+        );
+
+        final downloader = MediaDownloader();
+        final downloadedFile = await downloader.download(
+          media,
+          onProgress: (received, total) {
+            if (!mounted) return;
+
+            final now = DateTime.now();
+            if (_lastProgressTime != null && _lastReceivedBytes != null) {
+              final diffMs = now.difference(_lastProgressTime!).inMilliseconds;
+              if (diffMs >= 500) {
+                final bytesDiff = received - _lastReceivedBytes!;
+                final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
+                _downloadSpeed = '${formatBytes(bytesPerSec)}/s';
+                _lastProgressTime = now;
+                _lastReceivedBytes = received;
+              }
+            } else {
+              _lastProgressTime = now;
+              _lastReceivedBytes = received;
+            }
+
+            final percent = downloadPercent(received, total);
+
+            setState(() {
+              _receivedBytes = received;
+              _totalBytes = (total != null && total > 0) ? total : null;
+              _downloadProgress = percent != null ? percent.toDouble() : 0.0;
+              _statusMessage = percent != null
+                  ? '%$percent İndiriliyor…'
+                  : 'İndiriliyor…';
+            });
+
+            if (percent != null && percent != lastNotifPercent) {
+              lastNotifPercent = percent;
+              unawaited(
+                notifService.showProgress(
+                  id: notificationId,
+                  title: media.fileName,
+                  percent: percent,
+                  speed: _downloadSpeed,
+                ),
+              );
+            }
+          },
+        );
+
+        final finalFileName =
+            downloadedFile.path.split(Platform.pathSeparator).last;
+        int fileSize = 0;
+        try {
+          fileSize = downloadedFile.lengthSync();
+        } catch (_) {}
+
+        await StorageService.addItem(
+          DownloadItemModel(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            name: finalFileName,
+            type: type == 'mp3' ? 'audio' : 'video',
+            sizeInBytes: fileSize,
+            filePath: downloadedFile.path,
+            downloadedAt: DateTime.now(),
+            sourceUrl: rawUrl,
+          ),
+        );
+
+        await notifService.showCompleted(
+          id: notificationId,
+          title: media.fileName,
+          fileName: finalFileName,
+        );
+
+        widget.onDownloadCompleted?.call(downloadedFile, type);
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Başarıyla indirildi: $finalFileName'),
+            backgroundColor: const Color(0xFF20B8C5),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        setState(() {
+          _isDownloading = false;
+          _isAnalyzing = false;
+          _downloadProgress = 0.0;
+          _downloadSpeed = '0 KB/s';
+          _statusMessage = '';
+          _controller.clear();
+        });
+      }
     } catch (e) {
       debugPrint('QuickDownloadWindow download error: $e');
 
