@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VidSave - Sık Karşılaşılan Sorunlar ve Çözümler / Troubleshooting & Solutions</title>
+  <meta name="description" content="VidSave Video & MP3 Downloader Sorun Giderme ve Çözüm Rehberi - Sık Karşılaşılan Problemler, Hata Çözümleri ve Destek">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand-primary: #FF5436;
+      --brand-gradient: linear-gradient(135deg, #FF5436 0%, #FF7E40 100%);
+      --bg-dark: #0D1117;
+      --bg-card: #161B22;
+      --bg-card-hover: #1C2128;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-glow: rgba(255, 84, 54, 0.25);
+      --text-main: #F0F6FC;
+      --text-muted: #8B949E;
+      --text-sub: #C9D1D9;
+      --success: #1DB954;
+      --accent: #006673;
+      --warning: #F59E0B;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.7;
+      padding: 0;
+      margin: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+    }
+
+    /* HEADER & NAV */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(13, 17, 23, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 24px;
+      margin-bottom: 40px;
+    }
+
+    .header-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #fff;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--brand-gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(255, 84, 54, 0.35);
+    }
+
+    .brand-icon svg {
+      width: 22px;
+      height: 22px;
+      fill: #ffffff;
+    }
+
+    .brand-name {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    /* NAV TABS (1: index.html, 2: problems.html) */
+    .nav-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      padding: 4px 6px;
+      border-radius: 14px;
+      border: 1px solid var(--border-color);
+    }
+
+    .nav-tab-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: var(--text-muted);
+      padding: 7px 14px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      font-weight: 700;
+      transition: all 0.2s ease;
+    }
+
+    .nav-tab-link:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .nav-tab-link.active {
+      color: #fff;
+      background: var(--brand-gradient);
+      box-shadow: 0 2px 10px rgba(255, 84, 54, 0.35);
+    }
+
+    .tab-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 800;
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    .nav-tab-link.active .tab-number {
+      background: #fff;
+      color: var(--brand-primary);
+    }
+
+    .badge-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--brand-primary);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      margin-right: 4px;
+    }
+
+    .lang-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .lang-toggle-btn:hover {
+      border-color: var(--brand-primary);
+      background: var(--bg-card-hover);
+      box-shadow: 0 0 16px var(--border-glow);
+    }
+
+    .lang-flag {
+      font-size: 16px;
+    }
+
+    /* HERO */
+    .hero {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 84, 54, 0.12);
+      color: var(--brand-primary);
+      border: 1px solid rgba(255, 84, 54, 0.3);
+      padding: 5px 14px;
+      border-radius: 30px;
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      margin-bottom: 12px;
+      background: linear-gradient(180deg, #FFFFFF 0%, #C9D1D9 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .effective-date {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* CARDS */
+    .policy-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 28px;
+      margin-bottom: 24px;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .policy-card:hover {
+      border-color: var(--border-glow);
+      transform: translateY(-2px);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .card-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 84, 54, 0.12);
+      color: var(--brand-primary);
+      flex-shrink: 0;
+    }
+
+    .card-icon svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+
+    .card-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .card-content {
+      color: var(--text-sub);
+      font-size: 15px;
+    }
+
+    .card-content p {
+      margin-bottom: 12px;
+    }
+
+    .card-content p:last-child {
+      margin-bottom: 0;
+    }
+
+    .highlight-box {
+      background: rgba(255, 255, 255, 0.03);
+      border-left: 3px solid var(--brand-primary);
+      padding: 14px 18px;
+      border-radius: 0 12px 12px 0;
+      margin: 14px 0;
+      font-size: 14px;
+      color: var(--text-main);
+    }
+
+    .tip-box {
+      background: rgba(29, 185, 84, 0.08);
+      border-left: 3px solid var(--success);
+      padding: 14px 18px;
+      border-radius: 0 12px 12px 0;
+      margin: 14px 0;
+      font-size: 14px;
+      color: var(--text-main);
+    }
+
+    ul.check-list {
+      list-style: none;
+      padding: 0;
+      margin: 12px 0;
+    }
+
+    ul.check-list li {
+      position: relative;
+      padding-left: 26px;
+      margin-bottom: 8px;
+      font-size: 14.5px;
+    }
+
+    ul.check-list li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--success);
+      font-weight: bold;
+    }
+
+    ul.step-list {
+      list-style: none;
+      padding: 0;
+      margin: 12px 0;
+      counter-reset: step-counter;
+    }
+
+    ul.step-list li {
+      position: relative;
+      padding-left: 32px;
+      margin-bottom: 10px;
+      font-size: 14.5px;
+      counter-increment: step-counter;
+    }
+
+    ul.step-list li::before {
+      content: counter(step-counter);
+      position: absolute;
+      left: 0;
+      top: 2px;
+      width: 22px;
+      height: 22px;
+      background: rgba(255, 84, 54, 0.18);
+      color: var(--brand-primary);
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    /* FOOTER & CONTACT */
+    .contact-card {
+      background: linear-gradient(135deg, rgba(22, 27, 34, 0.9) 0%, rgba(30, 37, 45, 0.9) 100%);
+      border: 1px solid var(--border-glow);
+      border-radius: 20px;
+      padding: 32px;
+      text-align: center;
+      margin-top: 48px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .contact-title {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .contact-desc {
+      color: var(--text-muted);
+      font-size: 14.5px;
+      max-width: 600px;
+      margin: 0 auto 20px;
+    }
+
+    .email-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--brand-gradient);
+      color: #fff;
+      text-decoration: none;
+      padding: 12px 24px;
+      border-radius: 14px;
+      font-weight: 700;
+      font-size: 15px;
+      box-shadow: 0 4px 18px rgba(255, 84, 54, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    .email-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(255, 84, 54, 0.55);
+    }
+
+    .email-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    .copyright {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 40px;
+    }
+
+    /* DIL GÖSTER/GİZLE */
+    .lang-content {
+      display: none;
+    }
+
+    .lang-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 768px) {
+      .header-inner {
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .nav-tabs {
+        order: 3;
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    @media (max-width: 600px) {
+      h1 { font-size: 26px; }
+      .container { padding: 20px 16px 60px; }
+      .policy-card { padding: 20px; }
+      .card-title { font-size: 17px; }
+      .nav-tab-link { padding: 6px 10px; font-size: 12.5px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-inner">
+      <a href="index.html" class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+        </div>
+        <span class="brand-name">VidSave</span>
+      </a>
+
+      <!-- Sayfa Navigasyon Sekmeleri: 1. Gizlilik Politikası, 2. Sorunlar ve Çözümler -->
+      <nav class="nav-tabs" aria-label="Sayfa Gezintisi">
+        <a href="index.html" class="nav-tab-link" title="1. Sayfa: Gizlilik Politikası">
+          <span class="tab-number">1</span>
+          <span id="navLabelPolicy">Gizlilik Politikası</span>
+        </a>
+        <a href="problems.html" class="nav-tab-link active" title="2. Sayfa: Sorunlar ve Çözümler">
+          <span class="tab-number">2</span>
+          <span id="navLabelProblems">Sorunlar ve Çözümler</span>
+        </a>
+      </nav>
+
+      <!-- Dil Seçici Butonu -->
+      <button id="langToggleBtn" class="lang-toggle-btn" onclick="toggleLanguage()">
+        <span id="langFlag" class="lang-flag">🇺🇸</span>
+        <span id="langText">English</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="badge">
+        <span class="badge-num">2</span> <span id="heroBadge">VidSave Yardım, SSS & Çözüm Rehberi</span>
+      </div>
+      <h1 id="heroTitle">Sık Karşılaşılan Sorunlar ve Çözümler</h1>
+      <p class="effective-date" id="heroDate">Son Güncelleme / Last Updated: 25 Ekim 2026</p>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- TÜRKÇE İÇERİK (TR) -->
+    <!-- ============================================================== -->
+    <div id="content-tr" class="lang-content active">
+
+      <!-- 1. İNDİRME BAŞLAMIYOR / LİNK ÇÖZÜLEMEDİ -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+          </div>
+          <h2 class="card-title">1. İndirme Başlamıyor veya "Bağlantı Çözülemedi" Hatası</h2>
+        </div>
+        <div class="card-content">
+          <p>Kopyaladığınız bağlantıyı VidSave'e yapıştırdığınızda "Medya adresi çözülemedi" uyarısı alıyorsanız aşağıdaki durumları kontrol edin:</p>
+          <ul class="step-list">
+            <li><strong>Gizli / Kilitli Hesaplar:</strong> Instagram veya TikTok'ta gizli hesaplara ait paylaşımlar platform güvenlik kuralları gereği harici olarak indirilemez. Yalnızca herkese açık (public) profiller desteklenir.</li>
+            <li><strong>Yaş Kısıtlaması & Oturum Duvarı:</strong> YouTube veya Facebook'ta 18+ yaş doğrulaması veya üyelik gerektiren videolar harici indirme motorları tarafından çekilemez.</li>
+            <li><strong>Bağlantı Doğrulama:</strong> Kopyalanan bağlantıyı önce telefonunuzun gizli sekmesinde (Incognito) açarak videonun harici olarak oynatıldığından emin olun.</li>
+          </ul>
+          <div class="tip-box">
+            <strong>İpucu:</strong> Sosyal medya uygulamasında "Bağlantıyı Kopyala" (Copy Link) dedikten sonra VidSave'i açtığınızda link kutusuna otomatik yapıştırılır.
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. GALERİDE VE MÜZİK SEKMEDE GÖRÜNMÜYOR -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10H6v-2h8v2zm4-4H6v-2h12v2z"/></svg>
+          </div>
+          <h2 class="card-title">2. İndirilen Dosya Galeride veya Müzik Sekmesinde Görünmüyor</h2>
+        </div>
+        <div class="card-content">
+          <p>İndirme başarıyla tamamlandı bildirimi geldiği halde dosya telefon galerinizde görünmüyorsa:</p>
+          <ul class="check-list">
+            <li><strong>Android 13+ Medya İzinleri:</strong> Cihazınızda <code>Fotoğraflar ve Videolar</code> (READ_MEDIA_VIDEO) ve <code>Müzik ve Ses</code> (READ_MEDIA_AUDIO) izinlerinin verildiğinden emin olun.</li>
+            <li><strong>Kayıt Klasörü:</strong> İndirilen tüm MP4 videolar ve MP3 müzikler cihazınızın ortak <code>Download/VidSave</code> veya ana <code>Download</code> dizinine kaydedilir.</li>
+            <li><strong>Medya Tarayıcısı:</strong> Telefonunuzun varsayılan galerisi yeni dosyayı birkaç dakika içinde dizine ekler. Hemen görmek için dosya yöneticisi uygulamasından İndirilenler klasörüne bakabilirsiniz.</li>
+          </ul>
+          <div class="highlight-box">
+            Telefonunuzun <strong>Ayarlar > Uygulamalar > VidSave > İzinler</strong> sekmesine girerek Depolama ve Medya erişiminin "İzin Verildi" olduğunu doğrulayın.
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. İLERLEME TAKILIYOR / DURUYOR -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
+          </div>
+          <h2 class="card-title">3. İndirme İlerlemesi (%99 veya Ortasında) Takılıyor</h2>
+        </div>
+        <div class="card-content">
+          <p>Büyük boyutlu videolarda veya zayıf internet bağlantılarında indirme çubuğu duraklayabilir:</p>
+          <ul class="step-list">
+            <li><strong>Pil Tasarrufu Kısıtlaması:</strong> Xiaomi (MIUI), Samsung (OneUI) ve Huawei gibi cihazlar ekran kapandığında veya arka plana geçildiğinde indirme servisini zorla durdurabilir.</li>
+            <li><strong>Ağ Dalgalanması:</strong> Wi-Fi ile mobil veri arasında geçiş yapılırken HTTP bağlantısı kopabilir.</li>
+            <li><strong>Çözüm:</strong> Cihaz <code>Ayarlar > Uygulamalar > VidSave > Pil</code> menüsünden "Kısıtlanmamış" (Unrestricted) modunu seçin.</li>
+          </ul>
+          <div class="tip-box">
+            İndirme tamamlanana kadar uygulamanın açık kalması veya canlı bildirim çubuğundan ilerlemenin takip edilmesi indirme stabilitesini en üst seviyeye çıkarır.
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. SES YOK VEYA SİYAH EKRAN -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          </div>
+          <h2 class="card-title">4. Video İndi Ancak Ses Gelmiyor veya Görüntü Oynatılamıyor</h2>
+        </div>
+        <div class="card-content">
+          <p>Bazı 1080p, 2K ve 4K yüksek çözünürlüklü videolarda telefonunuzun varsayılan oynatıcısı ses veya görüntü codec'lerini desteklemeyebilir:</p>
+          <ul class="check-list">
+            <li><strong>Gelişmiş Codec Formatları (AV1 / VP9):</strong> YouTube ve TikTok gibi platformlar yüksek çözünürlüklerde yeni nesil sıkıştırma kullanır. Bazı eski Android oynatıcıları bu formatları çözemez.</li>
+            <li><strong>Ayrı Akış Birleştirme:</strong> VidSave yüksek kaliteli ses ve görüntüyü arka planda ffmpeg motoruyla otomatik birleştirir.</li>
+            <li><strong>Tavsiye Edilen Çözüm:</strong> Videoyu doğrudan VidSave içindeki yerleşik oynatıcı ile açabilir veya Google Play Store'dan ücretsiz <strong>VLC for Android</strong> uygulamasını kullanarak izleyebilirsiniz.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 5. SATIN ALINAN PREMİUM AKTİF OLMADI -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+          </div>
+          <h2 class="card-title">5. Satın Alınan Premium Abonelik Görünmüyor</h2>
+        </div>
+        <div class="card-content">
+          <p>Google Play Store üzerinden Aylık Premium abonelik satın aldınız ancak uygulama hâlâ misafir modunda görünüyorsa:</p>
+          <ul class="step-list">
+            <li><strong>Satın Alımları Geri Yükle:</strong> VidSave içindeki <code>Ayarlar</code> sekmesine gidin ve "Satın Alımları Geri Yükle" butonuna dokunun.</li>
+            <li><strong>Doğru Google Hesabı:</strong> Telefonunuzda birden fazla Google hesabı varsa, satın alımı gerçekleştirdiğiniz asıl Gmail hesabının Google Play Store'da seçili olduğundan emin olun.</li>
+            <li><strong>Google Play Önbelleği:</strong> Bazen Play Store sunucu yanıtı 1-2 dakika gecikebilir. Uygulamayı tamamen kapatıp açmak önbelleği tazeler.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 6. REKLAMLAR VE İNDİRME BEKLEMESİ -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zm-10-7h9v6h-9z"/></svg>
+          </div>
+          <h2 class="card-title">6. Reklamlar ve İndirme Bekleme Süresi</h2>
+        </div>
+        <div class="card-content">
+          <p>VidSave'in ücretsiz sürümünde yüksek hızlı indirme altyapısı nasıl çalışır?</p>
+          <ul class="check-list">
+            <li><strong>Neden Reklam Gösterilir?:</strong> VidSave tüm kullanıcılarına ücretsiz, sınırsız ve hızlı indirme imkanı sağlar. Sunucu ve bant genişliği maliyetleri Google AdMob ödüllü reklamları ile karşılanır.</li>
+            <li><strong>Ödüllü Reklam Süresi:</strong> İndirme başlamadan önce izletilen reklam tamamlandığında dosyanız otomatik olarak en yüksek hızda inmeye başlar.</li>
+            <li><strong>Tamamen Reklamsız Deneyim:</strong> Aylık Premium aboneler için tüm reklam istekleri kod düzeyinde tamamen devre dışı bırakılır (Zero-Ad Mode).</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 7. SOSYAL MEDYA GÜNCELLEMELERİ VE OTOMATİK TAMİR -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+          </div>
+          <h2 class="card-title">7. Sosyal Medya Güncellemeleri & Otomatik Tamir Kalkanı</h2>
+        </div>
+        <div class="card-content">
+          <p>Instagram, TikTok, Twitter/X ve YouTube zaman zaman video adresleme algoritmalarını değiştirebilir:</p>
+          <div class="highlight-box">
+            VidSave, <strong>Firebase Remote Config</strong> ve <strong>Dinamik Regex Kalkanı</strong> ile donatılmıştır. Platformlar değiştiğinde bulut sunucularımız yeni kuralları anında uygulamanıza gönderir.
+          </div>
+          <p>Yeni bir market güncellemesi beklemenize gerek kalmadan sistem kendini uzaktan tamir eder. Beklenmedik bir link hatasıyla karşılaşırsanız uygulamayı kapatıp açmanız yeni kural setini almak için yeterlidir.</p>
+        </div>
+      </div>
+
+      <!-- 8. DESTEK KODU İLE İLETİŞİM -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+          </div>
+          <h2 class="card-title">8. Sorununuz Çözülmedi mi? Destek Kodu ile Ulaşın</h2>
+        </div>
+        <div class="card-content">
+          <p>Yukarıdaki çözümler probleminizi gidermediyse, mühendislik ekibimiz size özel yardımcı olmaktan mutluluk duyacaktır:</p>
+          <ul class="step-list">
+            <li>VidSave içinde <code>Ayarlar</code> sekmesine dokunun.</li>
+            <li>En üstte yer alan <strong>Destek Kodu'nuzu (User ID)</strong> kopyalamak için üzerine dokunun.</li>
+            <li>İndiremediğiniz linki ve telefon modelinizi ekleyerek <code>admindestekk@gmail.com</code> adresine e-posta gönderin.</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- İNGİLİZCE İÇERİK (EN) -->
+    <!-- ============================================================== -->
+    <div id="content-en" class="lang-content">
+
+      <!-- 1. DOWNLOAD DOES NOT START / CANNOT RESOLVE -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+          </div>
+          <h2 class="card-title">1. Download Doesn't Start or 'Link Cannot Be Resolved'</h2>
+        </div>
+        <div class="card-content">
+          <p>If you see a "Media URL could not be resolved" prompt when pasting a link into VidSave, check the following conditions:</p>
+          <ul class="step-list">
+            <li><strong>Private / Locked Profiles:</strong> Posts from private Instagram or TikTok accounts are protected by platform privacy policies and cannot be scraped externally. Only publicly available posts are supported.</li>
+            <li><strong>Age Restrictions & Login Walls:</strong> Content on YouTube or Facebook requiring age verification or member login cannot be captured by third-party clients.</li>
+            <li><strong>Link Integrity Check:</strong> Paste the link into a private/incognito browser tab first to confirm that the video plays publicly without requiring an account.</li>
+          </ul>
+          <div class="tip-box">
+            <strong>Tip:</strong> Copying a media link in your social media app automatically auto-fills into VidSave upon opening the app.
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. NOT APPEARING IN GALLERY OR MUSIC -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10H6v-2h8v2zm4-4H6v-2h12v2z"/></svg>
+          </div>
+          <h2 class="card-title">2. Downloaded Media Missing from Gallery or Music Tab</h2>
+        </div>
+        <div class="card-content">
+          <p>If a download completed notification appeared but the media file is not showing up in your photo gallery or music library:</p>
+          <ul class="check-list">
+            <li><strong>Android 13+ Media Permissions:</strong> Ensure permissions for <code>Photos and Videos</code> (READ_MEDIA_VIDEO) and <code>Music and Audio</code> (READ_MEDIA_AUDIO) have been granted.</li>
+            <li><strong>Storage Directory:</strong> All MP4 videos and MP3 audio tracks are saved directly to your device's public <code>Download/VidSave</code> or root <code>Download</code> directory.</li>
+            <li><strong>Media Indexing Latency:</strong> The default system gallery scanner may take a couple minutes to index newly created files. You can immediately access them via any File Manager app under the Downloads folder.</li>
+          </ul>
+          <div class="highlight-box">
+            Navigate to <strong>Device Settings > Apps > VidSave > Permissions</strong> and verify that Storage and Media permissions are set to "Allowed".
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. DOWNLOAD STUCK -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
+          </div>
+          <h2 class="card-title">3. Download Progress Stuck (at 99% or Midway)</h2>
+        </div>
+        <div class="card-content">
+          <p>For large video files or inconsistent mobile data, streaming transfers can occasionally pause:</p>
+          <ul class="step-list">
+            <li><strong>Battery Saver Restrictions:</strong> Devices from Xiaomi (MIUI), Samsung (OneUI), and Huawei forcefully suspend active network streams when the screen is locked.</li>
+            <li><strong>Network Switching:</strong> Transitions between Wi-Fi and cellular networks can reset HTTP streaming sockets.</li>
+            <li><strong>Solution:</strong> Open <code>Device Settings > Apps > VidSave > Battery</code> and select "Unrestricted" background execution.</li>
+          </ul>
+          <div class="tip-box">
+            Keeping the application open or monitoring progress via the live notification bar ensures maximal streaming continuity.
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. NO SOUND OR BLACK SCREEN -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          </div>
+          <h2 class="card-title">4. Video Downloaded But No Sound or Black Screen During Playback</h2>
+        </div>
+        <div class="card-content">
+          <p>For certain 1080p, 2K, and 4K ultra-high-definition clips, legacy phone decoders may fail to render newer codecs:</p>
+          <ul class="check-list">
+            <li><strong>Advanced Codecs (AV1 / VP9):</strong> Streaming platforms utilize advanced compression formats on high resolutions that standard system players cannot decode.</li>
+            <li><strong>Separate Stream Multiplexing:</strong> VidSave automatically merges separate audio and video tracks via our background ffmpeg engine.</li>
+            <li><strong>Recommended Solution:</strong> Open the video using VidSave's built-in player, or install the free, open-source <strong>VLC for Android</strong> app from Google Play Store.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 5. PREMIUM SUBSCRIPTION NOT ACTIVE -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+          </div>
+          <h2 class="card-title">5. Purchased Premium Subscription Not Recognized</h2>
+        </div>
+        <div class="card-content">
+          <p>If you purchased a Monthly Premium subscription via Google Play Store but the app still presents guest status:</p>
+          <ul class="step-list">
+            <li><strong>Restore Purchases:</strong> Open the <code>Settings</code> tab in VidSave and tap the "Restore Purchases" button.</li>
+            <li><strong>Active Google Account:</strong> On multi-account devices, verify that the Google Play Store is switched to the specific account used during purchase.</li>
+            <li><strong>Billing Cache Propagation:</strong> Google Play billing servers can take up to 2 minutes to synchronize. Force-stopping and reopening VidSave will refresh cached tokens.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 6. ADS AND DOWNLOAD WAITING TIME -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zm-10-7h9v6h-9z"/></svg>
+          </div>
+          <h2 class="card-title">6. Advertisements & Download Waiting Times</h2>
+        </div>
+        <div class="card-content">
+          <p>How the free high-speed infrastructure operates on VidSave:</p>
+          <ul class="check-list">
+            <li><strong>Why Ads Exist:</strong> VidSave provides an unlimited and ultra-fast download service at zero charge. Server maintenance and high-bandwidth costs are funded by rewarded video ads.</li>
+            <li><strong>Rewarded Ad Flow:</strong> Completing the short video ad grants instant authorization for top-speed, high-resolution media conversion.</li>
+            <li><strong>Complete Ad-Free Mode:</strong> Monthly Premium subscribers bypass all AdMob ad invocations at the architecture level (Zero-Ad Experience).</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 7. PLATFORM UPDATES AND CLOUD SELF-HEALING -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+          </div>
+          <h2 class="card-title">7. Social Media Algorithm Updates & Cloud Self-Healing</h2>
+        </div>
+        <div class="card-content">
+          <p>Platforms such as Instagram, TikTok, Twitter/X, and YouTube periodically change their media distribution protocols:</p>
+          <div class="highlight-box">
+            VidSave is built with <strong>Firebase Remote Config</strong> and <strong>Dynamic Regex Shielding</strong>. When platforms evolve, our cloud servers push revised rules straight to your device over the air.
+          </div>
+          <p>You never have to wait for an app store release for hotfixes. If a link suddenly fails to parse, simply close and restart the app to pull the freshest rule set.</p>
+        </div>
+      </div>
+
+      <!-- 8. CONTACT SUPPORT WITH SUPPORT CODE -->
+      <div class="policy-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+          </div>
+          <h2 class="card-title">8. Issue Still Persisting? Contact Support with Your Support Code</h2>
+        </div>
+        <div class="card-content">
+          <p>If the troubleshooting steps above have not resolved your difficulty, our engineering team is standing by to help:</p>
+          <ul class="step-list">
+            <li>Open the <code>Settings</code> tab in the VidSave app.</li>
+            <li>Tap on your <strong>Support Code (User ID)</strong> at the top to copy it to clipboard.</li>
+            <li>Send an email to <code>admindestekk@gmail.com</code> with the failing video link and your device model.</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- İLETİŞİM ALANI (CONTACT SECTION) -->
+    <!-- ============================================================== -->
+    <div class="contact-card">
+      <h3 class="contact-title" id="contactTitle">7/24 Teknik Destek & Yardım</h3>
+      <p class="contact-desc" id="contactDesc">
+        Karşılaştığınız herhangi bir hata, indirme sorunu veya öneri için resmi destek masamıza her zaman e-posta gönderebilirsiniz.
+      </p>
+      <a href="mailto:admindestekk@gmail.com?subject=[VidSave%20Sorun%20Giderme%20%26%20Destek]" class="email-btn">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        <span>admindestekk@gmail.com</span>
+      </a>
+    </div>
+
+    <!-- COPYRIGHT -->
+    <div class="copyright">
+      <p>&copy; 2026 VidSave. All rights reserved. Video & MP3 Downloader Help Center.</p>
+    </div>
+
+  </div>
+
+  <!-- JAVASCRIPT: Otomatik Tarayıcı Dili Algılama ve Dil Değiştirici -->
+  <script>
+    let currentLang = 'tr';
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      const trContent = document.getElementById('content-tr');
+      const enContent = document.getElementById('content-en');
+      const langFlag = document.getElementById('langFlag');
+      const langText = document.getElementById('langText');
+      const heroTitle = document.getElementById('heroTitle');
+      const heroBadge = document.getElementById('heroBadge');
+      const heroDate = document.getElementById('heroDate');
+      const contactTitle = document.getElementById('contactTitle');
+      const contactDesc = document.getElementById('contactDesc');
+      const navLabelPolicy = document.getElementById('navLabelPolicy');
+      const navLabelProblems = document.getElementById('navLabelProblems');
+
+      if (lang === 'en') {
+        trContent.classList.remove('active');
+        enContent.classList.add('active');
+        langFlag.textContent = '🇹🇷';
+        langText.textContent = 'Türkçe';
+        document.documentElement.lang = 'en';
+
+        if (navLabelPolicy) navLabelPolicy.textContent = 'Privacy Policy';
+        if (navLabelProblems) navLabelProblems.textContent = 'Troubleshooting';
+
+        heroTitle.textContent = 'Troubleshooting & Solutions';
+        heroBadge.textContent = 'VidSave Help, FAQ & Troubleshooting Guide';
+        heroDate.textContent = 'Last Updated: October 25, 2026';
+        contactTitle.textContent = '24/7 Technical Support & Help';
+        contactDesc.textContent = 'For any unresolved errors, download issues, or feature inquiries, please contact our engineering support desk.';
+      } else {
+        enContent.classList.remove('active');
+        trContent.classList.add('active');
+        langFlag.textContent = '🇺🇸';
+        langText.textContent = 'English';
+        document.documentElement.lang = 'tr';
+
+        if (navLabelPolicy) navLabelPolicy.textContent = 'Gizlilik Politikası';
+        if (navLabelProblems) navLabelProblems.textContent = 'Sorunlar ve Çözümler';
+
+        heroTitle.textContent = 'Sık Karşılaşılan Sorunlar ve Çözümler';
+        heroBadge.textContent = 'VidSave Yardım, SSS & Çözüm Rehberi';
+        heroDate.textContent = 'Son Güncelleme: 25 Ekim 2026';
+        contactTitle.textContent = '7/24 Teknik Destek & Yardım';
+        contactDesc.textContent = 'Karşılaştığınız herhangi bir hata, indirme sorunu veya öneri için resmi destek masamıza her zaman e-posta gönderebilirsiniz.';
+      }
+    }
+
+    function toggleLanguage() {
+      setLanguage(currentLang === 'tr' ? 'en' : 'tr');
+    }
+
+    // Açılışta kullanıcının tarayıcı diline göre otomatik belirle
+    (function initLanguage() {
+      const browserLang = (navigator.language || navigator.userLanguage || 'tr').toLowerCase();
+      if (browserLang.startsWith('tr')) {
+        setLanguage('tr');
+      } else {
+        setLanguage('en');
+      }
+    })();
+  </script>
+</body>
+</html>
