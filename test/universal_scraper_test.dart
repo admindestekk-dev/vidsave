@@ -453,6 +453,50 @@ void main() {
       );
     });
 
+    test('Instagram reel köprü çözümleyici ile og:video ve doğrudan CDN mp4 adresini çözer', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            final uriStr = opts.uri.toString();
+            if (uriStr.contains('eeinstagram.com/reel/TEST_SHORTCODE') ||
+                uriStr.contains('vxinstagram.com/reel/TEST_SHORTCODE')) {
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: '''
+                  <!DOCTYPE html>
+                  <html>
+                  <head>
+                    <meta property="og:video" content="https://scontent.cdninstagram.com/o1/v/t2/test_reel.mp4" />
+                  </head>
+                  <body></body>
+                  </html>
+                  ''',
+                ),
+              );
+            } else {
+              handler.next(opts);
+            }
+          },
+        ),
+      );
+
+      final scraper = UniversalScraper(dioClient: dio);
+      final result = await scraper.extractInstagram(
+        Uri.parse('https://www.instagram.com/reel/TEST_SHORTCODE/'),
+      );
+
+      expect(
+        result.url.toString(),
+        'https://scontent.cdninstagram.com/o1/v/t2/test_reel.mp4',
+      );
+      expect(result.fileName.contains('TEST_SHORTCODE'), isTrue);
+      expect(result.fileName.endsWith('.mp4'), isTrue);
+      expect(result.downloadHeaders['Referer'], 'https://www.instagram.com/');
+    });
+
     test(
       'resolve() tüm çıktıları evrenselTemizUrlShield süzgecinden geçirir',
       () async {

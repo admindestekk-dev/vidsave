@@ -680,36 +680,111 @@ class UniversalScraper {
     }
   }
 
-  /// E) INSTAGRAM: CookieManager üzerinden hafızadaki oturum çerezlerini
-  /// (sessionid, ds_user_id) otomatik okuyup istek başlığına yerleştirerek
-  /// gizli/erişim kalkanlı medyaları çözer; ddinstagram yedek köprüsünü çalıştırır.
+  /// E) INSTAGRAM: eeinstagram / vxinstagram yüksek hızlı CDN köprüleri
+  /// ve CookieManager oturum çerezleri üzerinden videoları ve fotoğrafları çözer.
   Future<ResolvedMedia> extractInstagram(Uri source) async {
     try {
-      // 1. ddinstagram / InstaFix doğrudan yönlendirme ve CDN köprüsü
-      try {
-        final path = source.path;
-        final ddUri = Uri.parse('https://d.ddinstagram.com$path');
-        final headRes = await _dio.head(
-          ddUri.toString(),
-          options: Options(
-            followRedirects: false,
-            validateStatus: (status) => status != null && status < 400,
-            headers: {'User-Agent': kUniversalMobileUserAgent},
-          ),
-        );
-        final location = headRes.headers.value('location');
-        if (location != null && location.isNotEmpty) {
-          final cleanLocation = evrenselTemizUrlShield(location);
-          return ResolvedMedia(
-            url: Uri.parse(cleanLocation),
-            fileName: 'instagram_${DateTime.now().millisecondsSinceEpoch}.mp4',
-            downloadHeaders: {
-              'Referer': 'https://www.instagram.com/',
-              'User-Agent': kUniversalMobileUserAgent,
-            },
-          );
+      final sourceStr = source.toString();
+      final shortcodeMatch = RegExp(
+        r'(?:/(?:p|reel|reels|tv|share/reel|share/p)/)([a-zA-Z0-9_-]+)',
+      ).firstMatch(sourceStr);
+      final shortcode = shortcodeMatch?.group(1);
+
+      if (shortcode != null && shortcode.isNotEmpty) {
+        // 1. eeinstagram ve vxinstagram aktif CDN köprüleri üzerinden garantili çözümleme
+        final bridgeEndpoints = [
+          'https://eeinstagram.com/reel/$shortcode/',
+          'https://vxinstagram.com/reel/$shortcode/',
+          'https://eeinstagram.com/p/$shortcode/',
+          'https://vxinstagram.com/p/$shortcode/',
+        ];
+
+        for (final bridgeUrl in bridgeEndpoints) {
+          try {
+            final bridgeRes = await _dio.get<String>(
+              bridgeUrl,
+              options: Options(
+                headers: {
+                  'User-Agent':
+                      'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)',
+                  'Accept':
+                      'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                },
+                validateStatus: (status) => status != null && status < 400,
+              ),
+            );
+
+            final html = bridgeRes.data ?? '';
+            final videoMatch = RegExp(
+                  r'''<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']''',
+                ).firstMatch(html) ??
+                RegExp(
+                  r'''<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:video(?::secure_url)?["']''',
+                ).firstMatch(html);
+
+            if (videoMatch != null) {
+              var videoUrl = videoMatch.group(1)!;
+              if (videoUrl.startsWith('/')) {
+                final bridgeUri = Uri.parse(bridgeUrl);
+                videoUrl = '${bridgeUri.scheme}://${bridgeUri.host}$videoUrl';
+              }
+
+              // Doğrudan CDN yönlendirmesini al (varsa)
+              String directVideoUrl = videoUrl;
+              try {
+                final locRes = await _dio.get<dynamic>(
+                  videoUrl,
+                  options: Options(
+                    followRedirects: false,
+                    validateStatus: (status) => status != null && status < 400,
+                    headers: {'User-Agent': kUniversalMobileUserAgent},
+                  ),
+                );
+                final location = locRes.headers.value('location');
+                if (location != null && location.isNotEmpty) {
+                  directVideoUrl = location;
+                }
+              } catch (_) {}
+
+              final cleanUrl = evrenselTemizUrlShield(directVideoUrl);
+              return ResolvedMedia(
+                url: Uri.parse(cleanUrl),
+                fileName:
+                    'instagram_${shortcode}_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                downloadHeaders: {
+                  'Referer': 'https://www.instagram.com/',
+                  'User-Agent': kUniversalMobileUserAgent,
+                },
+              );
+            }
+
+            final imageMatch = RegExp(
+                  r'''<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']''',
+                ).firstMatch(html) ??
+                RegExp(
+                  r'''<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']''',
+                ).firstMatch(html);
+
+            if (imageMatch != null) {
+              var imageUrl = imageMatch.group(1)!;
+              if (imageUrl.startsWith('/')) {
+                final bridgeUri = Uri.parse(bridgeUrl);
+                imageUrl = '${bridgeUri.scheme}://${bridgeUri.host}$imageUrl';
+              }
+              final cleanUrl = evrenselTemizUrlShield(imageUrl);
+              return ResolvedMedia(
+                url: Uri.parse(cleanUrl),
+                fileName:
+                    'instagram_${shortcode}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                downloadHeaders: {
+                  'Referer': 'https://www.instagram.com/',
+                  'User-Agent': kUniversalMobileUserAgent,
+                },
+              );
+            }
+          } catch (_) {}
         }
-      } catch (_) {}
+      }
 
       // 2. Oturum Çerezi Enjeksiyonu ile Doğrudan Instagram HTML Sayfasını İndir
       final res = await _dio.get<String>(source.toString());

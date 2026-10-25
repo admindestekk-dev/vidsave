@@ -1998,6 +1998,59 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                         "title": tik_data.get("title") or "TikTok Video",
                         "ext": "mp4",
                     }
+
+        # Instagram High-Speed Bridge Fallback (eeinstagram / vxinstagram)
+        if "instagram.com" in url or "instagr.am" in url:
+            ig_m = re.search(r'(?:/(?:p|reel|reels|tv|share/reel|share/p)/)([a-zA-Z0-9_-]+)', url)
+            if ig_m:
+                shortcode = ig_m.group(1)
+                bridges = [
+                    f"https://eeinstagram.com/reel/{shortcode}/",
+                    f"https://vxinstagram.com/reel/{shortcode}/",
+                    f"https://eeinstagram.com/p/{shortcode}/",
+                    f"https://vxinstagram.com/p/{shortcode}/",
+                ]
+                discord_headers = {
+                    "User-Agent": "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                }
+                for b_url in bridges:
+                    try:
+                        b_resp = requests.get(b_url, headers=discord_headers, timeout=8)
+                        if b_resp.status_code == 200:
+                            b_html = b_resp.text
+                            v_match = re.search(r'<meta[^>]+property=["\']og:video(?::secure_url)?["\'][^>]+content=["\']([^"\']+)["\']', b_html) or \
+                                      re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:video(?::secure_url)?["\']', b_html)
+                            if v_match:
+                                v_url = v_match.group(1)
+                                if v_url.startswith("/"):
+                                    parsed_b = urllib.parse.urlparse(b_url)
+                                    v_url = f"{parsed_b.scheme}://{parsed_b.netloc}{v_url}"
+                                try:
+                                    loc_resp = requests.get(v_url, headers={"User-Agent": headers["User-Agent"]}, allow_redirects=False, timeout=5)
+                                    if loc_resp.status_code in (301, 302) and "Location" in loc_resp.headers:
+                                        v_url = loc_resp.headers["Location"]
+                                except Exception:
+                                    pass
+                                return {
+                                    "url": v_url,
+                                    "title": f"Instagram Video {shortcode}",
+                                    "ext": "mp4",
+                                }
+                            img_match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', b_html) or \
+                                        re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', b_html)
+                            if img_match:
+                                img_url = img_match.group(1)
+                                if img_url.startswith("/"):
+                                    parsed_b = urllib.parse.urlparse(b_url)
+                                    img_url = f"{parsed_b.scheme}://{parsed_b.netloc}{img_url}"
+                                return {
+                                    "url": img_url,
+                                    "title": f"Instagram Photo {shortcode}",
+                                    "ext": "jpg",
+                                }
+                    except Exception:
+                        continue
     except Exception as exc:
         logging.warning("Fallback regex scrape error: %s", exc)
     return None
