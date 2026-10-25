@@ -1999,24 +1999,47 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                         "ext": "mp4",
                     }
 
-        # TikTok TikWM Fallback
+        # TikTok Dual High-Availability Fallback (TikWM + TikMate)
         if "tiktok.com" in url:
-            tik_resp = requests.post(
-                "https://www.tikwm.com/api/",
-                data={"url": url, "count": 12, "cursor": 0, "web": 1},
-                headers={"User-Agent": headers["User-Agent"]},
-                timeout=15,
-            )
-            if tik_resp.status_code == 200:
-                tik_data = tik_resp.json().get("data", {})
-                play_url = tik_data.get("play") or tik_data.get("wmplay")
-                if play_url:
-                    full_url = play_url if play_url.startswith("http") else f"https://www.tikwm.com{play_url}"
-                    return {
-                        "url": full_url,
-                        "title": tik_data.get("title") or "TikTok Video",
-                        "ext": "mp4",
-                    }
+            try:
+                tik_resp = requests.post(
+                    "https://www.tikwm.com/api/",
+                    data={"url": url, "count": 12, "cursor": 0, "web": 1},
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=12,
+                )
+                if tik_resp.status_code == 200:
+                    tik_data = tik_resp.json().get("data", {})
+                    play_url = tik_data.get("play") or tik_data.get("wmplay")
+                    if play_url:
+                        full_url = play_url if play_url.startswith("http") else f"https://www.tikwm.com{play_url}"
+                        return {
+                            "url": full_url,
+                            "title": tik_data.get("title") or "TikTok Video",
+                            "ext": "mp4",
+                        }
+            except Exception:
+                pass
+
+            try:
+                tm_resp = requests.post(
+                    "https://api.tikmate.app/api/lookup",
+                    data={"url": url},
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=10,
+                )
+                if tm_resp.status_code == 200:
+                    tm_data = tm_resp.json()
+                    token = tm_data.get("token")
+                    vid_id = tm_data.get("id")
+                    if token and vid_id:
+                        return {
+                            "url": f"https://tikmate.app/download/{token}/{vid_id}.mp4?hd=1",
+                            "title": tm_data.get("author_name") or "TikTok Video",
+                            "ext": "mp4",
+                        }
+            except Exception:
+                pass
 
         # Instagram High-Speed Bridge Fallback (eeinstagram / vxinstagram)
         if "instagram.com" in url or "instagr.am" in url:

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -421,14 +422,118 @@ class UniversalScraper {
     }
   }
 
-  /// B) TIKTOK: Gelen kısa linklerin yönlendirildiği ham HTML sayfa kaynağını
-  /// indirip, <script> etiketlerindeki gizli .mp4 adreslerini regex ile ayıklar.
+  /// B) TIKTOK: TikWM ve TikMate yüksek hızlı API köprüleri ve sayfa kaynağı
+  /// üzerinden filigransız (no-watermark) doğrudan MP4 video adresini ayıklar.
   Future<ResolvedMedia> extractTikTok(Uri source) async {
+    final cleanSource = evrenselTemizUrlShield(source.toString());
+
+    // 1. TikWM Açık İstemci Taraflı Motor (No-Watermark MP4)
     try {
-      final res = await _dio.get<String>(source.toString());
+      final tikwmRes = await _dio.post<dynamic>(
+        'https://www.tikwm.com/api/',
+        data: {'url': cleanSource, 'count': 12, 'cursor': 0, 'web': 1},
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: {'User-Agent': kUniversalMobileUserAgent},
+          validateStatus: (status) => status != null && status < 400,
+        ),
+      );
+
+      final dynamic resBody = tikwmRes.data;
+      Map<String, dynamic>? jsonMap;
+      if (resBody is Map<String, dynamic>) {
+        jsonMap = resBody;
+      } else if (resBody is String && resBody.trim().startsWith('{')) {
+        try {
+          jsonMap = jsonDecode(resBody) as Map<String, dynamic>?;
+        } catch (_) {}
+      }
+
+      final tikData = jsonMap?['data'];
+      if (tikData != null && tikData is Map) {
+        final playUrl = tikData['play'] ?? tikData['wmplay'];
+        final title = tikData['title'] as String? ?? 'tiktok_video';
+        if (playUrl != null) {
+          final uriStr = playUrl.toString().startsWith('http')
+              ? playUrl.toString()
+              : 'https://www.tikwm.com$playUrl';
+          final cleanUrl = evrenselTemizUrlShield(uriStr);
+          return ResolvedMedia(
+            url: Uri.parse(cleanUrl),
+            fileName: '${_sanitizeFileName(title)}.mp4',
+            downloadHeaders: {
+              'Referer': 'https://www.tiktok.com/',
+              'User-Agent': kUniversalMobileUserAgent,
+            },
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('UniversalScraper: TikWM API denemesi başarısız: $e');
+    }
+
+    // 2. TikMate Açık İstemci Taraflı Yedek Motor (HD No-Watermark MP4)
+    try {
+      final tikmateRes = await _dio.post<dynamic>(
+        'https://api.tikmate.app/api/lookup',
+        data: {'url': cleanSource},
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: {'User-Agent': kUniversalDesktopUserAgent},
+          validateStatus: (status) => status != null && status < 400,
+        ),
+      );
+
+      final dynamic resBody = tikmateRes.data;
+      Map<String, dynamic>? jsonMap;
+      if (resBody is Map<String, dynamic>) {
+        jsonMap = resBody;
+      } else if (resBody is String && resBody.trim().startsWith('{')) {
+        try {
+          jsonMap = jsonDecode(resBody) as Map<String, dynamic>?;
+        } catch (_) {}
+      }
+
+      final token = jsonMap?['token'];
+      final id = jsonMap?['id'];
+      if (token != null && id != null) {
+        final title = jsonMap?['author_name'] as String? ??
+            jsonMap?['id'] as String? ??
+            'tiktok_video';
+        final directUrl =
+            'https://tikmate.app/download/$token/$id.mp4?hd=1';
+        return ResolvedMedia(
+          url: Uri.parse(directUrl),
+          fileName: '${_sanitizeFileName(title.toString())}.mp4',
+          downloadHeaders: {
+            'Referer': 'https://www.tiktok.com/',
+            'User-Agent': kUniversalDesktopUserAgent,
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('UniversalScraper: TikMate API denemesi başarısız: $e');
+    }
+
+    // 3. Doğrudan HTML Kaynağı ve Regex Kalıpları
+    try {
+      final res = await _dio.get<String>(
+        cleanSource,
+        options: Options(
+          headers: {
+            'User-Agent': RemoteConfigService.instance.userAgent.isNotEmpty
+                ? RemoteConfigService.instance.userAgent
+                : kUniversalMobileUserAgent,
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': 'https://www.tiktok.com/',
+            'Sec-Fetch-Mode': 'navigate',
+          },
+          validateStatus: (status) => status != null && status < 400,
+        ),
+      );
       final html = res.data ?? '';
 
-      // 1. Dinamik Remote Config ve yerel Script etiketlerindeki regex kalıpları
       final patterns = <RegExp>[];
       final remotePattern = RemoteConfigService.instance.tiktokRegex;
       if (remotePattern.isNotEmpty) {
@@ -470,44 +575,13 @@ class UniversalScraper {
           }
         }
       }
-
-      // 2. TikWM Açık İstemci Taraflı Yedek Algoritma (Sıfır Maliyetli Client-Side API)
-      final tikwmRes = await _dio.post<Map<String, dynamic>>(
-        'https://www.tikwm.com/api/',
-        data: {'url': source.toString(), 'count': 12, 'cursor': 0, 'web': 1},
-        options: Options(
-          contentType: Headers.formUrlEncodedContentType,
-          headers: {'User-Agent': kUniversalMobileUserAgent},
-        ),
-      );
-
-      final tikData = tikwmRes.data?['data'];
-      if (tikData != null && tikData is Map) {
-        final playUrl = tikData['play'] ?? tikData['wmplay'];
-        final title = tikData['title'] as String? ?? 'tiktok_video';
-        if (playUrl != null) {
-          final uriStr = playUrl.toString().startsWith('http')
-              ? playUrl.toString()
-              : 'https://www.tikwm.com$playUrl';
-          final cleanUrl = evrenselTemizUrlShield(uriStr);
-          return ResolvedMedia(
-            url: Uri.parse(cleanUrl),
-            fileName: '${_sanitizeFileName(title)}.mp4',
-            downloadHeaders: {
-              'Referer': 'https://www.tiktok.com/',
-              'User-Agent': kUniversalMobileUserAgent,
-            },
-          );
-        }
-      }
-
-      throw const MediaResolverException(
-        'TikTok video adresi HTML kaynağından ayıklanamadı.',
-      );
     } catch (e) {
-      if (e is MediaResolverException) rethrow;
-      throw MediaResolverException('TikTok kazıma hatası: $e');
+      debugPrint('UniversalScraper: TikTok HTML doğrudan kazıma uyarısı: $e');
     }
+
+    throw const MediaResolverException(
+      'TikTok video adresi çözülemedi. Lütfen bağlantıyı kontrol edin.',
+    );
   }
 
   /// C) PINTEREST: Kısa link yönlendirmesinden gelen HTML sayfa kaynağını

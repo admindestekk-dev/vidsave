@@ -224,6 +224,47 @@ void main() {
       },
     );
 
+    test('TikTok TikWM API yanıtını başarıyla ayrıştırır', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            if (opts.uri.toString().contains('tikwm.com/api')) {
+              handler.resolve(
+                Response(
+                  requestOptions: opts,
+                  statusCode: 200,
+                  data: {
+                    'code': 0,
+                    'msg': 'success',
+                    'data': {
+                      'id': '7106594312292453678',
+                      'title': 'Test TikTok Video',
+                      'play': 'https://www.tikwm.com/video/media/play/test.mp4',
+                    },
+                  },
+                ),
+              );
+            } else {
+              handler.next(opts);
+            }
+          },
+        ),
+      );
+
+      final scraper = UniversalScraper(dioClient: dio);
+      final result = await scraper.extractTikTok(
+        Uri.parse('https://www.tiktok.com/@tiktok/video/7106594312292453678'),
+      );
+
+      expect(
+        result.url.toString(),
+        'https://www.tikwm.com/video/media/play/test.mp4',
+      );
+      expect(result.fileName.contains('Test TikTok Video'), isTrue);
+      expect(result.fileName.endsWith('.mp4'), isTrue);
+    });
+
     test(
       'Pinterest HTML içindeki download_url veya mp4 regexini çözer',
       () async {
