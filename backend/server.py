@@ -2852,6 +2852,27 @@ def download() -> Response | tuple[Response, int]:
     return response
 
 
+@app.route("/", methods=["GET", "HEAD"])
+def root_status() -> Response:
+    """Public root status endpoint for Render health checks and browser verification."""
+    return jsonify({
+        "status": "ok",
+        "service": "VidSave Backend",
+        "version": "1.0.0",
+        "endpoints": {
+            "analyze": "/api/analyze",
+            "resolve": "/api/resolve",
+            "health": "/api/health",
+        },
+    }), 200
+
+
+@app.route("/api/ping", methods=["GET", "HEAD"])
+def api_ping() -> Response:
+    """Ultra-lightweight ping endpoint for Render / Uptime robot keep-alive checks."""
+    return jsonify({"status": "pong", "time": int(time.time())}), 200
+
+
 @app.get("/api/health")
 def health() -> Response:
     """Handy for the app to verify the backend and its capabilities."""
