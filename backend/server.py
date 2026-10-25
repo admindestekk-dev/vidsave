@@ -64,6 +64,22 @@ except ImportError:  # Support running as `python backend/server.py`.
 
 app = Flask(__name__)
 
+# --- CORS (Cross-Origin Resource Sharing) Shield ---------------------------
+try:
+    from flask_cors import CORS
+    CORS(app, resources={r"/*": {"origins": "*"}})
+except Exception:
+    @app.after_request
+    def _add_cors_headers(response: Response) -> Response:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = (
+            "Content-Type,Authorization,X-Api-Key,Accept,User-Agent"
+        )
+        response.headers["Access-Control-Allow-Methods"] = (
+            "GET,PUT,POST,DELETE,OPTIONS"
+        )
+        return response
+
 # --- configuration ---------------------------------------------------------
 
 # Optional shared secret. When set, clients must send it as `X-Api-Key`.
@@ -1870,6 +1886,278 @@ def resolve() -> Response:
 
     code = 200 if job.status != "error" else 422
     return jsonify(_job_payload(job)), code
+
+
+def _unshorten_redirects(url: str) -> str:
+    """Follow redirects for Facebook (fb.watch, facebook.com/share), TikTok, bitly, etc."""
+    try:
+        lower = url.lower()
+        if any(
+            d in lower
+            for d in (
+                "fb.watch",
+                "facebook.com/share",
+                "fb.me",
+                "bit.ly",
+                "tinyurl.com",
+                "t.co",
+                "vm.tiktok.com",
+                "vt.tiktok.com",
+            )
+        ):
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9,tr;q=0.8",
+            }
+            resp = requests.head(url, headers=headers, allow_redirects=True, timeout=10)
+            if resp.url and resp.url != url:
+                return resp.url
+    except Exception as exc:
+        logging.warning("Unshorten failed for %s: %s", url, exc)
+    return url
+
+
+def _extract_vimeo_id(url: str) -> str | None:
+    match = re.search(r"vimeo\.com/(?:video/)?(\d+)", url)
+    return match.group(1) if match else None
+
+
+def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
+    """Lightweight fallback scraper for Vimeo, Facebook, and TikTok if yt-dlp faces bot barriers."""
+    try:
+        vimeo_id = _extract_vimeo_id(url)
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Referer": "https://vimeo.com/",
+            "Accept": "*/*",
+        }
+        if vimeo_id:
+            embed_url = f"https://player.vimeo.com/video/{vimeo_id}"
+            resp = requests.get(embed_url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                html = resp.text
+                prog_m = re.findall(
+                    r'"url":"(https://player\.vimeo\.com/progressive_redirect/[^"]+)"',
+                    html,
+                )
+                if not prog_m:
+                    prog_m = re.findall(
+                        r'"url":"(https://[^"]*(?:vimeocdn|akamaized)[^"]*\.mp4[^"]*)"',
+                        html,
+                    )
+                if prog_m:
+                    best = max(
+                        prog_m,
+                        key=lambda u: 1080 if "1080" in u else (720 if "720" in u else 360),
+                    )
+                    return {
+                        "url": best,
+                        "title": f"Vimeo Video {vimeo_id}",
+                        "ext": "mp4",
+                    }
+
+        if "facebook.com" in url or "fb.watch" in url:
+            resp = requests.get(url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                html = resp.text
+                hd_m = re.search(r'"playable_url_quality_hd":\s*"([^"]+)"', html)
+                sd_m = re.search(r'"playable_url":\s*"([^"]+)"', html)
+                m = hd_m or sd_m
+                if m:
+                    clean = m.group(1).replace(r"\/", "/")
+                    return {
+                        "url": clean,
+                        "title": "Facebook Video",
+                        "ext": "mp4",
+                    }
+    except Exception as exc:
+        logging.warning("Fallback regex scrape error: %s", exc)
+    return None
+
+
+@app.route("/api/analyze", methods=["GET", "POST", "OPTIONS"])
+def api_analyze() -> Response | tuple[Response, int]:
+    """Server-side video and audio stream analyzer.
+
+    Accepts raw URLs from YouTube, TikTok, Vimeo, Facebook, Twitter, etc.,
+    resolves short-links and bot barriers with yt-dlp and anti-bot headers,
+    and returns a clean JSON object containing `download_url`.
+    """
+    if request.method == "OPTIONS":
+        return Response(status=204)
+
+    data: dict[str, Any] = {}
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+    elif request.form:
+        data = request.form.to_dict()
+    elif request.args:
+        data = request.args.to_dict()
+
+    raw_url = (data.get("url") or data.get("link") or data.get("query") or "").strip()
+    download_type = str(data.get("type") or data.get("kind") or "video").strip().lower()
+
+    if not raw_url:
+        return jsonify(
+            status="error",
+            error={
+                "code": "url_missing",
+                "message": "Lütfen geçerli bir URL sağlayın (url parametresi).",
+            },
+        ), 400
+
+    target_url = _unshorten_redirects(raw_url)
+    is_audio = download_type in ("mp3", "audio")
+    kind = "audio" if is_audio else "video"
+
+    # For Vimeo: player.vimeo.com/video/<id> avoids web login wall entirely
+    vimeo_id = _extract_vimeo_id(target_url)
+    lookup_url = (
+        f"https://player.vimeo.com/video/{vimeo_id}" if vimeo_id else target_url
+    )
+
+    info: dict[str, Any] | None = None
+    try:
+        # 1. Primary engine: yt-dlp metadata extraction
+        info = _run_json(lookup_url, kind, formats=True, timeout=40)
+    except Exception as ytdlp_err:
+        logging.warning("yt-dlp analyze error for %s: %s", target_url, ytdlp_err)
+        if lookup_url != target_url:
+            try:
+                info = _run_json(target_url, kind, formats=True, timeout=40)
+            except Exception:
+                pass
+
+    clean_download_url: str | None = None
+    title = (info.get("title") if info else None) or "vidsave_media"
+    duration = info.get("duration") if info else None
+    thumbnail = info.get("thumbnail") if info else None
+    ext = "mp3" if is_audio else (info.get("ext") if info else "mp4") or "mp4"
+
+    if info:
+        # Check direct formats
+        direct_format = _pick_direct_format(info, kind)
+        if direct_format and direct_format.get("url"):
+            clean_download_url = direct_format["url"]
+            if direct_format.get("ext"):
+                ext = direct_format["ext"]
+
+        if not clean_download_url:
+            formats = info.get("formats") or []
+            if is_audio:
+                audio_formats = [
+                    f
+                    for f in formats
+                    if (f.get("acodec") or "none") != "none" and f.get("url")
+                ]
+                audio_only = [
+                    f
+                    for f in audio_formats
+                    if (f.get("vcodec") or "none") == "none"
+                ]
+                candidates = audio_only or audio_formats
+                if candidates:
+                    candidates.sort(
+                        key=lambda f: (f.get("abr") or 0, f.get("tbr") or 0),
+                        reverse=True,
+                    )
+                    clean_download_url = candidates[0].get("url")
+                    ext = candidates[0].get("ext") or "mp3"
+            else:
+                prog_formats = [
+                    f
+                    for f in formats
+                    if (f.get("vcodec") or "none") != "none"
+                    and (f.get("acodec") or "none") != "none"
+                    and f.get("url")
+                ]
+                if prog_formats:
+                    prog_formats.sort(
+                        key=lambda f: (f.get("height") or 0, f.get("tbr") or 0),
+                        reverse=True,
+                    )
+                    clean_download_url = prog_formats[0].get("url")
+                    ext = prog_formats[0].get("ext") or "mp4"
+                elif formats:
+                    valid = [f for f in formats if f.get("url")]
+                    if valid:
+                        valid.sort(
+                            key=lambda f: (f.get("height") or 0, f.get("tbr") or 0),
+                            reverse=True,
+                        )
+                        clean_download_url = valid[0].get("url")
+                        ext = valid[0].get("ext") or "mp4"
+
+    # 2. Fallback regex scraper if yt-dlp returned no stream URL
+    if not clean_download_url:
+        fallback = _fallback_regex_scrape(target_url, kind)
+        if fallback and fallback.get("url"):
+            clean_download_url = fallback["url"]
+            title = fallback.get("title") or title
+            ext = fallback.get("ext") or ext
+
+    # 3. If direct stream is still not found (e.g. YouTube DASH requiring server merge/transcode),
+    # start a server job and return the server stream endpoint!
+    if not clean_download_url:
+        try:
+            job = _new_job(kind, target_url)
+            job.mode = "url"
+            threading.Thread(target=_work, args=(job,), daemon=True).start()
+            deadline = time.time() + 20
+            while time.time() < deadline:
+                if job.status in ("ready", "error"):
+                    break
+                time.sleep(0.3)
+            if job.status == "ready":
+                base_host = request.host_url.rstrip("/")
+                clean_download_url = f"{base_host}/download?job={job.id}"
+                title = job.title or title
+                ext = job.ext or ext
+                duration = job.duration or duration
+        except Exception as job_err:
+            logging.warning("Server fallback job failed: %s", job_err)
+
+    if not clean_download_url:
+        return jsonify(
+            status="error",
+            error={
+                "code": "stream_not_found",
+                "message": (
+                    "Medya akışı veya indirme bağlantısı çözülemedi. "
+                    "Lütfen bağlantıyı kontrol edin."
+                ),
+            },
+        ), 422
+
+    filename = _safe_filename(title, "vidsave", ext)
+
+    return jsonify({
+        "status": "success",
+        "download_url": clean_download_url,
+        "title": title,
+        "filename": filename,
+        "thumbnail": thumbnail,
+        "duration": duration,
+        "type": "mp3" if is_audio else "video",
+        "ext": ext,
+        "headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Referer": target_url,
+        },
+    }), 200
 
 
 @app.route("/api/indirme-durumu", methods=["GET", "POST"])

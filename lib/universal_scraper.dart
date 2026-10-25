@@ -830,52 +830,118 @@ class UniversalScraper {
     }
   }
 
-  /// G) VIMEO: Vimeo config JSON progressive stream formatını çözer.
+  /// G) VIMEO: Vimeo config ve sayfa kaynağındaki progressive MP4 akışını çözer.
+  /// Tür güvenliği: Gelen response.data Map cast edilmez, ham String olarak karşılanır
+  /// ve Regex cımbızıyla en yüksek kaliteli progressive MP4 linki doğrudan ayıklanır.
   Future<ResolvedMedia> extractVimeo(Uri source) async {
     try {
       final vimeoMatch = RegExp(r'vimeo\.com/(?:video/)?(\d+)')
           .firstMatch(source.toString());
-      if (vimeoMatch != null) {
-        final videoId = vimeoMatch.group(1)!;
-        final configRes = await _dio.get<Map<String, dynamic>>(
-          'https://player.vimeo.com/video/$videoId/config',
-        );
-        final files = configRes.data?['request']?['files']?['progressive'];
-        if (files is List && files.isNotEmpty) {
-          final firstStream = files.first as Map<String, dynamic>;
-          final streamUrl = firstStream['url']?.toString();
-          if (streamUrl != null) {
-            final cleanUrl = evrenselTemizUrlShield(streamUrl);
-            return ResolvedMedia(
-              url: Uri.parse(cleanUrl),
-              fileName:
-                  'vimeo_${videoId}_${DateTime.now().millisecondsSinceEpoch}.mp4',
-              downloadHeaders: {
+      final videoId = vimeoMatch?.group(1);
+
+      // 1. Aday URL: Config JSON/HTML uç noktası
+      // 2. Aday URL: Doğrudan video sayfası HTML kaynağı
+      final targetUrls = <String>[
+        if (videoId != null) 'https://player.vimeo.com/video/$videoId/config',
+        source.toString(),
+      ];
+
+      for (final targetUrl in targetUrls) {
+        try {
+          final res = await _dio.get<dynamic>(
+            targetUrl,
+            options: Options(
+              responseType: ResponseType.plain,
+              headers: {
                 'Referer': 'https://vimeo.com/',
                 'User-Agent': kUniversalDesktopUserAgent,
               },
-            );
-          }
-        }
-      }
+              validateStatus: (status) => status != null && status < 500,
+            ),
+          );
 
-      // Yedek HTML Taraması
-      final res = await _dio.get<String>(source.toString());
-      final html = res.data ?? '';
-      final match =
-          RegExp(r'"url":\s*"(https://[^"]+vimeocdn\.com[^"]+\.mp4[^"]*)"')
-              .firstMatch(html) ??
-          RegExp(r'"download_url":"(.*?)"').firstMatch(html);
-      if (match != null) {
-        final cleanUrl = evrenselTemizUrlShield(match.group(1)!);
-        return ResolvedMedia(
-          url: Uri.parse(cleanUrl),
-          fileName: 'vimeo_${DateTime.now().millisecondsSinceEpoch}.mp4',
-          downloadHeaders: {
-            'Referer': 'https://vimeo.com/',
-            'User-Agent': kUniversalDesktopUserAgent,
-          },
-        );
+          // 1. Kesin Tür Kalkanı: response.data verisini doğrudan Map'e cast etme!
+          final String hamMetin = res.data?.toString() ?? '';
+          if (hamMetin.trim().isEmpty) continue;
+
+          // 2. Regex Cımbızı: jsonDecode'a ihtiyaç duymadan progressive MP4 linklerini topla
+          final progressiveLinks = <String>[];
+
+          // Kullanıcının birincil Regex yapısı:
+          final RegExp vimeoRegex =
+              RegExp(r'"progressive":\[.*?file_code.*?"url":"(.*?)"');
+          for (final match in vimeoRegex.allMatches(hamMetin)) {
+            final raw = match.group(1);
+            if (raw != null && raw.isNotEmpty) {
+              progressiveLinks.add(raw);
+            }
+          }
+
+          // Alternatif evrensel Vimeo mp4 yakalayıcı:
+          final RegExp altRegex = RegExp(
+            r'"url":"(https://player\.vimeo\.com/progressive_redirect/.*?)"',
+          );
+          for (final match in altRegex.allMatches(hamMetin)) {
+            final raw = match.group(1);
+            if (raw != null && raw.isNotEmpty) {
+              progressiveLinks.add(raw);
+            }
+          }
+
+          // Ek genel Vimeo CDN / Akamai / progressive MP4 yakalayıcılar
+          final genericVimeoPatterns = [
+            RegExp(r'"url":\s*"(https://[^"]*(?:vimeocdn|akamaized|fastly)[^"]*\.mp4[^"]*)"'),
+            RegExp(r'"url":\s*"(https?://[^"]+\.mp4[^"]*)"'),
+            RegExp(r'''['"]url['"]\s*:\s*['"](https?://[^'"]+\.mp4[^'"]*)['"]'''),
+            RegExp(r'''url:\s*(https?://[^\s,}\]]+\.mp4[^\s,}\]]*)'''),
+            RegExp(r'"download_url":"(https?://[^"]+\.mp4[^"]*)"'),
+          ];
+
+          for (final pattern in genericVimeoPatterns) {
+            for (final match in pattern.allMatches(hamMetin)) {
+              final raw = match.group(1);
+              if (raw != null && raw.isNotEmpty) {
+                progressiveLinks.add(raw);
+              }
+            }
+          }
+
+          // 3. Kaliteye göre sırala ve en yüksek kalitedeki ham .mp4 adresini bul
+          if (progressiveLinks.isNotEmpty) {
+            final validUrls = progressiveLinks
+                .map(evrenselTemizUrlShield)
+                .where((u) => u.startsWith('http') && u.contains('.mp4'))
+                .toList();
+
+            if (validUrls.isNotEmpty) {
+              int qualityScore(String url) {
+                final lower = url.toLowerCase();
+                if (lower.contains('1080p') || lower.contains('1080')) return 1080;
+                if (lower.contains('720p') || lower.contains('720')) return 720;
+                if (lower.contains('540p') || lower.contains('540')) return 540;
+                if (lower.contains('480p') || lower.contains('480')) return 480;
+                if (lower.contains('360p') || lower.contains('360')) return 360;
+                if (lower.contains('240p') || lower.contains('240')) return 240;
+                return 100;
+              }
+
+              validUrls.sort((a, b) => qualityScore(b).compareTo(qualityScore(a)));
+              final bestUrl = validUrls.first;
+
+              final fileSuffix = videoId ?? DateTime.now().millisecondsSinceEpoch.toString();
+              return ResolvedMedia(
+                url: Uri.parse(bestUrl),
+                fileName: 'vimeo_${fileSuffix}_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                downloadHeaders: {
+                  'Referer': 'https://vimeo.com/',
+                  'User-Agent': kUniversalDesktopUserAgent,
+                },
+              );
+            }
+          }
+        } catch (targetErr) {
+          debugPrint('UniversalScraper: Vimeo target $targetUrl taranırken hata: $targetErr');
+        }
       }
 
       throw const MediaResolverException('Vimeo video akışı bulunamadı.');

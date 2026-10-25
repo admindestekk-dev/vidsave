@@ -365,6 +365,58 @@ void main() {
       );
     });
 
+    test('Vimeo ham HTML ve progressive Regex cımbızıyla String veriyi çözer (Map cast hatası yok)', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            // Sunucunun JSON yerine düz ham String (HTML metni) döndürdüğü senaryo
+            const rawHtml = '''
+              <!DOCTYPE html>
+              <html>
+              <head><title>Vimeo Video</title></head>
+              <body>
+                <script>
+                  window.playerConfig = {
+                    "request": {
+                      "files": {
+                        "progressive":[
+                          {"profile":"112","width":640,"height":360,"mime":"video/mp4","fps":30,"url":"https://player.vimeo.com/progressive_redirect/download/123456/rendition/360p/file.mp4","cdn":"fastly","quality":"360p","id":"p360"},
+                          {"profile":"119","width":1920,"height":1080,"mime":"video/mp4","fps":60,"file_code":"xyz","url":"https://player.vimeo.com/progressive_redirect/download/123456/rendition/1080p/file_code_1080p.mp4","cdn":"fastly","quality":"1080p","id":"p1080"}
+                        ]
+                      }
+                    }
+                  };
+                </script>
+              </body>
+              </html>
+            ''';
+
+            handler.resolve(
+              Response(
+                requestOptions: opts,
+                statusCode: 200,
+                data: rawHtml, // Düz String metin! (Map<String, dynamic> değil)
+              ),
+            );
+          },
+        ),
+      );
+
+      final scraper = UniversalScraper(dioClient: dio);
+      final result = await scraper.extractVimeo(
+        Uri.parse('https://vimeo.com/123456'),
+      );
+
+      // En yüksek kalite (1080p) linki cımbızlanmalı
+      expect(
+        result.url.toString(),
+        'https://player.vimeo.com/progressive_redirect/download/123456/rendition/1080p/file_code_1080p.mp4',
+      );
+      expect(result.fileName.startsWith('vimeo_123456_'), isTrue);
+      expect(result.fileName.endsWith('.mp4'), isTrue);
+    });
+
     test('Dailymotion metadata JSON formatını çözer', () async {
       final dio = Dio();
       dio.interceptors.add(

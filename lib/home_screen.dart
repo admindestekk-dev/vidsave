@@ -1,13 +1,22 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'admob_service.dart';
+import 'api_service.dart';
 import 'auth_service.dart';
 import 'backend_settings.dart';
+import 'download_item_model.dart';
+import 'download_notification_service.dart';
+import 'media_downloader.dart';
+import 'storage_service.dart';
 import 'subscription_screen.dart';
 
 /// Ana sayfadaki 'Pro Sürümü Aktif Et' banner'ına veya 'AL' butonuna
@@ -575,21 +584,617 @@ class HomeScreen extends StatelessWidget {
         title: const VidSaveBrandTitle(),
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               PremiumBanner(
                 authService: authService,
                 store: store,
                 httpClient: httpClient,
               ),
+              const SizedBox(height: 16),
+              const QuickDownloadWindow(),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// VidSave Otomatik Algılama - Sunucu Tabanlı Hızlı İndirme Penceresi
+class QuickDownloadWindow extends StatefulWidget {
+  const QuickDownloadWindow({
+    super.key,
+    this.initialUrl,
+    this.onDownloadCompleted,
+  });
+
+  final String? initialUrl;
+  final void Function(File file, String type)? onDownloadCompleted;
+
+  @override
+  State<QuickDownloadWindow> createState() => _QuickDownloadWindowState();
+}
+
+class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
+  late final TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+
+  bool _isAnalyzing = false;
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+  String _downloadSpeed = '0 KB/s';
+  String _statusMessage = '';
+  String? _errorMessage;
+  String? _activeTitle;
+
+  DateTime? _lastProgressTime;
+  int? _lastReceivedBytes;
+  int _receivedBytes = 0;
+  int? _totalBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialUrl ?? '');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim() ?? '';
+    if (text.isNotEmpty) {
+      setState(() {
+        _controller.text = text;
+        _errorMessage = null;
+      });
+    }
+  }
+
+  Future<void> _handleDownloadPressed(String type) async {
+    final rawUrl = _controller.text.trim();
+    if (rawUrl.isEmpty) {
+      setState(() {
+        _errorMessage = 'Lütfen geçerli bir video veya ses bağlantısı yapıştırın.';
+      });
+      return;
+    }
+
+    setState(() {
+      _errorMessage = null;
+    });
+
+    _focusNode.unfocus();
+
+    // 1. Premium değilse yasal AdMob onay pop-up'ını aç
+    await AdmobService.instance.showRewardedAdOrBypass(
+      onRewardEarned: () async {
+        if (!mounted) return;
+        await _executeServerDownload(rawUrl, type);
+      },
+    );
+  }
+
+  Future<void> _executeServerDownload(String rawUrl, String type) async {
+    setState(() {
+      _isAnalyzing = true;
+      _isDownloading = false;
+      _downloadProgress = 0.0;
+      _downloadSpeed = '0 KB/s';
+      _statusMessage = 'Sunucu medyayı analiz ediyor…';
+      _errorMessage = null;
+      _receivedBytes = 0;
+      _totalBytes = null;
+      _lastProgressTime = null;
+      _lastReceivedBytes = null;
+    });
+
+    final notifService = DownloadNotificationService.instance;
+    final notificationId = notifService.allocateNotificationId();
+    final notifTitle = type == 'mp3' ? 'MP3 İndirme' : 'Video İndirme';
+    int lastNotifPercent = -1;
+
+    try {
+      // 2. Linki api_service.dart üzerinden Python sunucumuza fırlat
+      final analyzeResult = await ApiService.instance.analyze(
+        url: rawUrl,
+        type: type,
+      );
+
+      if (!mounted) return;
+
+      // 3. Sunucudan temiz download_url adresi geldiği an butonlar gizlensin;
+      // yerlerine LinearProgressIndicator ve anlık indirme hızı paneli gelsin.
+      setState(() {
+        _isAnalyzing = false;
+        _isDownloading = true;
+        _activeTitle = analyzeResult.title;
+        _statusMessage = 'İndirme başlatılıyor…';
+      });
+
+      // Telefonun üst bildirim çubuğunu başlat
+      unawaited(
+        notifService.showProgress(
+          id: notificationId,
+          title: analyzeResult.title,
+          percent: null,
+        ),
+      );
+
+      // İndirilecek hedef dosya yolu
+      final appDir = await getApplicationDocumentsDirectory();
+      final targetFileName = analyzeResult.filename;
+      final savePath = '${appDir.path}${Platform.pathSeparator}$targetFileName';
+
+      // 4. Dosya indirme işlemi telefonun kendi hafızasına (Dio.download) akarken
+      final downloadedFile = await ApiService.instance.downloadFile(
+        downloadUrl: analyzeResult.downloadUrl,
+        savePath: savePath,
+        headers: analyzeResult.headers,
+        onProgress: (received, total) {
+          if (!mounted) return;
+
+          final now = DateTime.now();
+          if (_lastProgressTime != null && _lastReceivedBytes != null) {
+            final diffMs = now.difference(_lastProgressTime!).inMilliseconds;
+            if (diffMs >= 500) {
+              final bytesDiff = received - _lastReceivedBytes!;
+              final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
+              _downloadSpeed = '${formatBytes(bytesPerSec)}/s';
+              _lastProgressTime = now;
+              _lastReceivedBytes = received;
+            }
+          } else {
+            _lastProgressTime = now;
+            _lastReceivedBytes = received;
+          }
+
+          final percent = downloadPercent(received, total);
+
+          setState(() {
+            _receivedBytes = received;
+            _totalBytes = total > 0 ? total : null;
+            _downloadProgress = percent != null ? percent.toDouble() : 0.0;
+            _statusMessage = percent != null
+                ? '%$percent İndiriliyor…'
+                : 'İndiriliyor…';
+          });
+
+          // Üst bildirim çubuğunu canlı yüzdelerle güncelle
+          if (percent != null && percent != lastNotifPercent) {
+            lastNotifPercent = percent;
+            unawaited(
+              notifService.showProgress(
+                id: notificationId,
+                title: analyzeResult.title,
+                percent: percent,
+                speed: _downloadSpeed,
+              ),
+            );
+          }
+        },
+      );
+
+      // Veritabanına kaydet
+      int fileSize = 0;
+      try {
+        fileSize = downloadedFile.lengthSync();
+      } catch (_) {}
+
+      await StorageService.addItem(
+        DownloadItemModel(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          name: targetFileName,
+          type: type == 'mp3' ? 'audio' : 'video',
+          sizeInBytes: fileSize,
+          filePath: downloadedFile.path,
+          downloadedAt: DateTime.now(),
+          sourceUrl: rawUrl,
+        ),
+      );
+
+      // 5. İndirme bitince sesli onay bildirimi fırlatıp panel kapansın
+      await notifService.showCompleted(
+        id: notificationId,
+        title: analyzeResult.title,
+        fileName: targetFileName,
+      );
+
+      widget.onDownloadCompleted?.call(downloadedFile, type);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Başarıyla indirildi: $targetFileName'),
+          backgroundColor: const Color(0xFF20B8C5),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Panel durumunu temizle
+      setState(() {
+        _isDownloading = false;
+        _isAnalyzing = false;
+        _downloadProgress = 0.0;
+        _downloadSpeed = '0 KB/s';
+        _statusMessage = '';
+        _controller.clear();
+      });
+    } catch (e) {
+      debugPrint('QuickDownloadWindow download error: $e');
+
+      unawaited(
+        notifService.showError(
+          id: notificationId,
+          title: notifTitle,
+          error: e.toString(),
+        ),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isAnalyzing = false;
+        _isDownloading = false;
+        _errorMessage = e is ApiException ? e.message : 'Hata: $e';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_errorMessage ?? 'Bir hata oluştu'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2630) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+          width: 1,
+        ),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Başlık
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF5436).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.bolt_rounded,
+                  color: Color(0xFFFF5436),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Hızlı İndirme Paneli',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.2,
+                    color: isDark ? Colors.white : const Color(0xFF172B3A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // URL Giriş Alanı
+          TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            enabled: !_isAnalyzing && !_isDownloading,
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? Colors.white : const Color(0xFF172B3A),
+            ),
+            decoration: InputDecoration(
+              hintText: 'Video veya MP3 bağlantısı yapıştırın…',
+              hintStyle: TextStyle(
+                fontSize: 13.5,
+                color: isDark ? Colors.white38 : const Color(0xFF9AA8B4),
+              ),
+              prefixIcon: const Icon(
+                Icons.link_rounded,
+                color: Color(0xFFFF5436),
+                size: 20,
+              ),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_controller.text.isNotEmpty && !_isAnalyzing && !_isDownloading)
+                    IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 18),
+                      onPressed: () {
+                        setState(() {
+                          _controller.clear();
+                          _errorMessage = null;
+                        });
+                      },
+                    ),
+                  if (!_isAnalyzing && !_isDownloading)
+                    IconButton(
+                      icon: const Icon(Icons.content_paste_rounded, size: 18),
+                      tooltip: 'Yapıştır',
+                      onPressed: _pasteFromClipboard,
+                    ),
+                ],
+              ),
+              filled: true,
+              fillColor: isDark ? const Color(0xFF141A22) : const Color(0xFFF8FAFC),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: isDark ? Colors.white12 : const Color(0xFFCBD5E1),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: Color(0xFFFF5436),
+                  width: 1.8,
+                ),
+              ),
+            ),
+          ),
+
+          // Hata Mesajı
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 16),
+
+          // Durum 1: Sunucu Analiz Yaparken
+          if (_isAnalyzing) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Column(
+                children: [
+                  const SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.8,
+                      color: Color(0xFFFF5436),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _statusMessage,
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : const Color(0xFF475569),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ]
+          // Durum 2: İndirme Sırasında Butonlar Gizlenir, LinearProgressIndicator ve Hız Paneli Gelir
+          else if (_isDownloading) ...[
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF141A22) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_activeTitle != null) ...[
+                    Text(
+                      _activeTitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+
+                  // LinearProgressIndicator
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: _downloadProgress > 0 ? _downloadProgress / 100 : null,
+                      minHeight: 8,
+                      backgroundColor: isDark ? Colors.white12 : Colors.black12,
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF5436)),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Anlık İndirme Hızı ve İlerleme Paneli
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _statusMessage,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFFF5436),
+                        ),
+                      ),
+                      Text(
+                        'Hız: $_downloadSpeed',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white70 : const Color(0xFF475569),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  if (_totalBytes != null && _totalBytes! > 0) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '${formatBytes(_receivedBytes)} / ${formatBytes(_totalBytes!)}',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ]
+          // Durum 3: Normal Butonlar (Video İndir & MP3 İndir)
+          else ...[
+            Row(
+              children: [
+                // Video İndir Butonu
+                Expanded(
+                  child: SizedBox(
+                    height: 46,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _handleDownloadPressed('video'),
+                      icon: const Icon(Icons.videocam_rounded, size: 20),
+                      label: const Text(
+                        'Video İndir',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF5436),
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // MP3 İndir Butonu
+                Expanded(
+                  child: SizedBox(
+                    height: 46,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _handleDownloadPressed('mp3'),
+                      icon: const Icon(Icons.music_note_rounded, size: 20),
+                      label: const Text(
+                        'MP3 İndir',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF20B8C5),
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Herhangi bir ekrandan hızlı indirme modal penceresini açar.
+Future<void> showQuickDownloadDialog(
+  BuildContext context, {
+  String? initialUrl,
+  void Function(File file, String type)? onDownloadCompleted,
+}) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: QuickDownloadWindow(
+        initialUrl: initialUrl,
+        onDownloadCompleted: (file, type) {
+          Navigator.of(ctx).pop();
+          onDownloadCompleted?.call(file, type);
+        },
+      ),
+    ),
+  );
 }
 
 /// VidSave sol üst köşe logo ve çekici marka tipografisi başlığı
