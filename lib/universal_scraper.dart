@@ -901,7 +901,7 @@ class UniversalScraper {
           final autoStreams = qualities['auto'] as List<dynamic>?;
           if (autoStreams != null && autoStreams.isNotEmpty) {
             final streamUrl = autoStreams.first['url']?.toString();
-            if (streamUrl != null) {
+            if (streamUrl != null && streamUrl.isNotEmpty) {
               final cleanUrl = evrenselTemizUrlShield(streamUrl);
               return ResolvedMedia(
                 url: Uri.parse(cleanUrl),
@@ -910,6 +910,7 @@ class UniversalScraper {
                   'Referer': 'https://www.dailymotion.com/',
                   'User-Agent': kUniversalDesktopUserAgent,
                 },
+                byteStreamProvider: () => _streamDailymotionHls(cleanUrl),
               );
             }
           }
@@ -938,6 +939,95 @@ class UniversalScraper {
     } catch (e) {
       if (e is MediaResolverException) rethrow;
       throw MediaResolverException('Dailymotion kazıma hatası: $e');
+    }
+  }
+
+  /// Dailymotion HLS (.m3u8) yayınını parça parça çekip birleşik mp4 bayt akışı olarak sunar.
+  Stream<List<int>> _streamDailymotionHls(String masterM3u8Url) async* {
+    final masterUri = Uri.parse(masterM3u8Url);
+    final headers = {
+      'User-Agent': kUniversalDesktopUserAgent,
+      'Referer': 'https://www.dailymotion.com/',
+      'Origin': 'https://www.dailymotion.com',
+    };
+
+    final masterRes = await _dio.get<String>(
+      masterM3u8Url,
+      options: Options(headers: headers),
+    );
+    final masterLines = (masterRes.data ?? '').split('\n');
+
+    // 1. En yüksek kaliteli alt playlist'i seç
+    String? chosenPlaylistUrl;
+    for (final line in masterLines) {
+      final t = line.trim();
+      if (t.startsWith('http')) {
+        chosenPlaylistUrl = t;
+        if (t.contains('1080') || t.contains('720')) {
+          break;
+        }
+      } else if (t.isNotEmpty && !t.startsWith('#')) {
+        chosenPlaylistUrl = masterUri.resolve(t).toString();
+        if (t.contains('1080') || t.contains('720')) {
+          break;
+        }
+      }
+    }
+
+    if (chosenPlaylistUrl == null) {
+      throw const MediaResolverException('Dailymotion video oynatma listesi bulunamadı.');
+    }
+
+    final subUri = Uri.parse(chosenPlaylistUrl);
+    final subRes = await _dio.get<String>(
+      chosenPlaylistUrl,
+      options: Options(headers: headers),
+    );
+    final subLines = (subRes.data ?? '').split('\n');
+
+    String? initUriStr;
+    final segmentUris = <String>[];
+
+    for (final line in subLines) {
+      final t = line.trim();
+      if (t.startsWith('#EXT-X-MAP:URI="')) {
+        final end = t.indexOf('"', 16);
+        if (end > 16) {
+          initUriStr = t.substring(16, end);
+        }
+      } else if (t.isNotEmpty && !t.startsWith('#')) {
+        segmentUris.add(t);
+      }
+    }
+
+    // 2. Fragmented MP4 (fMP4) Init Segment'ini akışa gönder
+    if (initUriStr != null) {
+      final initFull = subUri.resolve(initUriStr).toString();
+      final initRes = await _dio.get<List<int>>(
+        initFull,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: headers,
+        ),
+      );
+      if (initRes.data != null && initRes.data!.isNotEmpty) {
+        yield initRes.data!;
+      }
+    }
+
+    // 3. Sırasıyla tüm video segmentlerini çek ve kesintisiz akıt
+    for (final seg in segmentUris) {
+      final segFull = subUri.resolve(seg).toString();
+      final segRes = await _dio.get<List<int>>(
+        segFull,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: headers,
+        ),
+      );
+      if (segRes.data != null && segRes.data!.isNotEmpty) {
+        yield segRes.data!;
+      }
     }
   }
 

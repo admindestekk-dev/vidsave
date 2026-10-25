@@ -72,7 +72,7 @@ void main() {
     // 1. TÜM İNDİRME KATEGORİLERİNİN DENETİMİ (CATEGORY VERIFICATION)
     // =========================================================================
     group('1. Kategori Doğrulama Denetimleri (Category Verification)', () {
-      test('1.1. Video Kategorisi (HD/SD): YouTube ve Vimeo istemci taraflı çözme ve indirme', () async {
+      test('1.1. Video Kategorisi (HD/SD): YouTube, Vimeo ve Dailymotion istemci taraflı çözme ve indirme', () async {
         try {
           final dio = Dio();
           final targetVideoFile = File(
@@ -133,9 +133,25 @@ void main() {
             await downloaded.length(),
             greaterThanOrEqualTo(kMinValidMediaBytes),
           );
-          categoryResults['VIDEO (HD/SD - YouTube/Vimeo)'] = 'PASSED';
+
+          // Dailymotion fMP4 Akış Sağlayıcısı (ByteStreamProvider) Simülasyonu
+          final dmStreamMedia = ResolvedMedia(
+            url: Uri.parse('https://cdndirector.dailymotion.com/cdn/manifest/video/mock.m3u8'),
+            fileName: 'dailymotion_stream_test.mp4',
+            byteStreamProvider: () async* {
+              // 2 MB video bayt akışı
+              yield List.filled(1024 * 1024, 10);
+              yield List.filled(1024 * 1024, 20);
+            },
+          );
+
+          final dmDownloaded = await downloader.download(dmStreamMedia);
+          expect(await dmDownloaded.exists(), isTrue);
+          expect(await dmDownloaded.length(), greaterThanOrEqualTo(kMinValidMediaBytes));
+
+          categoryResults['VIDEO (HD/SD - YouTube/Vimeo/Dailymotion)'] = 'PASSED';
         } catch (e) {
-          categoryResults['VIDEO (HD/SD - YouTube/Vimeo)'] = 'FAILED ($e)';
+          categoryResults['VIDEO (HD/SD - YouTube/Vimeo/Dailymotion)'] = 'FAILED ($e)';
           rethrow;
         }
       });
