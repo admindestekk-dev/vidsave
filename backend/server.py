@@ -1979,6 +1979,25 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                         "title": "Facebook Video",
                         "ext": "mp4",
                     }
+
+        # TikTok TikWM Fallback
+        if "tiktok.com" in url:
+            tik_resp = requests.post(
+                "https://www.tikwm.com/api/",
+                data={"url": url, "count": 12, "cursor": 0, "web": 1},
+                headers={"User-Agent": headers["User-Agent"]},
+                timeout=15,
+            )
+            if tik_resp.status_code == 200:
+                tik_data = tik_resp.json().get("data", {})
+                play_url = tik_data.get("play") or tik_data.get("wmplay")
+                if play_url:
+                    full_url = play_url if play_url.startswith("http") else f"https://www.tikwm.com{play_url}"
+                    return {
+                        "url": full_url,
+                        "title": tik_data.get("title") or "TikTok Video",
+                        "ext": "mp4",
+                    }
     except Exception as exc:
         logging.warning("Fallback regex scrape error: %s", exc)
     return None
