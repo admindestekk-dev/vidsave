@@ -811,6 +811,9 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
           ),
         );
 
+        // İndirilen dosyayı sistem galerisine / medya deposuna güvenle kaydet
+        unawaited(MediaDownloader.publishToMediaStore(downloadedFile));
+
         // İndirme bitince sesli onay bildirimi fırlatıp panel kapansın
         await notifService.showCompleted(
           id: notificationId,

@@ -1256,7 +1256,7 @@ class MediaDownloader {
   /// Best-effort: on platforms without a media store (or when the user has not
   /// granted gallery access) we silently skip, because the file is already on
   /// disk and the download itself succeeded.
-  Future<void> _publishToMediaStore(File file) async {
+  static Future<void> publishToMediaStore(File file) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       final name = file.uri.pathSegments.last;
@@ -1278,6 +1278,8 @@ class MediaDownloader {
       // Ignore: publishing is a convenience, not a requirement.
     }
   }
+
+  Future<void> _publishToMediaStore(File file) => publishToMediaStore(file);
 
   static const _videoExtensions = {'mp4', 'mov', 'webm', 'mkv', 'avi'};
   static const _imageExtensions = {'jpg', 'jpeg', 'png', 'webp', 'gif'};

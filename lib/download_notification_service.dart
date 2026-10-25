@@ -66,6 +66,8 @@ class DownloadNotificationService {
     }
   }
 
+  final Map<int, DateTime> _lastProgressThrottle = {};
+
   /// Shows or updates an ongoing download notification with progress percentage.
   Future<void> showProgress({
     required int id,
@@ -75,6 +77,16 @@ class DownloadNotificationService {
   }) async {
     if (!_isSupportedPlatform) return;
     try {
+      final now = DateTime.now();
+      final lastUpdate = _lastProgressThrottle[id];
+      // Yalnızca %100 değilse ve son 800ms içinde bildirim atıldıysa throttle yap (IPC tıkanmasını önler)
+      if (percent != null && percent < 100 && lastUpdate != null) {
+        if (now.difference(lastUpdate).inMilliseconds < 800) {
+          return;
+        }
+      }
+      _lastProgressThrottle[id] = now;
+
       await initialize();
 
       final isIndeterminate = percent == null;
@@ -118,6 +130,7 @@ class DownloadNotificationService {
     required String title,
     required String fileName,
   }) async {
+    _lastProgressThrottle.remove(id);
     if (!_isSupportedPlatform) return;
     try {
       await initialize();
@@ -154,6 +167,7 @@ class DownloadNotificationService {
     required String title,
     String? error,
   }) async {
+    _lastProgressThrottle.remove(id);
     if (!_isSupportedPlatform) return;
     try {
       await initialize();
