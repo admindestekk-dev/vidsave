@@ -327,6 +327,41 @@ void main() {
       },
     );
 
+    test('Facebook reel HTML içindeki browser_native_hd_url regexini çözer', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (opts, handler) {
+            handler.resolve(
+              Response(
+                requestOptions: opts,
+                statusCode: 200,
+                data: r'''
+                <html>
+                  <script>
+                    "browser_native_hd_url":"https:\/\/video.fna.fbcdn.net\/v\/t39\/reel_hd.mp4?_nc_cat=101\u0026efg=xyz"
+                  </script>
+                </html>
+                ''',
+              ),
+            );
+          },
+        ),
+      );
+
+      final scraper = UniversalScraper(dioClient: dio);
+      final result = await scraper.extractFacebook(
+        Uri.parse('https://www.facebook.com/reel/1065415035800269'),
+      );
+
+      expect(
+        result.url.toString(),
+        'https://video.fna.fbcdn.net/v/t39/reel_hd.mp4?_nc_cat=101&efg=xyz',
+      );
+      expect(result.fileName.contains('1065415035800269'), isTrue);
+      expect(result.fileName.endsWith('.mp4'), isTrue);
+    });
+
     test('Vimeo progressive JSON config formatını çözer', () async {
       final dio = Dio();
       dio.interceptors.add(

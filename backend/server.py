@@ -1966,14 +1966,33 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                     }
 
         if "facebook.com" in url or "fb.watch" in url:
-            resp = requests.get(url, headers=headers, timeout=15)
+            fb_headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Referer": "https://www.facebook.com/",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Sec-Fetch-Mode": "navigate",
+            }
+            resp = requests.get(url, headers=fb_headers, timeout=15)
             if resp.status_code == 200:
                 html = resp.text
-                hd_m = re.search(r'"playable_url_quality_hd":\s*"([^"]+)"', html)
-                sd_m = re.search(r'"playable_url":\s*"([^"]+)"', html)
+                hd_m = (
+                    re.search(r'"browser_native_hd_url":\s*"([^"]+)"', html)
+                    or re.search(r'"playable_url_quality_hd":\s*"([^"]+)"', html)
+                    or re.search(r'"hd_src":\s*"([^"]+)"', html)
+                )
+                sd_m = (
+                    re.search(r'"browser_native_sd_url":\s*"([^"]+)"', html)
+                    or re.search(r'"playable_url":\s*"([^"]+)"', html)
+                    or re.search(r'"sd_src":\s*"([^"]+)"', html)
+                )
                 m = hd_m or sd_m
                 if m:
-                    clean = m.group(1).replace(r"\/", "/")
+                    clean = m.group(1).replace(r"\/", "/").replace(r"\u0026", "&")
                     return {
                         "url": clean,
                         "title": "Facebook Video",

@@ -854,7 +854,24 @@ class UniversalScraper {
   /// ekleyerek HD veya SD video kaynaklarını ayıklar.
   Future<ResolvedMedia> extractFacebook(Uri source) async {
     try {
-      final res = await _dio.get<String>(source.toString());
+      final res = await _dio.get<String>(
+        source.toString(),
+        options: Options(
+          headers: {
+            'User-Agent': RemoteConfigService.instance.userAgent.isNotEmpty
+                ? RemoteConfigService.instance.userAgent
+                : kUniversalDesktopUserAgent,
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-Dest': 'document',
+            'Upgrade-Insecure-Requests': '1',
+            'Referer': 'https://www.facebook.com/',
+          },
+        ),
+      );
       final html = res.data ?? '';
 
       final fbPatterns = <RegExp>[];
@@ -870,13 +887,21 @@ class UniversalScraper {
       }
       fbPatterns.addAll([
         RegExp(r'"download_url":"(.*?)"'),
+        RegExp(r'"browser_native_hd_url":\s*"([^"]+)"'),
+        RegExp(r'"browser_native_sd_url":\s*"([^"]+)"'),
         RegExp(r'"playable_url_quality_hd":\s*"([^"]+)"'),
         RegExp(r'"hd_src":\s*"([^"]+)"'),
         RegExp(r'"playable_url":\s*"([^"]+)"'),
         RegExp(r'"sd_src":\s*"([^"]+)"'),
-        RegExp(r'<meta\s+property="og:video"\s+content="([^"]+)"'),
+        RegExp(r'<meta\s+property="og:video(?::secure_url)?"\s+content="([^"]+)"'),
+        RegExp(r'<meta\s+content="([^"]+)"\s+property="og:video(?::secure_url)?"'),
         RegExp(r'<meta\s+property="og:video:url"\s+content="([^"]+)"'),
       ]);
+
+      final fbIdMatch = RegExp(
+        r'(?:/(?:reel|reels|watch|videos|share/r|share/v)/|\?v=)(\d+)',
+      ).firstMatch(source.toString());
+      final fbId = fbIdMatch?.group(1) ?? '${DateTime.now().millisecondsSinceEpoch}';
 
       for (final pattern in fbPatterns) {
         final match = pattern.firstMatch(html);
@@ -885,7 +910,7 @@ class UniversalScraper {
           final cleanUrl = evrenselTemizUrlShield(rawUrl);
           return ResolvedMedia(
             url: Uri.parse(cleanUrl),
-            fileName: 'facebook_${DateTime.now().millisecondsSinceEpoch}.mp4',
+            fileName: 'facebook_$fbId.mp4',
             downloadHeaders: {
               'Referer': 'https://www.facebook.com/',
               'User-Agent': RemoteConfigService.instance.userAgent.isNotEmpty
@@ -894,6 +919,22 @@ class UniversalScraper {
             },
           );
         }
+      }
+
+      // Fotoğraf gönderisi desteği (og:image)
+      final ogImage = RegExp(
+        r'<meta\s+property="og:image"\s+content="([^"]+)"',
+      ).firstMatch(html);
+      if (ogImage != null) {
+        final cleanUrl = evrenselTemizUrlShield(ogImage.group(1)!);
+        return ResolvedMedia(
+          url: Uri.parse(cleanUrl),
+          fileName: 'facebook_$fbId.jpg',
+          downloadHeaders: {
+            'Referer': 'https://www.facebook.com/',
+            'User-Agent': kUniversalDesktopUserAgent,
+          },
+        );
       }
 
       throw const MediaResolverException(
