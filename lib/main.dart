@@ -1110,7 +1110,7 @@ class _BackendSettingsPageState extends State<_BackendSettingsPage> {
                 autocorrect: false,
                 decoration: const InputDecoration(
                   labelText: 'Backend adresi',
-                  hintText: 'https://sunucu-adresi:8787',
+                  hintText: 'https://vidsave-q7ut.onrender.com',
                   prefixIcon: Icon(Icons.dns_outlined),
                   border: OutlineInputBorder(),
                 ),

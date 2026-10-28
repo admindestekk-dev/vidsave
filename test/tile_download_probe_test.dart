@@ -132,8 +132,12 @@ void main() {
     await tester.pumpAndSettle();
 
     // In modal, enter text and search
-    expect(find.byType(TextField), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'https://facebook.com/watch/abc');
+    final modalTextField = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.byType(TextField),
+    );
+    expect(modalTextField, findsOneWidget);
+    await tester.enterText(modalTextField, 'https://facebook.com/watch/abc');
     await tester.pump();
     await tester.tap(find.text('ARA'));
     await tester.pumpAndSettle();

@@ -1280,7 +1280,7 @@ class _BackendSettingsPanelState extends State<BackendSettingsPanel> {
             autocorrect: false,
             decoration: const InputDecoration(
               labelText: 'Backend adresi',
-              hintText: 'http://10.192.215.20:8787',
+              hintText: 'https://vidsave-q7ut.onrender.com',
               prefixIcon: Icon(Icons.dns_outlined),
               border: OutlineInputBorder(),
             ),

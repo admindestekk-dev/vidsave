@@ -222,7 +222,10 @@ void main() {
     expect(find.text('PINTEREST İNDİRİCİ'), findsWidgets);
     expect(find.text('pinterest.com veya pin.it linki yapıştırın veya arayın'), findsOneWidget);
 
-    final searchInput = find.byType(TextField);
+    final searchInput = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.byType(TextField),
+    );
     await tester.enterText(searchInput, 'https://www.pinterest.com/pin/123456789/');
     await tester.pump();
 

@@ -140,10 +140,10 @@ void main() {
       },
     );
 
-    test('default ApiService options use 60 seconds connect and receive timeouts', () {
+    test('default ApiService options use 30 seconds connect and receive timeouts', () {
       final service = ApiService();
-      expect(service.dio.options.connectTimeout, const Duration(seconds: 60));
-      expect(service.dio.options.receiveTimeout, const Duration(seconds: 60));
+      expect(service.dio.options.connectTimeout, const Duration(seconds: 30));
+      expect(service.dio.options.receiveTimeout, const Duration(seconds: 30));
     });
   });
 

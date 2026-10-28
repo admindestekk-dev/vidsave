@@ -687,11 +687,11 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
   Future<void> _executeServerDownload(String rawUrl, String type) async {
     setState(() {
-      _isAnalyzing = true;
-      _isDownloading = false;
+      _isAnalyzing = false;
+      _isDownloading = true;
       _downloadProgress = 0.0;
       _downloadSpeed = '0 KB/s';
-      _statusMessage = 'Sunucu medyayı analiz ediyor…';
+      _statusMessage = 'İndiriliyor…';
       _errorMessage = null;
       _receivedBytes = 0;
       _totalBytes = null;
@@ -727,10 +727,8 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
       // DURUM A: Sunucudan doğrudan oynatılabilir MP4/MP3 indirme adresi geldi
       if (analyzeResult != null && !isSegmentedManifest) {
         setState(() {
-          _isAnalyzing = false;
           _isDownloading = true;
           _activeTitle = analyzeResult!.title;
-          _statusMessage = 'İndirme başlatılıyor…';
         });
 
         // Telefonun üst bildirim çubuğunu başlat
@@ -848,10 +846,6 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
         });
       } else {
         // DURUM B: Sunucu kapalı veya ulaşılamazsa Cihaz İçi Motor (ClientMediaResolver) ile indir
-        setState(() {
-          _statusMessage = 'Cihaz içi motorla çözülüyor…';
-        });
-
         final kind = type == 'mp3' ? DownloadKind.audio : DownloadKind.video;
         final cleanText = evrenselTemizUrl(rawUrl);
         final effectiveUri = Uri.tryParse(cleanText) ?? Uri.parse(rawUrl);
@@ -862,10 +856,8 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
         if (!mounted) return;
 
         setState(() {
-          _isAnalyzing = false;
           _isDownloading = true;
           _activeTitle = media.fileName;
-          _statusMessage = 'İndirme başlatılıyor…';
         });
 
         unawaited(
@@ -1141,40 +1133,17 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
           const SizedBox(height: 16),
 
-          // Durum 1: Sunucu Analiz Yaparken
-          if (_isAnalyzing) ...[
+          // İndirme Sırasında Butonlar Gizlenir, Şık ve Parlayan Turuncu LinearProgressIndicator Odaklanır
+          if (_isDownloading) ...[
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Column(
-                children: [
-                  const SizedBox(
-                    width: 26,
-                    height: 26,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.8,
-                      color: Color(0xFFFF5436),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _statusMessage,
-                    style: TextStyle(
-                      color: isDark ? Colors.white70 : const Color(0xFF475569),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ]
-          // Durum 2: İndirme Sırasında Butonlar Gizlenir, LinearProgressIndicator ve Hız Paneli Gelir
-          else if (_isDownloading) ...[
-            Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF141A22) : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFFFF5436).withValues(alpha: 0.25),
+                  width: 1.2,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1190,27 +1159,42 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                         color: isDark ? Colors.white : const Color(0xFF1E293B),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                   ],
 
-                  // LinearProgressIndicator
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                      value: _downloadProgress > 0 ? _downloadProgress / 100 : null,
-                      minHeight: 8,
-                      backgroundColor: isDark ? Colors.white12 : Colors.black12,
-                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF5436)),
+                  // Şık, Parlayan Turuncu LinearProgressIndicator (Glow Shadow)
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFFF5436).withValues(alpha: 0.45),
+                          blurRadius: 10,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: _downloadProgress > 0 ? _downloadProgress / 100 : null,
+                        minHeight: 10,
+                        backgroundColor: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF5436)),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
 
-                  // Anlık İndirme Hızı ve İlerleme Paneli
+                  // Canlı İlerleme ve İndirme Hızı
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        _statusMessage,
+                        _downloadProgress > 0
+                            ? '%${_downloadProgress.toStringAsFixed(0)} İndiriliyor…'
+                            : (_statusMessage.isNotEmpty ? _statusMessage : 'İndiriliyor…'),
                         style: const TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w800,
@@ -1244,7 +1228,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
               ),
             ),
           ]
-          // Durum 3: Normal Butonlar (Video İndir & MP3 İndir)
+          // Normal Butonlar (Video İndir & MP3 İndir)
           else ...[
             Row(
               children: [

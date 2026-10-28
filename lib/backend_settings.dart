@@ -29,7 +29,7 @@ class BackendSettings {
         uri.fragment.isNotEmpty ||
         (uri.path.isNotEmpty && uri.path != '/')) {
       throw const FormatException(
-        'Backend adresi https:// sunucu-adresi:8787 biçiminde olmalı.',
+        'Backend adresi https:// sunucu-adresi biçiminde olmalı.',
       );
     }
     return uri.replace(path: '', query: null, fragment: null);
