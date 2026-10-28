@@ -50,3 +50,8 @@
 # Desugaring ve Java 8+ API Uyumluluğu
 -dontwarn java.lang.invoke.**
 -dontwarn **Compat**
+
+# Play Store Deferred Components & Tasks (R8 Missing Class Suppression)
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**
+-dontwarn com.google.android.play.core.**
