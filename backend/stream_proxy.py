@@ -126,6 +126,29 @@ def _open_upstream(
         "Accept": "*/*",
         "Accept-Encoding": "identity",
     }
+    if any(
+        d in url.lower()
+        for d in (
+            "tiktok.com",
+            "douyin.com",
+            "tiktokcdn.com",
+            "byteoversea.com",
+            "ibytedtos.com",
+        )
+    ):
+        headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Referer": "https://tiktok.com",
+            "Origin": "https://tiktok.com",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site",
+        })
     if extra_headers and isinstance(extra_headers, dict):
         for k, v in extra_headers.items():
             if k.lower() not in ("host", "content-length"):

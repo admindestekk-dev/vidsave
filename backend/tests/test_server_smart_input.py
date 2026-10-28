@@ -190,6 +190,27 @@ class PlatformSpecificTests(unittest.TestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(server.clean_song_title(raw), expected)
 
+    def test_tiktok_args_include_bot_mask_and_headers(self):
+        args = server._base_args(source_url="https://www.tiktok.com/@user/video/123456789")
+        self.assertIn(server.TIKTOK_UA, args)
+        self.assertIn("https://tiktok.com", args)
+        self.assertIn("Accept-Language:en-US,en;q=0.5", args)
+        self.assertIn("Origin:https://tiktok.com", args)
+        self.assertIn("Sec-Fetch-Mode:cors", args)
+        self.assertIn("Sec-Fetch-Site:same-site", args)
+        self.assertIn("tiktok:web_search=", args)
+
+    def test_ydl_opts_tiktok_configuration(self):
+        self.assertIn("tiktok", server.ydl_opts["extractor_args"])
+        self.assertEqual(server.ydl_opts["extractor_args"]["tiktok"], {"web_search": [""]})
+        headers = server.ydl_opts["http_headers"]
+        self.assertEqual(headers["User-Agent"], server.TIKTOK_UA)
+        self.assertEqual(headers["Referer"], "https://tiktok.com")
+        self.assertEqual(headers["Origin"], "https://tiktok.com")
+        self.assertEqual(headers["Sec-Fetch-Mode"], "cors")
+        self.assertEqual(headers["Sec-Fetch-Site"], "same-site")
+        self.assertEqual(headers["Accept-Language"], "en-US,en;q=0.5")
+
 
 class SubscriptionMonthlyTests(unittest.TestCase):
     def setUp(self):

@@ -117,6 +117,23 @@ PINTEREST_UA = (
     "Chrome/133.0.0.0 Safari/537.36"
 )
 
+# TikTok-specific aggressive bot mask User-Agent & HTTP headers (bypass 403 Forbidden)
+TIKTOK_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+TIKTOK_HTTP_HEADERS: dict[str, str] = {
+    "User-Agent": TIKTOK_UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Referer": "https://tiktok.com",
+    "Origin": "https://tiktok.com",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-site",
+}
+
 # Impersonation target: 'chrome' or 'firefox'
 IMPERSONATE_TARGET = os.environ.get("VIDSAVE_IMPERSONATE", "chrome").strip() or "chrome"
 
@@ -556,19 +573,34 @@ def _extract_lyrics_from_mp3(mp3_path: str) -> str | None:
         pass
     return None
 
-# Universal options for direct yt_dlp Python API integration
-YTDLP_UNIVERSAL_OPTS: dict[str, Any] = {
-    "cookiesfrombrowser": (COOKIES_BROWSER, None, None, None) if COOKIES_BROWSER else None,
-    "impersonate": IMPERSONATE_TARGET,
+# Universal yt-dlp configuration with aggressive bot mask headers to bypass TikTok 403 barriers
+ydl_opts: dict[str, Any] = {
     "extractor_args": {
+        "tiktok": {"web_search": [""]},
         "youtube": {
             "player_client": [YT_PLAYER_CLIENT] if YT_PLAYER_CLIENT else ["ios"]
-        }
+        },
     },
+    "http_headers": {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Referer": "https://tiktok.com",
+        "Origin": "https://tiktok.com",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site",
+    },
+    "cookiesfrombrowser": (COOKIES_BROWSER, None, None, None) if COOKIES_BROWSER else None,
+    "impersonate": IMPERSONATE_TARGET,
     "concurrent_fragment_downloads": 8,
     "retries": 10,
     "fragment_retries": 10,
 }
+YTDLP_UNIVERSAL_OPTS: dict[str, Any] = ydl_opts
 
 
 def _ytdlp_prefix() -> list[str]:
@@ -634,6 +666,21 @@ def _is_pinterest_url(url: str) -> bool:
     """True when the URL points to a Pinterest domain or shortener."""
     u = url.strip().lower()
     return any(d in u for d in ("pinterest.", "pin.it"))
+
+
+def _is_tiktok_url(url: str) -> bool:
+    """True when the URL points to a TikTok domain or CDN."""
+    u = url.strip().lower()
+    return any(
+        d in u
+        for d in (
+            "tiktok.com",
+            "douyin.com",
+            "tiktokcdn.com",
+            "byteoversea.com",
+            "ibytedtos.com",
+        )
+    )
 
 
 def clean_pinterest_url(url: str) -> str:
@@ -938,8 +985,16 @@ def _base_args(
     If Pinterest URL is detected, applies Pinterest-optimized User-Agent and referer.
     """
     is_pinterest = source_url and _is_pinterest_url(source_url)
-    ua = PINTEREST_UA if is_pinterest else BROWSER_UA
-    referer = "https://www.pinterest.com/" if is_pinterest else None
+    is_tiktok = source_url and _is_tiktok_url(source_url)
+    if is_tiktok:
+        ua = TIKTOK_UA
+        referer = "https://tiktok.com"
+    elif is_pinterest:
+        ua = PINTEREST_UA
+        referer = "https://www.pinterest.com/"
+    else:
+        ua = BROWSER_UA
+        referer = None
 
     args = _ytdlp_prefix() + [
         "--no-warnings",
@@ -948,10 +1003,17 @@ def _base_args(
         "--add-header",
         "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "--add-header",
-        "Accept-Language:en-US,en;q=0.9,tr;q=0.8",
+        "Accept-Language:en-US,en;q=0.5" if is_tiktok else "Accept-Language:en-US,en;q=0.9,tr;q=0.8",
         "--add-header",
-        "Sec-Fetch-Mode:navigate",
+        "Sec-Fetch-Mode:cors" if is_tiktok else "Sec-Fetch-Mode:navigate",
     ]
+    if is_tiktok:
+        args += [
+            "--add-header",
+            "Origin:https://tiktok.com",
+            "--add-header",
+            "Sec-Fetch-Site:same-site",
+        ]
     if referer:
         args += ["--referer", referer]
     if cookiefile and os.path.exists(cookiefile):
@@ -962,6 +1024,7 @@ def _base_args(
         args += ["--impersonate", IMPERSONATE_TARGET]
     if YT_PLAYER_CLIENT:
         args += ["--extractor-args", f"youtube:player_client={YT_PLAYER_CLIENT}"]
+    args += ["--extractor-args", "tiktok:web_search="]
 
     args += [
         # --- speed knobs -----------------------------------------------------
@@ -1268,11 +1331,15 @@ def _is_direct_url_accessible(url: str | None, headers: dict[str, Any] | None) -
         return False
     try:
         validate_public_http_url(url)
+        is_tiktok = _is_tiktok_url(url)
         test_h = {
-            "User-Agent": BROWSER_UA,
+            "User-Agent": TIKTOK_UA if is_tiktok else BROWSER_UA,
             "Accept": "*/*",
             "Range": "bytes=0-0",
         }
+        if is_tiktok:
+            test_h.update(TIKTOK_HTTP_HEADERS)
+            test_h["Range"] = "bytes=0-0"
         if headers and isinstance(headers, dict):
             for k, v in headers.items():
                 if k.lower() not in ("host", "content-length"):
@@ -1392,6 +1459,11 @@ def _work(job: Job) -> None:
         if direct is not None and job.kind != "audio":
             direct_url = direct.get("url")
             direct_headers = direct.get("http_headers") or {}
+            if _is_tiktok_url(direct_url or "") or _is_tiktok_url(job.source):
+                merged_headers = dict(TIKTOK_HTTP_HEADERS)
+                if direct_headers and isinstance(direct_headers, dict):
+                    merged_headers.update(direct_headers)
+                direct_headers = merged_headers
             # Verify if direct_url is actually accessible from CDN without 403 or network errors
             if _is_direct_url_accessible(direct_url, direct_headers):
                 ext = direct.get("ext") or "mp4"
@@ -2271,14 +2343,18 @@ def api_analyze() -> Response | tuple[Response, int]:
         "duration": duration,
         "type": "mp3" if is_audio else "video",
         "ext": ext,
-        "headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            "Referer": target_url,
-        },
+        "headers": (
+            dict(TIKTOK_HTTP_HEADERS)
+            if (_is_tiktok_url(target_url) or _is_tiktok_url(clean_download_url or ""))
+            else {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Referer": target_url,
+            }
+        ),
     }), 200
 
 
