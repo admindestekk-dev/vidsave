@@ -951,14 +951,23 @@ class MediaDownloader {
     final browserHeaders = <String, String>{
       'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'video/webm,video/mp4,video/*,audio/*,*/*',
+      'Accept': 'video/webm,video/mp4,video/*,audio/*,*/*;q=0.9',
       'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Referer': 'https://youtube.com', // Platform taklidi için dinamik değişebilir
-      'Origin': 'https://youtube.com',
+      'Accept-Encoding': 'identity;q=1, *;q=0',
+      'Sec-Ch-Ua':
+          '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"Windows"',
+      'Sec-Fetch-Dest': 'video',
       'Sec-Fetch-Mode': 'cors',
       'Sec-Fetch-Site': 'cross-site',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1',
+      'Referer': 'https://youtube.com', // Platform taklidi için dinamik değişebilir
+      'Origin': 'https://youtube.com',
       ...headers,
     };
+    browserHeaders.remove('Content-Type');
 
     // Dinamik platform taklidi: Hedef alan adına göre Referer ve Origin ayarlanır
     final host = effectiveUri.host.toLowerCase();

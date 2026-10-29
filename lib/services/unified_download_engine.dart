@@ -160,102 +160,108 @@ class UnifiedDownloadEngine {
 
       // DURUM A: Sunucudan doğrudan oynatılabilir ve indirilebilir MP4/MP3 akış linki geldi
       if (analyzeResult != null && !isSegmentedManifest) {
-        final activeTitle = analyzeResult.title.isNotEmpty
-            ? analyzeResult.title
-            : defaultTitle;
+        try {
+          final activeTitle = analyzeResult.title.isNotEmpty
+              ? analyzeResult.title
+              : defaultTitle;
 
-        unawaited(
-          notifService.showProgress(
-            id: notificationId,
-            title: activeTitle,
-            percent: null,
-          ),
-        );
+          unawaited(
+            notifService.showProgress(
+              id: notificationId,
+              title: activeTitle,
+              percent: null,
+            ),
+          );
 
-        final appDir = await getApplicationDocumentsDirectory();
-        final targetFileName = analyzeResult.filename;
-        final savePath =
-            '${appDir.path}${Platform.pathSeparator}$targetFileName';
+          final appDir = await getApplicationDocumentsDirectory();
+          final targetFileName = analyzeResult.filename;
+          final savePath =
+              '${appDir.path}${Platform.pathSeparator}$targetFileName';
 
-        final downloadedFile = await ApiService.instance.downloadFile(
-          downloadUrl: analyzeResult.downloadUrl,
-          savePath: savePath,
-          headers: analyzeResult.headers,
-          onProgress: (received, total) {
-            final now = DateTime.now();
-            if (lastProgressTime != null && lastReceivedBytes != null) {
-              final diffMs = now.difference(lastProgressTime!).inMilliseconds;
-              if (diffMs >= 500) {
-                final bytesDiff = received - lastReceivedBytes!;
-                final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
-                downloadSpeed = '${formatBytes(bytesPerSec)}/s';
+          final downloadedFile = await ApiService.instance.downloadFile(
+            downloadUrl: analyzeResult.downloadUrl,
+            savePath: savePath,
+            headers: analyzeResult.headers,
+            onProgress: (received, total) {
+              final now = DateTime.now();
+              if (lastProgressTime != null && lastReceivedBytes != null) {
+                final diffMs = now.difference(lastProgressTime!).inMilliseconds;
+                if (diffMs >= 500) {
+                  final bytesDiff = received - lastReceivedBytes!;
+                  final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
+                  downloadSpeed = '${formatBytes(bytesPerSec)}/s';
+                  lastProgressTime = now;
+                  lastReceivedBytes = received;
+                }
+              } else {
                 lastProgressTime = now;
                 lastReceivedBytes = received;
               }
-            } else {
-              lastProgressTime = now;
-              lastReceivedBytes = received;
-            }
 
-            final percent = downloadPercent(received, total);
-            final status = percent != null
-                ? '%$percent İndiriliyor…'
-                : 'İndiriliyor…';
-            final normProgress = (total > 0)
-                ? (received / total)
-                : (percent != null ? percent / 100.0 : null);
+              final percent = downloadPercent(received, total);
+              final status = percent != null
+                  ? '%$percent İndiriliyor…'
+                  : 'İndiriliyor…';
+              final normProgress = (total > 0)
+                  ? (received / total)
+                  : (percent != null ? percent / 100.0 : null);
 
-            onProgress?.call(
-              received,
-              total > 0 ? total : null,
-              normProgress,
-              downloadSpeed,
-              status,
-            );
-
-            if (percent != null && percent != lastNotifPercent) {
-              lastNotifPercent = percent;
-              unawaited(
-                notifService.showProgress(
-                  id: notificationId,
-                  title: activeTitle,
-                  percent: percent,
-                  speed: downloadSpeed,
-                ),
+              onProgress?.call(
+                received,
+                total > 0 ? total : null,
+                normProgress,
+                downloadSpeed,
+                status,
               );
-            }
-          },
-        );
 
-        // Veritabanına kaydet
-        int fileSize = 0;
-        try {
-          fileSize = downloadedFile.lengthSync();
-        } catch (_) {}
+              if (percent != null && percent != lastNotifPercent) {
+                lastNotifPercent = percent;
+                unawaited(
+                  notifService.showProgress(
+                    id: notificationId,
+                    title: activeTitle,
+                    percent: percent,
+                    speed: downloadSpeed,
+                  ),
+                );
+              }
+            },
+          );
 
-        await StorageService.addItem(
-          DownloadItemModel(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            name: targetFileName,
-            type: normalizedType == 'mp3' ? 'audio' : 'video',
-            sizeInBytes: fileSize,
-            filePath: downloadedFile.path,
-            downloadedAt: DateTime.now(),
-            sourceUrl: targetUrl,
-          ),
-        );
+          // Veritabanına kaydet
+          int fileSize = 0;
+          try {
+            fileSize = downloadedFile.lengthSync();
+          } catch (_) {}
 
-        // Sistem galerisine/medya deposuna güvenle kaydet
-        unawaited(MediaDownloader.publishToMediaStore(downloadedFile));
+          await StorageService.addItem(
+            DownloadItemModel(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              name: targetFileName,
+              type: normalizedType == 'mp3' ? 'audio' : 'video',
+              sizeInBytes: fileSize,
+              filePath: downloadedFile.path,
+              downloadedAt: DateTime.now(),
+              sourceUrl: targetUrl,
+            ),
+          );
 
-        // İndirme bitince sesli onay bildirimi fırlat
-        await notifService.showCompleted(
-          id: notificationId,
-          title: activeTitle,
-          fileName: targetFileName,
-        );
+          // Sistem galerisine/medya deposuna güvenle kaydet
+          unawaited(MediaDownloader.publishToMediaStore(downloadedFile));
 
-        return downloadedFile;
+          // İndirme bitince sesli onay bildirimi fırlat
+          await notifService.showCompleted(
+            id: notificationId,
+            title: activeTitle,
+            fileName: targetFileName,
+          );
+
+          return downloadedFile;
+        } catch (serverStreamErr) {
+          debugPrint(
+            'UnifiedDownloadEngine: Sunucu akış indirmesi başarısız oldu ($serverStreamErr). Cihaz içi emniyet motoruna geçiliyor...',
+          );
+        }
       }
 
       // -----------------------------------------------------------------------
