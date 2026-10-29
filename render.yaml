@@ -3,14 +3,12 @@ services:
     name: vidsave-backend
     runtime: python
     plan: free
-    buildCommand: "bash ./render-build.sh"
-    startCommand: "gunicorn --chdir backend --bind 0.0.0.0:${PORT:-8787} --workers 1 --threads 8 --timeout 300 server:app"
+    buildCommand: "pip install -r requirements.txt && bash ./render-build.sh"
+    startCommand: "gunicorn --chdir backend --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 300 server:app"
     healthCheckPath: /api/ping
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
-      - key: PATH
-        value: "/opt/render/project/src/bin:${PATH}"
       - key: VIDSAVE_IMPERSONATE
         value: "chrome"
     autoDeploy: true

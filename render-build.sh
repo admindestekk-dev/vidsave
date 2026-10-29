@@ -4,7 +4,7 @@ set -o errexit
 
 echo "===> Python bagimliliklari kuruluyor..."
 python -m pip install --upgrade pip
-pip install -r backend/requirements.txt
+pip install -r requirements.txt 2>/dev/null || pip install -r backend/requirements.txt
 
 echo "===> ffmpeg kontrol ediliyor..."
 mkdir -p bin
@@ -37,5 +37,10 @@ else
     set -e
 fi
 
-echo "===> Build islemi basariyla tamamlandi!"
+# Virtualenv varsa ffmpeg ve ffprobe'u oraya da kopyala (otomatik PATH'te olmasi icin)
+if [ -n "$VIRTUAL_ENV" ] && [ -d "$VIRTUAL_ENV/bin" ]; then
+    cp bin/ffmpeg "$VIRTUAL_ENV/bin/" 2>/dev/null || true
+    cp bin/ffprobe "$VIRTUAL_ENV/bin/" 2>/dev/null || true
+fi
 
+echo "===> Build islemi basariyla tamamlandi!"
