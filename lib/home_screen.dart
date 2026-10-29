@@ -9,7 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admob_service.dart';
-import 'api_service.dart';
+import 'download_exception_handler.dart';
 import 'auth_service.dart';
 import 'backend_settings.dart';
 import 'media_downloader.dart';
@@ -736,10 +736,12 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
       if (!mounted) return;
 
+      final errorMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
+
       setState(() {
         _isAnalyzing = false;
         _isDownloading = false;
-        _errorMessage = e is ApiException ? e.message : 'Hata: $e';
+        _errorMessage = errorMsg;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(

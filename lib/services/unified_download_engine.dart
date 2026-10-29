@@ -174,9 +174,26 @@ class UnifiedDownloadEngine {
           );
 
           final appDir = await getApplicationDocumentsDirectory();
-          final targetFileName = analyzeResult.filename;
+          final rawFileName = analyzeResult.filename;
+          final cleanFileName = rawFileName
+              .replaceAll(RegExp(r'[\\/:*?"<>|\r\n\t]+'), '_')
+              .trim();
+          final safeName = cleanFileName.isNotEmpty
+              ? cleanFileName
+              : 'vidsave_media.${normalizedType == 'mp3' ? 'mp3' : 'mp4'}';
+
+          var uniqueName = safeName;
+          var copyIndex = 1;
+          while (File('${appDir.path}${Platform.pathSeparator}$uniqueName')
+              .existsSync()) {
+            final dot = safeName.lastIndexOf('.');
+            uniqueName = dot > 0
+                ? '${safeName.substring(0, dot)}_$copyIndex${safeName.substring(dot)}'
+                : '${safeName}_$copyIndex';
+            copyIndex++;
+          }
           final savePath =
-              '${appDir.path}${Platform.pathSeparator}$targetFileName';
+              '${appDir.path}${Platform.pathSeparator}$uniqueName';
 
           final downloadedFile = await ApiService.instance.downloadFile(
             downloadUrl: analyzeResult.downloadUrl,
@@ -237,7 +254,7 @@ class UnifiedDownloadEngine {
           await StorageService.addItem(
             DownloadItemModel(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
-              name: targetFileName,
+              name: uniqueName,
               type: normalizedType == 'mp3' ? 'audio' : 'video',
               sizeInBytes: fileSize,
               filePath: downloadedFile.path,
@@ -253,7 +270,7 @@ class UnifiedDownloadEngine {
           await notifService.showCompleted(
             id: notificationId,
             title: activeTitle,
-            fileName: targetFileName,
+            fileName: uniqueName,
           );
 
           return downloadedFile;
@@ -270,7 +287,10 @@ class UnifiedDownloadEngine {
       final kind = isAudio ? DownloadKind.audio : DownloadKind.video;
       final effectiveUri = Uri.tryParse(targetUrl) ?? Uri.parse(rawUrl);
 
-      final resolver = fallbackResolver ?? ClientMediaResolver();
+      final resolver = (fallbackResolver != null &&
+              fallbackResolver is! BackendMediaResolver)
+          ? fallbackResolver
+          : ClientMediaResolver();
       final media = await resolver.resolve(
         effectiveUri,
         kind,

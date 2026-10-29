@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'app_localizations.dart';
 import 'media_downloader.dart';
+import 'services/api_service.dart';
 
 /// Geleceğe Hazır Evrensel Hata Yakalama ve Güvenlik Kalkanı
 ///
@@ -31,6 +32,9 @@ class DownloadExceptionHandler {
     }
 
     // 1. Zaten özelleştirilmiş çözücü ve indirme istisnaları
+    if (error is ApiException) {
+      return error.message;
+    }
     if (error is MediaVerificationException) {
       return error.message;
     }
@@ -96,10 +100,16 @@ class DownloadExceptionHandler {
 
     // 4. Genel Geri Dönüş
     final errStr = error.toString();
-    if (errStr.contains('MediaVerificationException:') ||
+    if (errStr.contains('ApiException:') ||
+        errStr.contains('MediaVerificationException:') ||
         errStr.contains('MediaResolverException:') ||
         errStr.contains('MediaDownloadException:')) {
       return errStr.replaceFirst(RegExp(r'^.*?Exception:\s*'), '');
+    }
+
+    if (errStr.startsWith('Exception:')) {
+      final unwrapped = errStr.replaceFirst('Exception:', '').trim();
+      if (unwrapped.isNotEmpty) return unwrapped;
     }
 
     return l10n?.text('err_download_failed') ??

@@ -1523,6 +1523,11 @@ class UniversalScraper {
             contentType.startsWith('audio/') ||
             contentType.startsWith('image/') ||
             contentType.contains('application/octet-stream') ||
+            contentType.contains('octet-stream') ||
+            contentType.contains('mp4') ||
+            contentType.contains('mpeg') ||
+            contentType.contains('stream') ||
+            contentType.contains('download') ||
             contentType.contains('application/x-mpegurl') ||
             contentType.contains('application/vnd.apple.mpegurl');
 
@@ -1538,7 +1543,13 @@ class UniversalScraper {
           return false;
         }
 
-        if (length != null && length > 0 && length < kMinValidMediaBytes) {
+        final isAudioTarget = media.fileName.toLowerCase().endsWith('.mp3') ||
+            media.fileName.toLowerCase().endsWith('.m4a') ||
+            media.fileName.toLowerCase().endsWith('.aac') ||
+            media.fileName.toLowerCase().endsWith('.wav');
+        final minAllowedBytes = isAudioTarget ? 10 * 1024 : kMinValidMediaBytes;
+
+        if (length != null && length > 0 && length < minAllowedBytes) {
           unawaited(
             RemoteConfigService.instance.reportBotBlockSignal(
               failedUrl: media.url,

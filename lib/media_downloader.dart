@@ -1044,6 +1044,11 @@ class MediaDownloader {
             contentTypeHeader.startsWith('audio/') ||
             contentTypeHeader.startsWith('image/') ||
             contentTypeHeader.contains('application/octet-stream') ||
+            contentTypeHeader.contains('octet-stream') ||
+            contentTypeHeader.contains('mp4') ||
+            contentTypeHeader.contains('mpeg') ||
+            contentTypeHeader.contains('stream') ||
+            contentTypeHeader.contains('download') ||
             contentTypeHeader.contains('application/x-mpegurl') ||
             contentTypeHeader.contains('application/vnd.apple.mpegurl');
 
@@ -1075,8 +1080,14 @@ class MediaDownloader {
 
         // 2. AŞAMA DENETİMİ: Content-Length dosya boyutu güvenlik sigortası
         // Gelen HTML hata sayfaları genellikle 2 KB - 50 KB arasıdır.
-        // 1 MB'tan küçükse indirmeyi durdur ve kullanıcıya uyarı fırlat.
-        if (contentLengthVal != null && contentLengthVal > 0 && contentLengthVal < kMinValidMediaBytes) {
+        // Video için 1 MB, ses/MP3 için 10 KB altı ise indirmeyi durdur.
+        final isAudioTarget = targetFileName.toLowerCase().endsWith('.mp3') ||
+            targetFileName.toLowerCase().endsWith('.m4a') ||
+            targetFileName.toLowerCase().endsWith('.aac') ||
+            targetFileName.toLowerCase().endsWith('.wav');
+        final minAllowedBytes = isAudioTarget ? 10 * 1024 : kMinValidMediaBytes;
+
+        if (contentLengthVal != null && contentLengthVal > 0 && contentLengthVal < minAllowedBytes) {
           if (await file.exists()) {
             try {
               await file.delete();
@@ -1130,8 +1141,14 @@ class MediaDownloader {
       if (await file.exists()) {
         final downloadedLength = await file.length();
 
-        // 2. AŞAMA POST-DOWNLOAD SİGORTASI: İndirilen dosya 1 MB altındaysa veya HTML içeriyorsa sil
-        if (downloadedLength < kMinValidMediaBytes) {
+        // 2. AŞAMA POST-DOWNLOAD SİGORTASI: İndirilen dosya video için 1 MB, MP3 için 10 KB altındaysa veya HTML içeriyorsa sil
+        final isAudioTarget = targetFileName.toLowerCase().endsWith('.mp3') ||
+            targetFileName.toLowerCase().endsWith('.m4a') ||
+            targetFileName.toLowerCase().endsWith('.aac') ||
+            targetFileName.toLowerCase().endsWith('.wav');
+        final minAllowedBytes = isAudioTarget ? 10 * 1024 : kMinValidMediaBytes;
+
+        if (downloadedLength < minAllowedBytes) {
           try {
             await file.delete();
           } catch (_) {}
