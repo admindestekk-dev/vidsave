@@ -145,8 +145,11 @@ class SearchDownloadArgsTests(unittest.TestCase):
 
     def test_universal_bypass_options_present(self):
         args = server._base_args()
-        self.assertIn("--cookies-from-browser", args)
-        self.assertEqual(args[args.index("--cookies-from-browser") + 1], "chrome")
+        if server.COOKIES_BROWSER:
+            self.assertIn("--cookies-from-browser", args)
+            self.assertEqual(args[args.index("--cookies-from-browser") + 1], server.COOKIES_BROWSER)
+        else:
+            self.assertNotIn("--cookies-from-browser", args)
         self.assertIn("--impersonate", args)
         self.assertEqual(args[args.index("--impersonate") + 1], "chrome")
         self.assertIn("--extractor-args", args)

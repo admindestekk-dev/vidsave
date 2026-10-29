@@ -138,7 +138,7 @@ TIKTOK_HTTP_HEADERS: dict[str, str] = {
 IMPERSONATE_TARGET = os.environ.get("VIDSAVE_IMPERSONATE", "chrome").strip() or "chrome"
 
 # Universal browser cookies extraction ('chrome', 'firefox', etc.)
-COOKIES_BROWSER = os.environ.get("VIDSAVE_COOKIES_BROWSER", "chrome").strip() or "chrome"
+COOKIES_BROWSER = os.environ.get("VIDSAVE_COOKIES_BROWSER", "").strip() or None
 
 # YouTube player client extraction parameter ('ios,android,web', 'ios', 'android', 'web')
 YT_PLAYER_CLIENT = (
@@ -594,7 +594,7 @@ ydl_opts: dict[str, Any] = {
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-site",
     },
-    "cookiesfrombrowser": (COOKIES_BROWSER, None, None, None) if COOKIES_BROWSER else None,
+    "cookiesfrombrowser": None,
     "impersonate": IMPERSONATE_TARGET,
     "concurrent_fragment_downloads": 8,
     "retries": 10,
