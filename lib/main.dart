@@ -32,6 +32,7 @@ import 'remote_config_service.dart';
 import 'welcome_screen.dart';
 import 'home_screen.dart';
 import 'admob_service.dart';
+import 'services/unified_download_engine.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -261,79 +262,23 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
 
     final cleanUrl = evrenselTemizUrl(url);
     final isAudio = kind == DownloadKind.audio;
-    final notificationId = DownloadNotificationService.instance
-        .allocateNotificationId();
     final notifTitle = isAudio
         ? 'Otomatik MP3 İndirme'
         : 'Otomatik Video İndirme';
 
     try {
-      final parsed = Uri.parse(cleanUrl);
-      final media = await _mediaResolver.resolve(
-        parsed,
-        kind,
+      final file = await UnifiedDownloadEngine.instance.download(
+        rawUrl: cleanUrl,
+        type: isAudio ? 'mp3' : 'video',
+        preferredTitle: notifTitle,
         startTime: startTime,
         endTime: endTime,
         audioEffect: audioEffect,
-      );
-      if (!mounted) return;
-
-      final displayTitle = media.fileName.trim().isNotEmpty
-          ? media.fileName.trim()
-          : notifTitle;
-
-      unawaited(
-        DownloadNotificationService.instance.showProgress(
-          id: notificationId,
-          title: displayTitle,
-          percent: null,
-        ),
-      );
-
-      final file = await _mediaDownloader.download(
-        media,
-        onProgress: (received, total) {
-          final percent = downloadPercent(received, total);
-          if (percent != null) {
-            unawaited(
-              DownloadNotificationService.instance.showProgress(
-                id: notificationId,
-                title: displayTitle,
-                percent: percent,
-              ),
-            );
-          }
-        },
+        fallbackResolver: _mediaResolver,
+        fallbackDownloader: _mediaDownloader,
       );
 
       final fileName = file.path.split(Platform.pathSeparator).last;
-      int fileSize = 0;
-      try {
-        fileSize = file.lengthSync();
-      } catch (_) {}
-
-      unawaited(
-        StorageService.addItem(
-          DownloadItemModel(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            name: fileName,
-            type: isAudio ? 'audio' : 'video',
-            sizeInBytes: fileSize,
-            filePath: file.path,
-            downloadedAt: DateTime.now(),
-            sourceUrl: url,
-          ),
-        ),
-      );
-
-      unawaited(
-        DownloadNotificationService.instance.showCompleted(
-          id: notificationId,
-          title: displayTitle,
-          fileName: fileName,
-        ),
-      );
-
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -344,16 +289,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       );
     } catch (e, stack) {
       debugPrint('Direct download error: $e\n$stack');
-      final errorMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
-
-      unawaited(
-        DownloadNotificationService.instance.showError(
-          id: notificationId,
-          title: notifTitle,
-          error: errorMsg,
-        ),
-      );
-
       if (!mounted) return;
       DownloadExceptionHandler.showErrorSnackBar(context, e);
     }
@@ -647,82 +582,27 @@ class _DownloadPageState extends State<_DownloadPage> {
         ..status = 'Çözülüyor…';
     });
 
-    final notificationId = DownloadNotificationService.instance
-        .allocateNotificationId();
     final notifTitle = '${platform.label} İndirme';
-    int lastNotifPercent = -1;
 
     try {
-      final media = await widget.resolver.resolve(source, kind);
-      if (!mounted) return;
-      setState(() {
-        _stateOf(platform).status = 'İndiriliyor…';
-      });
-
-      final displayTitle = media.fileName.trim().isNotEmpty
-          ? media.fileName.trim()
-          : notifTitle;
-
-      unawaited(
-        DownloadNotificationService.instance.showProgress(
-          id: notificationId,
-          title: displayTitle,
-          percent: null,
-        ),
-      );
-
-      final file = await widget.downloader.download(
-        media,
-        onProgress: (received, total) {
+      final file = await UnifiedDownloadEngine.instance.download(
+        rawUrl: source.toString(),
+        type: platform.isAudio ? 'mp3' : 'video',
+        preferredTitle: notifTitle,
+        onProgress: (received, total, progress, speed, status) {
           if (!mounted) return;
-          final percent = downloadPercent(received, total);
           setState(() {
             _stateOf(platform)
-              ..progress = (total == null || total <= 0)
-                  ? null
-                  : received / total
-              ..status = percent == null
-                  ? 'İndiriliyor…'
-                  : 'İndiriliyor… %$percent';
+              ..progress = progress
+              ..status = status;
           });
-          if (percent != null && percent != lastNotifPercent) {
-            lastNotifPercent = percent;
-            unawaited(
-              DownloadNotificationService.instance.showProgress(
-                id: notificationId,
-                title: displayTitle,
-                percent: percent,
-              ),
-            );
-          }
         },
+        fallbackResolver: widget.resolver,
+        fallbackDownloader: widget.downloader,
       );
+
       widget.onDownloaded?.call(kind);
       final fileName = file.path.split(Platform.pathSeparator).last;
-      int fileSize = 0;
-      try {
-        fileSize = file.lengthSync();
-      } catch (_) {}
-      unawaited(
-        StorageService.addItem(
-          DownloadItemModel(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            name: fileName,
-            type: kind == DownloadKind.audio ? 'audio' : 'video',
-            sizeInBytes: fileSize,
-            filePath: file.path,
-            downloadedAt: DateTime.now(),
-            sourceUrl: source.toString(),
-          ),
-        ),
-      );
-      unawaited(
-        DownloadNotificationService.instance.showCompleted(
-          id: notificationId,
-          title: displayTitle,
-          fileName: fileName,
-        ),
-      );
       if (!mounted) return;
       setState(() {
         _stateOf(platform)
@@ -734,13 +614,6 @@ class _DownloadPageState extends State<_DownloadPage> {
       debugPrint('Tile download error: $error\n$stack');
       final errorMsg =
           DownloadExceptionHandler.getFriendlyMessage(error, context);
-      unawaited(
-        DownloadNotificationService.instance.showError(
-          id: notificationId,
-          title: notifTitle,
-          error: errorMsg,
-        ),
-      );
       if (!mounted) return;
       setState(() {
         _stateOf(platform)
@@ -2047,9 +1920,6 @@ class _PlatformSearchDownloadModalState
   List<SearchResultItem> _searchResults = [];
   String? _downloadingUrl;
   double? _downloadProgress;
-  String? _downloadSpeed;
-  DateTime? _lastProgressTime;
-  int? _lastReceivedBytes;
   String? _statusMessage;
   bool _statusIsError = false;
   MediaPreview? _preview;
@@ -2135,7 +2005,6 @@ class _PlatformSearchDownloadModalState
       return;
     }
 
-    final source = isUrl ? parsed : Uri(path: text);
     final kind = widget.platform.isAudio
         ? DownloadKind.audio
         : DownloadKind.video;
@@ -2160,7 +2029,11 @@ class _PlatformSearchDownloadModalState
     }
 
     try {
-      final preview = await widget.resolver.preview(source, kind);
+      final preview = await UnifiedDownloadEngine.instance.preview(
+        text,
+        kind,
+        fallbackResolver: widget.resolver,
+      );
       if (!mounted) return;
       setState(() {
         _searching = false;
@@ -2211,114 +2084,35 @@ class _PlatformSearchDownloadModalState
 
   Future<void> _executeDownloadMusicItem(SearchResultItem item) async {
     final cleanUrl = evrenselTemizUrl(item.url);
-    final parsed = Uri.tryParse(cleanUrl);
-    final isUrl =
-        parsed != null &&
-        parsed.host.isNotEmpty &&
-        (parsed.isScheme('http') || parsed.isScheme('https'));
-    final source = isUrl
-        ? parsed
-        : Uri(path: cleanUrl.isNotEmpty ? cleanUrl : item.baslik);
 
     setState(() {
       _downloading = true;
       _downloadingUrl = item.id.isNotEmpty ? item.id : item.url;
       _downloadProgress = null;
-      _downloadSpeed = null;
-      _lastProgressTime = DateTime.now();
-      _lastReceivedBytes = 0;
       _statusMessage = '${item.baslik} MP3 olarak indiriliyor…';
       _statusIsError = false;
     });
 
-    final notificationId = DownloadNotificationService.instance
-        .allocateNotificationId();
     final itemTitle = item.baslik.isNotEmpty ? item.baslik : 'MP3 İndirme';
-    int lastNotifPercent = -1;
 
     try {
-      final media = await widget.resolver.resolve(source, DownloadKind.audio);
-      if (!mounted) return;
-
-      final effectiveTitle = media.fileName.trim().isNotEmpty
-          ? media.fileName.trim()
-          : itemTitle;
-
-      unawaited(
-        DownloadNotificationService.instance.showProgress(
-          id: notificationId,
-          title: effectiveTitle,
-          percent: null,
-        ),
-      );
-
-      final file = await widget.downloader.download(
-        media,
-        onProgress: (received, total) {
+      final file = await UnifiedDownloadEngine.instance.download(
+        rawUrl: cleanUrl.isNotEmpty ? cleanUrl : item.baslik,
+        type: 'mp3',
+        preferredTitle: itemTitle,
+        onProgress: (received, total, progress, speed, status) {
           if (!mounted) return;
-          final percent = downloadPercent(received, total);
-
-          // Canlı indirme hızını hesapla
-          final now = DateTime.now();
-          if (_lastProgressTime != null && _lastReceivedBytes != null) {
-            final diffMs = now.difference(_lastProgressTime!).inMilliseconds;
-            if (diffMs >= 500) {
-              final bytesDiff = received - _lastReceivedBytes!;
-              final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
-              _downloadSpeed = '${formatBytes(bytesPerSec)}/s';
-              _lastProgressTime = now;
-              _lastReceivedBytes = received;
-            }
-          }
-
-          final speedText = _downloadSpeed != null ? ' ($_downloadSpeed)' : '';
+          final speedText = speed.isNotEmpty ? ' ($speed)' : '';
           setState(() {
-            _downloadProgress = (total == null || total <= 0)
-                ? null
-                : received / total;
-            _statusMessage = percent == null
-                ? '${item.baslik} indiriliyor…$speedText'
-                : '%$percent İndiriliyor…$speedText';
+            _downloadProgress = progress;
+            _statusMessage = '${item.baslik} indiriliyor…$speedText';
           });
-          if (percent != null && percent != lastNotifPercent) {
-            lastNotifPercent = percent;
-            unawaited(
-              DownloadNotificationService.instance.showProgress(
-                id: notificationId,
-                title: effectiveTitle,
-                percent: percent,
-                speed: _downloadSpeed,
-              ),
-            );
-          }
         },
+        fallbackResolver: widget.resolver,
+        fallbackDownloader: widget.downloader,
       );
       widget.onDownloaded?.call(DownloadKind.audio);
       final fileName = file.path.split(Platform.pathSeparator).last;
-      int fileSize = 0;
-      try {
-        fileSize = file.lengthSync();
-      } catch (_) {}
-      unawaited(
-        StorageService.addItem(
-          DownloadItemModel(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            name: fileName,
-            type: 'audio',
-            sizeInBytes: fileSize,
-            filePath: file.path,
-            downloadedAt: DateTime.now(),
-            sourceUrl: source.toString(),
-          ),
-        ),
-      );
-      unawaited(
-        DownloadNotificationService.instance.showCompleted(
-          id: notificationId,
-          title: effectiveTitle,
-          fileName: fileName,
-        ),
-      );
       if (!mounted) return;
       setState(() {
         _downloading = false;
@@ -2337,19 +2131,11 @@ class _PlatformSearchDownloadModalState
     } catch (error) {
       final errorMsg =
           DownloadExceptionHandler.getFriendlyMessage(error, context);
-      unawaited(
-        DownloadNotificationService.instance.showError(
-          id: notificationId,
-          title: itemTitle,
-          error: errorMsg,
-        ),
-      );
       if (!mounted) return;
       setState(() {
         _downloading = false;
         _downloadingUrl = null;
         _downloadProgress = null;
-        _downloadSpeed = null;
         _statusMessage = errorMsg;
         _statusIsError = true;
       });
@@ -2392,11 +2178,6 @@ class _PlatformSearchDownloadModalState
     bool isUrl,
   ) async {
     final cleanText = evrenselTemizUrl(text);
-    final effectiveUri = Uri.tryParse(cleanText);
-    final isEffectiveUrl = effectiveUri != null &&
-        effectiveUri.host.isNotEmpty &&
-        (effectiveUri.isScheme('http') || effectiveUri.isScheme('https'));
-    final source = isEffectiveUrl ? effectiveUri : (isUrl && parsed != null ? parsed : Uri(path: text));
     final kind = widget.platform.isAudio
         ? DownloadKind.audio
         : DownloadKind.video;
@@ -2405,107 +2186,34 @@ class _PlatformSearchDownloadModalState
       _downloading = true;
       _downloadingHeight = quality.height;
       _downloadProgress = null;
-      _downloadSpeed = null;
-      _lastProgressTime = DateTime.now();
-      _lastReceivedBytes = 0;
       _statusMessage = '${quality.label} hazırlanıyor…';
       _statusIsError = false;
     });
 
-    final notificationId = DownloadNotificationService.instance
-        .allocateNotificationId();
     final modalDisplayTitle = _preview?.title.trim().isNotEmpty == true
         ? _preview!.title.trim()
         : '${widget.platform.label} (${quality.label})';
-    int lastNotifPercent = -1;
 
     try {
       final height = quality.height > 0 ? quality.height : null;
-      final media = await widget.resolver.resolve(source, kind, height: height);
-      if (!mounted) return;
-      setState(() {
-        _statusMessage = '${quality.label} indiriliyor…';
-      });
-
-      final effectiveTitle = media.fileName.trim().isNotEmpty
-          ? media.fileName.trim()
-          : modalDisplayTitle;
-
-      unawaited(
-        DownloadNotificationService.instance.showProgress(
-          id: notificationId,
-          title: effectiveTitle,
-          percent: null,
-        ),
-      );
-
-      final file = await widget.downloader.download(
-        media,
-        onProgress: (received, total) {
+      final file = await UnifiedDownloadEngine.instance.download(
+        rawUrl: cleanText,
+        type: widget.platform.isAudio ? 'mp3' : 'video',
+        preferredTitle: modalDisplayTitle,
+        height: height,
+        onProgress: (received, total, progress, speed, status) {
           if (!mounted) return;
-          final percent = downloadPercent(received, total);
-
-          // Canlı indirme hızını hesapla
-          final now = DateTime.now();
-          if (_lastProgressTime != null && _lastReceivedBytes != null) {
-            final diffMs = now.difference(_lastProgressTime!).inMilliseconds;
-            if (diffMs >= 500) {
-              final bytesDiff = received - _lastReceivedBytes!;
-              final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
-              _downloadSpeed = '${formatBytes(bytesPerSec)}/s';
-              _lastProgressTime = now;
-              _lastReceivedBytes = received;
-            }
-          }
-
-          final speedText = _downloadSpeed != null ? ' ($_downloadSpeed)' : '';
+          final speedText = speed.isNotEmpty ? ' ($speed)' : '';
           setState(() {
-            _downloadProgress = (total == null || total <= 0)
-                ? null
-                : received / total;
-            _statusMessage = percent == null
-                ? '${quality.label} indiriliyor…$speedText'
-                : '%$percent İndiriliyor…$speedText';
+            _downloadProgress = progress;
+            _statusMessage = '${quality.label} indiriliyor…$speedText';
           });
-          if (percent != null && percent != lastNotifPercent) {
-            lastNotifPercent = percent;
-            unawaited(
-              DownloadNotificationService.instance.showProgress(
-                id: notificationId,
-                title: effectiveTitle,
-                percent: percent,
-                speed: _downloadSpeed,
-              ),
-            );
-          }
         },
+        fallbackResolver: widget.resolver,
+        fallbackDownloader: widget.downloader,
       );
       widget.onDownloaded?.call(kind);
       final fileName = file.path.split(Platform.pathSeparator).last;
-      int fileSize = 0;
-      try {
-        fileSize = file.lengthSync();
-      } catch (_) {}
-      unawaited(
-        StorageService.addItem(
-          DownloadItemModel(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            name: fileName,
-            type: kind == DownloadKind.audio ? 'audio' : 'video',
-            sizeInBytes: fileSize,
-            filePath: file.path,
-            downloadedAt: DateTime.now(),
-            sourceUrl: source.toString(),
-          ),
-        ),
-      );
-      unawaited(
-        DownloadNotificationService.instance.showCompleted(
-          id: notificationId,
-          title: effectiveTitle,
-          fileName: fileName,
-        ),
-      );
       if (!mounted) return;
       setState(() {
         _downloading = false;
@@ -2524,19 +2232,11 @@ class _PlatformSearchDownloadModalState
     } catch (error) {
       final errorMsg =
           DownloadExceptionHandler.getFriendlyMessage(error, context);
-      unawaited(
-        DownloadNotificationService.instance.showError(
-          id: notificationId,
-          title: modalDisplayTitle,
-          error: errorMsg,
-        ),
-      );
       if (!mounted) return;
       setState(() {
         _downloading = false;
         _downloadingHeight = null;
         _downloadProgress = null;
-        _downloadSpeed = null;
         _statusMessage = errorMsg;
         _statusIsError = true;
       });

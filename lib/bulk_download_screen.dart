@@ -7,13 +7,11 @@ import 'package:flutter/services.dart';
 import 'backend_settings.dart';
 import 'bulk_download_service.dart';
 import 'download_exception_handler.dart';
-import 'download_item_model.dart';
-import 'download_notification_service.dart';
 import 'downloads_screen.dart';
 import 'media_downloader.dart';
-import 'storage_service.dart';
 import 'admob_service.dart';
 import 'batch_download_screen.dart';
+import 'services/unified_download_engine.dart';
 
 enum BulkItemStatus { pending, downloading, completed, error }
 
@@ -157,81 +155,24 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
         _overallStatusText = '$currentNum/$_totalCount $typeLabel İndiriliyor…';
       });
 
-      final notificationId = DownloadNotificationService.instance
-          .allocateNotificationId();
-      final defaultNotifTitle =
-          'Toplu $typeLabel İndirme ($currentNum/$_totalCount)';
-
       try {
         final cleanUrl = evrenselTemizUrl(currentItem.url);
-        final uri = Uri.parse(cleanUrl);
-        final media = await widget.resolver.resolve(uri, _selectedKind);
-        if (!mounted) return;
-
-        final displayTitle = media.fileName.trim().isNotEmpty
-            ? media.fileName.trim()
-            : defaultNotifTitle;
-
-        currentItem.title = displayTitle;
-
-        unawaited(
-          DownloadNotificationService.instance.showProgress(
-            id: notificationId,
-            title: displayTitle,
-            percent: null,
-          ),
-        );
-
-        final file = await widget.downloader.download(
-          media,
-          onProgress: (received, total) {
+        final file = await UnifiedDownloadEngine.instance.download(
+          rawUrl: cleanUrl,
+          type: _selectedKind == DownloadKind.audio ? 'mp3' : 'video',
+          preferredTitle: 'Toplu $typeLabel İndirme ($currentNum/$_totalCount)',
+          onProgress: (received, total, progress, speed, status) {
             if (!mounted) return;
-            final pct = downloadPercent(received, total);
             setState(() {
-              currentItem.progress = (total == null || total <= 0)
-                  ? null
-                  : received / total;
+              currentItem.progress = progress;
             });
-            if (pct != null) {
-              unawaited(
-                DownloadNotificationService.instance.showProgress(
-                  id: notificationId,
-                  title: displayTitle,
-                  percent: pct,
-                ),
-              );
-            }
           },
+          fallbackResolver: widget.resolver,
+          fallbackDownloader: widget.downloader,
         );
 
         final fileName = file.path.split(Platform.pathSeparator).last;
-        int fileSize = 0;
-        try {
-          fileSize = file.lengthSync();
-        } catch (_) {}
-
-        // Kalıcı depolamaya ekle
-        unawaited(
-          StorageService.addItem(
-            DownloadItemModel(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              name: fileName,
-              type: _selectedKind == DownloadKind.audio ? 'audio' : 'video',
-              sizeInBytes: fileSize,
-              filePath: file.path,
-              downloadedAt: DateTime.now(),
-              sourceUrl: currentItem.url,
-            ),
-          ),
-        );
-
-        unawaited(
-          DownloadNotificationService.instance.showCompleted(
-            id: notificationId,
-            title: displayTitle,
-            fileName: fileName,
-          ),
-        );
+        currentItem.title = fileName;
 
         if (!mounted) return;
         setState(() {
@@ -241,14 +182,6 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
       } catch (err) {
         final errorMsg =
             DownloadExceptionHandler.getFriendlyMessage(err, context);
-
-        unawaited(
-          DownloadNotificationService.instance.showError(
-            id: notificationId,
-            title: defaultNotifTitle,
-            error: errorMsg,
-          ),
-        );
 
         if (!mounted) return;
         setState(() {

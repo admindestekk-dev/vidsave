@@ -8,12 +8,10 @@ import 'admob_service.dart';
 import 'app_dio.dart';
 import 'client_media_resolver.dart';
 import 'download_exception_handler.dart';
-import 'download_item_model.dart';
-import 'download_notification_service.dart';
 import 'downloads_screen.dart';
 import 'media_downloader.dart';
-import 'storage_service.dart';
 import 'theme_service.dart';
+import 'services/unified_download_engine.dart';
 
 /// Toplu indirme satırının anlık durumunu belirten durum enum'u
 enum BatchItemStatus { idle, downloading, completed, error }
@@ -294,8 +292,6 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
         _rowStates[rowIndex].error = null;
       });
 
-      final notificationId = DownloadNotificationService.instance
-          .allocateNotificationId();
       final defaultNotifTitle =
           'Toplu $typeLabel İndirme ($currentNum/$_totalActiveCount)';
 
@@ -306,77 +302,23 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
           throw const FormatException('Geçerli bir URL bulunamadı.');
         }
 
-        final targetUri = Uri.parse(cleanUrl);
-
-        // B) CLIENT-SIDE MEDYA ÇÖZÜMLEME (DİO BROWSER SPOOFING DESTEKLİ)
-        final media = await effectiveResolver.resolve(targetUri, _selectedKind);
-        if (!mounted) return;
-
-        final displayTitle = media.fileName.trim().isNotEmpty
-            ? media.fileName.trim()
-            : defaultNotifTitle;
-
-        _rowStates[rowIndex].fileName = displayTitle;
-
-        unawaited(
-          DownloadNotificationService.instance.showProgress(
-            id: notificationId,
-            title: displayTitle,
-            percent: null,
-          ),
-        );
-
-        // C) MEDYA İNDİRME: DİO 403 ENGELLEYİCİ BAŞLIKLAR & ÇEREZ HAVUZU
-        final downloadedFile = await effectiveDownloader.download(
-          media,
-          onProgress: (received, total) {
+        // B) HIZLI İNDİRME PANELİ ALTYAPISI (UnifiedDownloadEngine)
+        final downloadedFile = await UnifiedDownloadEngine.instance.download(
+          rawUrl: cleanUrl,
+          type: _selectedKind == DownloadKind.audio ? 'mp3' : 'video',
+          preferredTitle: defaultNotifTitle,
+          onProgress: (received, total, progress, speed, status) {
             if (!mounted) return;
-            final pct = downloadPercent(received, total);
             setState(() {
-              _rowStates[rowIndex].progress = (total == null || total <= 0)
-                  ? null
-                  : received / total;
+              _rowStates[rowIndex].progress = progress;
             });
-            if (pct != null) {
-              unawaited(
-                DownloadNotificationService.instance.showProgress(
-                  id: notificationId,
-                  title: displayTitle,
-                  percent: pct,
-                ),
-              );
-            }
           },
+          fallbackResolver: effectiveResolver,
+          fallbackDownloader: effectiveDownloader,
         );
 
         final fileName = downloadedFile.path.split(Platform.pathSeparator).last;
-        int fileSize = 0;
-        try {
-          fileSize = downloadedFile.lengthSync();
-        } catch (_) {}
-
-        // Kalıcı depolamaya kaydet
-        unawaited(
-          StorageService.addItem(
-            DownloadItemModel(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              name: fileName,
-              type: _selectedKind == DownloadKind.audio ? 'audio' : 'video',
-              sizeInBytes: fileSize,
-              filePath: downloadedFile.path,
-              downloadedAt: DateTime.now(),
-              sourceUrl: rawUrl,
-            ),
-          ),
-        );
-
-        unawaited(
-          DownloadNotificationService.instance.showCompleted(
-            id: notificationId,
-            title: displayTitle,
-            fileName: fileName,
-          ),
-        );
+        _rowStates[rowIndex].fileName = fileName;
 
         if (!mounted) return;
         setState(() {
@@ -387,14 +329,6 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
       } catch (err) {
         final errorMsg =
             DownloadExceptionHandler.getFriendlyMessage(err, context);
-
-        unawaited(
-          DownloadNotificationService.instance.showError(
-            id: notificationId,
-            title: defaultNotifTitle,
-            error: errorMsg,
-          ),
-        );
 
         if (!mounted) return;
         setState(() {

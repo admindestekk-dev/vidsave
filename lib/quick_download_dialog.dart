@@ -5,10 +5,8 @@ import 'package:flutter/material.dart';
 import 'admob_service.dart';
 import 'client_media_resolver.dart';
 import 'download_exception_handler.dart';
-import 'download_item_model.dart';
-import 'download_notification_service.dart';
 import 'media_downloader.dart';
-import 'storage_service.dart';
+import 'services/unified_download_engine.dart';
 
 /// VidSave Otomatik Algılama - Hızlı İndirme Dialogu (Quick Download Dialog)
 ///
@@ -110,8 +108,6 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
   String _downloadSpeed = '0 MB/s';
 
   // Hız hesaplama değişkenleri
-  DateTime? _lastProgressTime;
-  int? _lastReceivedBytes;
 
   // Nakarat / Audio Trimming Durumu
   bool _enableTrimming = false;
@@ -288,114 +284,30 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
       _isDownloading = true;
       _downloadProgress = 0.0;
       _downloadSpeed = '0 MB/s';
-      _lastProgressTime = DateTime.now();
-      _lastReceivedBytes = 0;
     });
 
     final isAudio = kind == DownloadKind.audio;
-    final notificationId =
-        DownloadNotificationService.instance.allocateNotificationId();
-    final notifTitle =
-        isAudio ? 'Otomatik MP3 İndirme' : 'Otomatik Video İndirme';
-    int lastNotifPercent = -1;
 
     try {
-      final cleanUrl = evrenselTemizUrl(widget.videoTitle);
-      final parsed = Uri.parse(cleanUrl);
-      final media = await effectiveResolver.resolve(
-        parsed,
-        kind,
+      final file = await UnifiedDownloadEngine.instance.download(
+        rawUrl: widget.videoTitle,
+        type: isAudio ? 'mp3' : 'video',
         startTime: _enableTrimming ? _currentRangeValues.start : null,
         endTime: _enableTrimming ? _currentRangeValues.end : null,
         audioEffect: _selectedEffect,
-      );
-
-      if (!mounted) return;
-
-      final displayTitle = media.fileName.trim().isNotEmpty
-          ? media.fileName.trim()
-          : notifTitle;
-
-      // Üst bildirim çubuğunu başlat
-      unawaited(
-        DownloadNotificationService.instance.showProgress(
-          id: notificationId,
-          title: displayTitle,
-          percent: null,
-        ),
-      );
-
-      // Cihaz içi indirme işlemi (youtube_explode_dart / Dio / FFmpeg)
-      final file = await effectiveDownloader.download(
-        media,
-        onProgress: (received, total) {
+        onProgress: (received, total, progress, speed, status) {
           if (!mounted) return;
-
-          final percent = downloadPercent(received, total);
-
-          // Anlık indirme hızını hesapla
-          final now = DateTime.now();
-          if (_lastProgressTime != null && _lastReceivedBytes != null) {
-            final diffMs = now.difference(_lastProgressTime!).inMilliseconds;
-            if (diffMs >= 500) {
-              final bytesDiff = received - _lastReceivedBytes!;
-              final bytesPerSec = (bytesDiff * 1000) ~/ diffMs;
-              _downloadSpeed = '${formatBytes(bytesPerSec)}/s';
-              _lastProgressTime = now;
-              _lastReceivedBytes = received;
-            }
-          }
-
-          // Sayfada _downloadProgress ve _downloadSpeed değerlerini canlı güncelle
+          final pct = (progress != null) ? (progress * 100).clamp(0.0, 100.0) : 0.0;
           setState(() {
-            _downloadProgress = percent != null ? percent.toDouble() : 0.0;
+            _downloadProgress = pct;
+            _downloadSpeed = speed;
           });
-
-          // Telefonun üst bildirim çubuğunu eş zamanlı güncelle
-          if (percent != null && percent != lastNotifPercent) {
-            lastNotifPercent = percent;
-            unawaited(
-              DownloadNotificationService.instance.showProgress(
-                id: notificationId,
-                title: displayTitle,
-                percent: percent,
-                speed: _downloadSpeed,
-              ),
-            );
-          }
         },
+        fallbackResolver: effectiveResolver,
+        fallbackDownloader: effectiveDownloader,
       );
 
       final fileName = file.path.split(Platform.pathSeparator).last;
-      int fileSize = 0;
-      try {
-        fileSize = file.lengthSync();
-      } catch (_) {}
-
-      // Veritabanına / yerel listeye ekle
-      unawaited(
-        StorageService.addItem(
-          DownloadItemModel(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            name: fileName,
-            type: isAudio ? 'audio' : 'video',
-            sizeInBytes: fileSize,
-            filePath: file.path,
-            downloadedAt: DateTime.now(),
-            sourceUrl: widget.videoTitle,
-          ),
-        ),
-      );
-
-      // 4. Bildirim Entegrasyonu: İndirme Tamamlandı bildirimi fırlat
-      unawaited(
-        DownloadNotificationService.instance.showCompleted(
-          id: notificationId,
-          title: displayTitle,
-          fileName: fileName,
-        ),
-      );
-
       widget.onDownloadCompleted?.call(file, kind);
 
       if (!mounted) return;
@@ -414,16 +326,6 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
       );
     } catch (e, stack) {
       debugPrint('QuickDownloadDialog download error: $e\n$stack');
-      final errorMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
-
-      unawaited(
-        DownloadNotificationService.instance.showError(
-          id: notificationId,
-          title: notifTitle,
-          error: errorMsg,
-        ),
-      );
-
       if (!mounted) return;
 
       setState(() {
