@@ -14,6 +14,7 @@ import 'auth_service.dart';
 import 'backend_settings.dart';
 import 'media_downloader.dart';
 import 'subscription_screen.dart';
+import 'services/api_service.dart';
 import 'services/unified_download_engine.dart';
 
 /// Ana sayfadaki 'Pro Sürümü Aktif Et' banner'ına veya 'AL' butonuna
@@ -558,7 +559,7 @@ class _PremiumBannerState extends State<PremiumBanner> {
 }
 
 /// Standart HomeScreen arayüzü
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     this.authService,
@@ -569,6 +570,28 @@ class HomeScreen extends StatelessWidget {
   final AuthService? authService;
   final BackendSettingsStore? store;
   final http.Client? httpClient;
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  // Dinamik Değişken Tesisatı: Sunucudan dönen video önizleme meta verileri
+  String? _videoTitle;
+  String? _videoThumbnail;
+  int? _videoDuration;
+
+  void _updatePreviewData({
+    String? title,
+    String? thumbnail,
+    int? duration,
+  }) {
+    setState(() {
+      _videoTitle = title;
+      _videoThumbnail = thumbnail;
+      _videoDuration = duration;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -587,12 +610,20 @@ class HomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               PremiumBanner(
-                authService: authService,
-                store: store,
-                httpClient: httpClient,
+                authService: widget.authService,
+                store: widget.store,
+                httpClient: widget.httpClient,
               ),
               const SizedBox(height: 16),
-              const QuickDownloadWindow(),
+              QuickDownloadWindow(
+                onPreviewResolved: (title, thumbnail, duration) {
+                  _updatePreviewData(
+                    title: title,
+                    thumbnail: thumbnail,
+                    duration: duration,
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -607,10 +638,12 @@ class QuickDownloadWindow extends StatefulWidget {
     super.key,
     this.initialUrl,
     this.onDownloadCompleted,
+    this.onPreviewResolved,
   });
 
   final String? initialUrl;
   final void Function(File file, String type)? onDownloadCompleted;
+  final void Function(String? title, String? thumbnail, int? duration)? onPreviewResolved;
 
   @override
   State<QuickDownloadWindow> createState() => _QuickDownloadWindowState();
@@ -619,6 +652,11 @@ class QuickDownloadWindow extends StatefulWidget {
 class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
   late final TextEditingController _controller;
   final FocusNode _focusNode = FocusNode();
+
+  // 1. Dinamik Değişken Tesisatı: Sunucudan dönecek verileri tutar
+  String? _videoTitle;
+  String? _videoThumbnail;
+  int? _videoDuration;
 
   bool _isAnalyzing = false;
   bool _isDownloading = false;
@@ -655,6 +693,17 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     }
   }
 
+  String _formatDuration(int seconds) {
+    final d = Duration(seconds: seconds);
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final remainingSeconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (hours > 0) {
+      return '$hours:$minutes:$remainingSeconds';
+    }
+    return '$minutes:$remainingSeconds';
+  }
+
   Future<void> _handleDownloadPressed(String type) async {
     final rawUrl = _controller.text.trim();
     if (rawUrl.isEmpty) {
@@ -681,20 +730,52 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
   Future<void> _executeServerDownload(String rawUrl, String type) async {
     setState(() {
-      _isAnalyzing = false;
-      _isDownloading = true;
+      _isAnalyzing = true;
+      _isDownloading = false;
       _downloadProgress = 0.0;
       _downloadSpeed = '0 KB/s';
-      _statusMessage = 'İndiriliyor…';
+      _statusMessage = 'Medya bilgileri alınıyor…';
       _errorMessage = null;
       _receivedBytes = 0;
       _totalBytes = null;
+    });
+
+    // 2. API Veri Eşitlemesi: Sunucumuzdan /api/analyze ile title, thumbnail ve duration verilerini çek ve eşitle
+    final normalizedType = (type.toLowerCase() == 'mp3' || type.toLowerCase() == 'audio') ? 'mp3' : 'video';
+    try {
+      final analyzeResult = await ApiService.instance.analyze(
+        url: rawUrl,
+        type: normalizedType,
+      );
+
+      if (mounted) {
+        setState(() {
+          _videoTitle = analyzeResult.title.isNotEmpty ? analyzeResult.title : null;
+          _videoThumbnail = (analyzeResult.thumbnail != null && analyzeResult.thumbnail!.isNotEmpty)
+              ? analyzeResult.thumbnail
+              : null;
+          _videoDuration = analyzeResult.duration;
+          _activeTitle = _videoTitle;
+        });
+        widget.onPreviewResolved?.call(_videoTitle, _videoThumbnail, _videoDuration);
+      }
+    } catch (analyzeErr) {
+      debugPrint('QuickDownloadWindow analiz ön denemesi: $analyzeErr');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _isAnalyzing = false;
+      _isDownloading = true;
+      _statusMessage = 'İndiriliyor…';
     });
 
     try {
       final downloadedFile = await UnifiedDownloadEngine.instance.download(
         rawUrl: rawUrl,
         type: type,
+        preferredTitle: _videoTitle,
         onProgress: (received, total, progress, speed, status) {
           if (!mounted) return;
           setState(() {
@@ -891,6 +972,153 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                   color: Colors.redAccent,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+
+          // 3. Şık Önizleme Kartı Tasarımı (Media Preview Card)
+          if (_videoThumbnail != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[900],
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFFFF5436).withValues(alpha: 0.35),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Kapak Resmi ve Üzerindeki Video Süresi Rozeti
+                    Stack(
+                      children: [
+                        AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: Image.network(
+                            _videoThumbnail!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: Colors.black54,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.movie_rounded,
+                                  color: Colors.white38,
+                                  size: 42,
+                                ),
+                              ),
+                            ),
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                color: Colors.black45,
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Color(0xFFFF5436),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        // Sağ altta şık video süresi rozeti
+                        if (_videoDuration != null && _videoDuration! > 0)
+                          Positioned(
+                            bottom: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.8),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: Colors.white24,
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.timer_outlined,
+                                    color: Colors.white70,
+                                    size: 11,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    _formatDuration(_videoDuration!),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    // Başlık ve Turuncu İlerleme Çubuğu Bölümü
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (_videoTitle != null && _videoTitle!.isNotEmpty) ...[
+                            Text(
+                              _videoTitle!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                height: 1.25,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          // Hemen altında parlayan turuncu ilerleme çubuğu
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: LinearProgressIndicator(
+                              value: _downloadProgress > 0
+                                  ? (_downloadProgress / 100).clamp(0.0, 1.0)
+                                  : (_isDownloading ? null : 0.0),
+                              minHeight: 6,
+                              backgroundColor: Colors.white12,
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Color(0xFFFF5436),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

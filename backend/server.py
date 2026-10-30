@@ -599,6 +599,11 @@ ydl_opts: dict[str, Any] = {
     "concurrent_fragment_downloads": 8,
     "retries": 10,
     "fragment_retries": 10,
+    # Parça ve arabellek (Buffer) kalkanları: kısa videolarda akış kopmasını, uzun videolarda taşmayı önler
+    "buffersize": 1024 * 16,  # Veriyi dengeli parçalarla akıtır
+    "external_downloader_args": ["--min-chunk-size", "1M"],
+    "hls_use_mpegts": True,  # Uzun video akışlarını parça parça korur
+    "http_chunk_size": 1024 * 1024,  # 1MB dengeli parça sınırı
 }
 YTDLP_UNIVERSAL_OPTS: dict[str, Any] = ydl_opts
 
@@ -1038,9 +1043,14 @@ def _base_args(
         "10",
         "--fragment-retries",
         "10",
-        # Smaller buffers + keep-alive avoid stalling on slow sockets.
+        # Smaller buffers + keep-alive avoid stalling on slow sockets (1MB chunk balance).
+        "--buffersize",
+        "16384",
         "--http-chunk-size",
-        "10485760",
+        "1048576",
+        "--hls-use-mpegts",
+        "--downloader-args",
+        "aria2c:--min-chunk-size=1M",
         "--socket-timeout",
         "15",
         # Reuse one connection and prefer IPv4 (avoids happy-eyeballs stalls).

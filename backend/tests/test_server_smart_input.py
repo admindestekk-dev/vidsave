@@ -213,6 +213,10 @@ class PlatformSpecificTests(unittest.TestCase):
         self.assertEqual(headers["Sec-Fetch-Mode"], "cors")
         self.assertEqual(headers["Sec-Fetch-Site"], "same-site")
         self.assertEqual(headers["Accept-Language"], "en-US,en;q=0.5")
+        self.assertEqual(server.ydl_opts["buffersize"], 1024 * 16)
+        self.assertEqual(server.ydl_opts["external_downloader_args"], ["--min-chunk-size", "1M"])
+        self.assertEqual(server.ydl_opts["hls_use_mpegts"], True)
+        self.assertEqual(server.ydl_opts["http_chunk_size"], 1024 * 1024)
 
 
 class SubscriptionMonthlyTests(unittest.TestCase):

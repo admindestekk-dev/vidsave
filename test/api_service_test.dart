@@ -145,6 +145,14 @@ void main() {
       expect(service.dio.options.connectTimeout, const Duration(seconds: 30));
       expect(service.dio.options.receiveTimeout, const Duration(seconds: 30));
     });
+
+    test('buildAggressiveBrowserHeaders sets Accept-Encoding to identity and Connection to keep-alive', () {
+      final headers = ApiService.buildAggressiveBrowserHeaders(
+        uri: Uri.parse('https://example.com/media.mp4'),
+      );
+      expect(headers['Accept-Encoding'], 'identity');
+      expect(headers['Connection'], 'keep-alive');
+    });
   });
 
   group('QuickDownloadWindow Widget Tests', () {
@@ -180,6 +188,16 @@ void main() {
         find.text('Lütfen geçerli bir video veya ses bağlantısı yapıştırın.'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('HomeScreen renders and initializes preview data state variables', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: HomeScreen()),
+      );
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(QuickDownloadWindow), findsOneWidget);
     });
   });
 }

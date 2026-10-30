@@ -270,7 +270,9 @@ class ApiService {
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': 'video/webm,video/mp4,video/*,audio/*,*/*;q=0.9',
       'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Accept-Encoding': 'identity;q=1, *;q=0',
+      // Sıkıştırmayı kapatıp ham veriyi pürüzsüz akıtır, erken bağlantı kopmasını engeller
+      'Accept-Encoding': 'identity',
+      'Connection': 'keep-alive',
       'Sec-Ch-Ua':
           '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
       'Sec-Ch-Ua-Mobile': '?0',
@@ -392,6 +394,7 @@ class ApiService {
           validateStatus: (status) =>
               status != null && status >= 200 && status < 400,
         ),
+        deleteOnError: true,
         onReceiveProgress: onProgress,
         cancelToken: cancelToken,
       );
@@ -410,6 +413,8 @@ class ApiService {
           mobileHeaders['Sec-Ch-Ua-Mobile'] = '?1';
           mobileHeaders['Sec-Ch-Ua-Platform'] = '"Android"';
           mobileHeaders['Sec-Fetch-Mode'] = 'no-cors';
+          mobileHeaders['Accept-Encoding'] = 'identity';
+          mobileHeaders['Connection'] = 'keep-alive';
 
           await downloadClient.download(
             effectiveUrl,
@@ -423,6 +428,7 @@ class ApiService {
               validateStatus: (status) =>
                   status != null && status >= 200 && status < 400,
             ),
+            deleteOnError: true,
             onReceiveProgress: onProgress,
             cancelToken: cancelToken,
           );
