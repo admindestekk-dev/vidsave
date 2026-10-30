@@ -565,23 +565,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Dinamik Değişken Tesisatı: Sunucudan dönen video önizleme meta verileri
-  String? _videoTitle;
-  String? _videoThumbnail;
-  int? _videoDuration;
-
-  void _updatePreviewData({
-    String? title,
-    String? thumbnail,
-    int? duration,
-  }) {
-    setState(() {
-      _videoTitle = title;
-      _videoThumbnail = thumbnail;
-      _videoDuration = duration;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -604,15 +587,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 httpClient: widget.httpClient,
               ),
               const SizedBox(height: 16),
-              QuickDownloadWindow(
-                onPreviewResolved: (title, thumbnail, duration) {
-                  _updatePreviewData(
-                    title: title,
-                    thumbnail: thumbnail,
-                    duration: duration,
-                  );
-                },
-              ),
+              const QuickDownloadWindow(),
             ],
           ),
         ),

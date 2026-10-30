@@ -1,7 +1,3 @@
-import 'package:flutter/widgets.dart';
-
-import 'l10n_extension.dart';
-
 export 'l10n_extension.dart';
 export '../app_localizations.dart';
 

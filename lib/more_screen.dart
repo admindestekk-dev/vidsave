@@ -18,7 +18,6 @@ import 'home_screen.dart';
 import 'theme_service.dart';
 import 'user_identity_service.dart';
 import 'welcome_screen.dart';
-import 'app_localizations.dart';
 import 'l10n/l10n_extension.dart';
 
 /// "Ayarlar" sekmesi.
