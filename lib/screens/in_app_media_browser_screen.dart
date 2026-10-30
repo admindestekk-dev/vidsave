@@ -30,32 +30,73 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
 
   bool _isLoading = true;
   String? _detectedVideoUrl;
+  bool _showDownloadButton = false;
   String _pageTitle = '';
   static const Color _neonOrange = Color(0xFFFF5436);
 
-  // Sayfadaki video ve akış linklerini bulan agresif JavaScript enjeksiyon kodu
+  // Sayfadaki video ve akış linklerini MutationObserver ve dinamik DOM tarayıcısı ile
+  // lazy load / infinite scroll durumlarında bile anında havada yakalayan agresif JavaScript avcısı
   static const String _videoDetectionScript = '''
     (function() {
-      function detectMedia() {
-        var videos = document.getElementsByTagName('video');
-        for (var i = 0; i < videos.length; i++) {
-          var src = videos[i].src || videos[i].currentSrc;
-          if (src && src.startsWith('http') && !src.startsWith('blob:')) {
-            window.VidSaveDetector.postMessage(src);
-            return;
+      if (window.__vidsaveObserverInstalled) return;
+      window.__vidsaveObserverInstalled = true;
+
+      function notifyVideo(url) {
+        if (!url || typeof url !== 'string') return;
+        var clean = url.trim();
+        if ((clean.startsWith('http://') || clean.startsWith('https://')) && !clean.startsWith('blob:')) {
+          if (window.VidSaveDetector && window.VidSaveDetector.postMessage) {
+            window.VidSaveDetector.postMessage(clean);
           }
-          var sources = videos[i].getElementsByTagName('source');
-          for (var j = 0; j < sources.length; j++) {
-            var s = sources[j].src;
-            if (s && s.startsWith('http')) {
-              window.VidSaveDetector.postMessage(s);
-              return;
-            }
+          if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+            window.flutter_inappwebview.callHandler('VidSaveVideoYakalandi', clean);
           }
         }
       }
-      detectMedia();
-      setInterval(detectMedia, 2000);
+
+      function scanElements() {
+        try {
+          var vids = document.querySelectorAll('video');
+          for (var i = 0; i < vids.length; i++) {
+            var v = vids[i];
+            var src = v.currentSrc || v.src || v.getAttribute('src');
+            if (src) { notifyVideo(src); }
+            var sources = v.querySelectorAll('source');
+            for (var j = 0; j < sources.length; j++) {
+              var sSrc = sources[j].src || sources[j].getAttribute('src');
+              if (sSrc) { notifyVideo(sSrc); }
+            }
+          }
+          var allSources = document.querySelectorAll('source[src*=".mp4"], source[src*="googlevideo"], source[src*="cdn"]');
+          for (var k = 0; k < allSources.length; k++) {
+            var url = allSources[k].src || allSources[k].getAttribute('src');
+            if (url) { notifyVideo(url); }
+          }
+        } catch(e) {}
+      }
+
+      scanElements();
+
+      // MutationObserver: Instagram, TikTok, Shorts gibi lazy-load ve dinamik eklenen videoları havada yakalar
+      try {
+        var observer = new MutationObserver(function(mutations) {
+          for (var i = 0; i < mutations.length; i++) {
+            var mut = mutations[i];
+            if (mut.addedNodes && mut.addedNodes.length > 0) {
+              scanElements();
+              break;
+            }
+          }
+        });
+        observer.observe(document.body || document.documentElement, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['src', 'currentSrc']
+        });
+      } catch(e) {}
+
+      setInterval(scanElements, 1500);
     })();
   ''';
 
@@ -74,6 +115,19 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
           if (url.isNotEmpty && url.startsWith('http') && mounted) {
             setState(() {
               _detectedVideoUrl = url;
+              _showDownloadButton = true;
+            });
+          }
+        },
+      )
+      ..addJavaScriptChannel(
+        'VidSaveVideoYakalandi',
+        onMessageReceived: (JavaScriptMessage msg) {
+          final url = msg.message.trim();
+          if (url.isNotEmpty && url.startsWith('http') && mounted) {
+            setState(() {
+              _detectedVideoUrl = url;
+              _showDownloadButton = true;
             });
           }
         },
@@ -86,6 +140,7 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
                 _isLoading = true;
                 _urlBarController.text = url;
                 _detectedVideoUrl = null;
+                _showDownloadButton = false;
               });
             }
           },
@@ -97,7 +152,7 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
             if (mounted && title != null) {
               setState(() => _pageTitle = title);
             }
-            // Sayfa yüklendiğinde JavaScript Enjeksiyonunu çalıştır
+            // Sayfa yüklemesi tamamlandığında agresif MutationObserver JavaScript avcısını enjekte et
             await _controller.runJavaScript(_videoDetectionScript);
           },
         ),
@@ -227,7 +282,7 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         ],
       ),
       // Video Yakalandığında Ekranda Parlayan Turuncu Aksiyon Butonu
-      floatingActionButton: _detectedVideoUrl != null
+      floatingActionButton: (_showDownloadButton && _detectedVideoUrl != null)
           ? FloatingActionButton.extended(
               onPressed: _triggerDownload,
               backgroundColor: _neonOrange,

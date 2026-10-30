@@ -12,6 +12,7 @@ import 'locale_service.dart';
 import 'media_downloader.dart';
 import 'privacy_policy_screen.dart';
 import 'profile_screen.dart';
+import 'screens/private_vault_screen.dart';
 import 'storage_service.dart';
 import 'subscription_screen.dart';
 import 'home_screen.dart';
@@ -454,6 +455,44 @@ class _MoreScreenState extends State<MoreScreen> {
                       onChanged: (value) async {
                         await ThemeService.setDarkMode(value);
                       },
+                    ),
+                  );
+                },
+              ),
+              const Divider(),
+
+              // GİZLİ KASA (PRIVATE VAULT) AYARI
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF5436).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.shield_rounded,
+                    color: Color(0xFFFF5436),
+                    size: 22,
+                  ),
+                ),
+                title: Text(
+                  LocaleService.currentLanguageCode == 'tr'
+                      ? 'Gizli Kasa (Private Vault)'
+                      : 'Private Vault',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  LocaleService.currentLanguageCode == 'tr'
+                      ? 'Şifreli ve kilitli yerel medya deposu'
+                      : 'Encrypted and locked local media storage',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const PrivateVaultScreen(),
                     ),
                   );
                 },
