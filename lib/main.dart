@@ -28,27 +28,31 @@ import 'theme_service.dart';
 import 'locale_service.dart';
 import 'video_player_screen.dart';
 import 'auth_gate.dart';
+import 'screens/onboarding_screen.dart';
 import 'remote_config_service.dart';
 import 'welcome_screen.dart';
 import 'home_screen.dart';
 import 'admob_service.dart';
 import 'services/unified_download_engine.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final isFirstTimeFuture = OnboardingScreen.checkIsFirstTime();
   unawaited(RemoteConfigService.instance.initialize());
   unawaited(AdmobService.instance.initialize());
   unawaited(DownloadNotificationService.instance.initialize());
   unawaited(StorageService.getItems());
   unawaited(ThemeService.initialize());
   unawaited(LocaleService.initialize());
-  runApp(const MyApp());
+  final isFirstTime = await isFirstTimeFuture;
+  runApp(MyApp(isFirstTime: isFirstTime));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key, this.authService});
+  const MyApp({super.key, this.authService, this.isFirstTime});
 
   final AuthService? authService;
+  final bool? isFirstTime;
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +103,7 @@ class MyApp extends StatelessWidget {
                 },
                 home: AuthGate(
                   authService: authService,
+                  isFirstTime: isFirstTime,
                   authenticatedBuilder: (_) => const VidSaveHomePage(),
                   guestBuilder: (_) => const WelcomeScreen(),
                 ),
