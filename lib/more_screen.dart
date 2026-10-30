@@ -18,6 +18,8 @@ import 'home_screen.dart';
 import 'theme_service.dart';
 import 'user_identity_service.dart';
 import 'welcome_screen.dart';
+import 'app_localizations.dart';
+import 'l10n/l10n_extension.dart';
 
 /// "Ayarlar" sekmesi.
 ///
@@ -276,9 +278,9 @@ class _MoreScreenState extends State<MoreScreen> {
               // =============================================================
               // 1. HERKESİN GÖRDÜĞÜ NORMAL AYARLAR
               // =============================================================
-              const Text(
-                'Uygulama Ayarları',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              Text(
+                context.tr('app_settings'),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 10),
 
@@ -328,22 +330,22 @@ class _MoreScreenState extends State<MoreScreen> {
                             ),
                           ),
                           const SizedBox(width: 14),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Premium Abonelik',
-                                  style: TextStyle(
+                                  context.tr('premium_subscription'),
+                                  style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 16,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                SizedBox(height: 3),
+                                const SizedBox(height: 3),
                                 Text(
-                                  'Sınırsız hız, 4K indirme ve reklamsız deneyim',
-                                  style: TextStyle(
+                                  context.tr('pro_banner_sub_inactive'),
+                                  style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 12,
                                   ),
@@ -421,7 +423,7 @@ class _MoreScreenState extends State<MoreScreen> {
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.language, color: _accent),
-                    title: const Text('Dil Seçimi / Language'),
+                    title: Text(context.tr('language_selection')),
                     subtitle: Text(_getLanguageSubtitle(code)),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: _showLanguageDialog,
@@ -440,9 +442,11 @@ class _MoreScreenState extends State<MoreScreen> {
                       isDark ? Icons.dark_mode : Icons.light_mode,
                       color: ThemeService.primaryColor,
                     ),
-                    title: const Text('Koyu Tema'),
+                    title: Text(context.tr('dark_mode')),
                     subtitle: Text(
-                      isDark ? 'Açık (Karanlık Mod)' : 'Kapalı (Aydınlık Mod)',
+                      isDark
+                          ? context.tr('dark_mode_on')
+                          : context.tr('dark_mode_off'),
                     ),
                     trailing: Switch(
                       value: isDark,
@@ -461,9 +465,7 @@ class _MoreScreenState extends State<MoreScreen> {
               // DESTEK VE İLETİŞİM (SUPPORT & CONTACT)
               // =============================================================
               Text(
-                LocaleService.currentLanguageCode == 'tr'
-                    ? 'Destek & İletişim'
-                    : 'Support & Contact',
+                context.tr('support_and_contact'),
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 10),

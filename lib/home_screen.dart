@@ -16,6 +16,8 @@ import 'media_downloader.dart';
 import 'subscription_screen.dart';
 import 'services/api_service.dart';
 import 'services/unified_download_engine.dart';
+import 'app_localizations.dart';
+import 'l10n/l10n_extension.dart';
 
 /// Ana sayfadaki 'Pro Sürümü Aktif Et' banner'ına veya 'AL' butonuna
 /// tıklandığında çalışan Google giriş şartlı abonelik geçiş fonksiyonu.
@@ -179,9 +181,6 @@ class _GoogleSignInSheetState extends State<_GoogleSignInSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isTurkish =
-        Localizations.maybeLocaleOf(context)?.languageCode == 'tr';
-
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFF1E2630),
@@ -241,9 +240,7 @@ class _GoogleSignInSheetState extends State<_GoogleSignInSheet> {
 
           // Başlık
           Text(
-            isTurkish
-                ? 'Pro Sürüme Geçmek İçin Giriş Yapın'
-                : 'Sign In to Unlock VidSave Pro',
+            context.tr('sign_in_pro_title'),
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 20,
@@ -256,9 +253,7 @@ class _GoogleSignInSheetState extends State<_GoogleSignInSheet> {
 
           // Açıklama
           Text(
-            isTurkish
-                ? 'Aboneliğinizi tüm cihazlarınızda güvenle kullanabilmek ve Premium haklarınızı tanımlamak için Google hesabınızla devam edin.'
-                : 'Sign in with your Google account to secure your subscription and access Premium features across all devices.',
+            context.tr('sign_in_pro_desc'),
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 13.5,
@@ -302,9 +297,7 @@ class _GoogleSignInSheetState extends State<_GoogleSignInSheet> {
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          isTurkish
-                              ? 'Google ile Devam Et'
-                              : 'Continue with Google',
+                          context.tr('continue_with_google'),
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
@@ -321,7 +314,7 @@ class _GoogleSignInSheetState extends State<_GoogleSignInSheet> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: Text(
-              isTurkish ? 'Daha Sonra' : 'Maybe Later',
+              context.tr('maybe_later'),
               style: const TextStyle(
                 color: Color(0xFF8B9BA7),
                 fontSize: 14,
@@ -463,8 +456,8 @@ class _PremiumBannerState extends State<PremiumBanner> {
                           Flexible(
                             child: Text(
                               _isPremium
-                                  ? (isTurkish ? 'VidSave Pro Aktif' : 'VidSave Pro Active')
-                                  : (isTurkish ? 'Pro Sürümü Aktif Et' : 'Activate Pro Version'),
+                                  ? context.tr('vidsave_pro_active')
+                                  : context.tr('activate_pro_version'),
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 15,
@@ -500,12 +493,8 @@ class _PremiumBannerState extends State<PremiumBanner> {
                       const SizedBox(height: 3),
                       Text(
                         _isPremium
-                            ? (isTurkish
-                                ? 'Sınırsız hız ve 4K indirme aktif'
-                                : 'Unlimited speed & 4K active')
-                            : (isTurkish
-                                ? 'Sınırsız hız, 4K ve reklamsız'
-                                : 'Unlimited speed, 4K & ad-free'),
+                            ? context.tr('pro_banner_sub_active')
+                            : context.tr('pro_banner_sub_inactive'),
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 12,
@@ -540,8 +529,8 @@ class _PremiumBannerState extends State<PremiumBanner> {
                   ),
                   child: Text(
                     _isPremium
-                        ? (isTurkish ? 'YÖNET' : 'MANAGE')
-                        : (isTurkish ? 'AL' : 'GET'),
+                        ? context.tr('btn_manage')
+                        : context.tr('btn_get'),
                     style: const TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 13,
@@ -708,7 +697,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     final rawUrl = _controller.text.trim();
     if (rawUrl.isEmpty) {
       setState(() {
-        _errorMessage = 'Lütfen geçerli bir video veya ses bağlantısı yapıştırın.';
+        _errorMessage = context.tr('quick_download_empty_url');
       });
       return;
     }
@@ -729,12 +718,13 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
   }
 
   Future<void> _executeServerDownload(String rawUrl, String type) async {
+    final l10n = AppLocalizations.of(context);
     setState(() {
       _isAnalyzing = true;
       _isDownloading = false;
       _downloadProgress = 0.0;
       _downloadSpeed = '0 KB/s';
-      _statusMessage = 'Medya bilgileri alınıyor…';
+      _statusMessage = l10n.text('quick_download_fetching_info');
       _errorMessage = null;
       _receivedBytes = 0;
       _totalBytes = null;
@@ -768,7 +758,9 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     setState(() {
       _isAnalyzing = false;
       _isDownloading = true;
-      _statusMessage = 'İndiriliyor…';
+      _statusMessage = (normalizedType == 'mp3')
+          ? l10n.text('quick_download_downloading_audio')
+          : l10n.text('quick_download_downloading_video');
     });
 
     try {
@@ -797,7 +789,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Başarıyla indirildi: $targetFileName'),
+          content: Text('${context.tr('quick_download_success')}$targetFileName'),
           backgroundColor: const Color(0xFF20B8C5),
           behavior: SnackBarBehavior.floating,
         ),
@@ -827,7 +819,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_errorMessage ?? 'Bir hata oluştu'),
+          content: Text(_errorMessage ?? context.tr('quick_download_error')),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),
@@ -878,7 +870,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Hızlı İndirme Paneli',
+                  context.tr('quick_download_title'),
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
@@ -901,7 +893,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
               color: isDark ? Colors.white : const Color(0xFF172B3A),
             ),
             decoration: InputDecoration(
-              hintText: 'Video veya MP3 bağlantısı yapıştırın…',
+              hintText: context.tr('quick_download_hint'),
               hintStyle: TextStyle(
                 fontSize: 13.5,
                 color: isDark ? Colors.white38 : const Color(0xFF9AA8B4),
@@ -927,7 +919,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                   if (!_isAnalyzing && !_isDownloading)
                     IconButton(
                       icon: const Icon(Icons.content_paste_rounded, size: 18),
-                      tooltip: 'Yapıştır',
+                      tooltip: context.tr('btn_paste'),
                       onPressed: _pasteFromClipboard,
                     ),
                 ],
@@ -1195,7 +1187,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                         ),
                       ),
                       Text(
-                        'Hız: $_downloadSpeed',
+                        '${context.tr('quick_download_speed')}$_downloadSpeed',
                         style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
@@ -1232,9 +1224,9 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                     child: ElevatedButton.icon(
                       onPressed: () => _handleDownloadPressed('video'),
                       icon: const Icon(Icons.videocam_rounded, size: 20),
-                      label: const Text(
-                        'Video İndir',
-                        style: TextStyle(
+                      label: Text(
+                        context.tr('download_video_btn'),
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.3,
@@ -1260,9 +1252,9 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                     child: ElevatedButton.icon(
                       onPressed: () => _handleDownloadPressed('mp3'),
                       icon: const Icon(Icons.music_note_rounded, size: 20),
-                      label: const Text(
-                        'MP3 İndir',
-                        style: TextStyle(
+                      label: Text(
+                        context.tr('download_audio_btn'),
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.3,

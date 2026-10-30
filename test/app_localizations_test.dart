@@ -49,6 +49,36 @@ void main() {
       expect(l10n.isRtl, isTrue);
     });
 
+    test('Italian locale returns Italian strings', () {
+      final l10n = AppLocalizations(const Locale('it'));
+      expect(l10n.text('nav_videos'), 'Video');
+      expect(l10n.text('nav_music'), 'Musica');
+      expect(l10n.text('downloads_screen_title'), 'Download');
+      expect(l10n.text('download_video_btn'), 'Scarica Video');
+    });
+
+    test('Portuguese locale returns Portuguese strings', () {
+      final l10n = AppLocalizations(const Locale('pt'));
+      expect(l10n.text('nav_videos'), 'Vídeos');
+      expect(l10n.text('nav_music'), 'Música');
+      expect(l10n.text('downloads_screen_title'), 'Downloads');
+      expect(l10n.text('download_video_btn'), 'Baixar Vídeo');
+    });
+
+    test('Critical media strings exist for all 8 primary languages', () {
+      const primaryLocales = ['tr', 'en', 'de', 'fr', 'es', 'it', 'ar', 'pt'];
+      for (final code in primaryLocales) {
+        final l10n = AppLocalizations(Locale(code));
+        expect(l10n.text('download_video_btn').isNotEmpty, isTrue);
+        expect(l10n.text('download_audio_btn').isNotEmpty, isTrue);
+        expect(l10n.text('quick_download_title').isNotEmpty, isTrue);
+        expect(l10n.text('quick_download_empty_url').isNotEmpty, isTrue);
+        expect(l10n.text('type_video').isNotEmpty, isTrue);
+        expect(l10n.text('type_audio').isNotEmpty, isTrue);
+        expect(l10n.text('pro_active').isNotEmpty, isTrue);
+      }
+    });
+
     test('Unknown world language (e.g. Swahili sw) falls back gracefully to English', () {
       final l10n = AppLocalizations(const Locale('sw'));
       expect(l10n.text('nav_videos'), 'Videos');

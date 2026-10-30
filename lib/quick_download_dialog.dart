@@ -7,6 +7,7 @@ import 'client_media_resolver.dart';
 import 'download_exception_handler.dart';
 import 'media_downloader.dart';
 import 'services/unified_download_engine.dart';
+import 'l10n/l10n_extension.dart';
 
 /// VidSave Otomatik Algılama - Hızlı İndirme Dialogu (Quick Download Dialog)
 ///
@@ -169,18 +170,18 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
           borderRadius: BorderRadius.circular(20),
         ),
         backgroundColor: const Color(0xFF1E2630),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(
+            const Icon(
               Icons.ondemand_video,
               color: QuickDownloadDialog.accentColor,
               size: 26,
             ),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Ücretsiz İndirme Hakkı Kazan!',
-                style: TextStyle(
+                context.tr('rewarded_ad_title'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
@@ -189,9 +190,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
             ),
           ],
         ),
-        content: const Text(
-          'Bu videoyu yüksek hızda ücretsiz indirebilmek için kısa bir reklam izlemek ister misiniz? Reklamı sonuna kadar izlediğinizde indirme işleminiz otomatik olarak başlayacaktır.',
-          style: TextStyle(
+        content: Text(
+          context.tr('rewarded_ad_desc'),
+          style: const TextStyle(
             color: Colors.white70,
             fontSize: 13.5,
             height: 1.45,
@@ -215,9 +216,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                       ),
                     ),
                   ),
-                  child: const Text(
-                    'Vazgeç',
-                    style: TextStyle(
+                  child: Text(
+                    context.tr('btn_cancel'),
+                    style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -238,10 +239,10 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                     ),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Reklamı İzle ve İndir',
+                  child: Text(
+                    context.tr('watch_ad_and_download'),
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
                     ),
@@ -422,9 +423,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                     const SizedBox(height: 14),
 
                     // 'VidSave Algıladı' Başlığı
-                    const Text(
-                      'VidSave Algıladı',
-                      style: TextStyle(
+                    Text(
+                      context.tr('vidsave_detected'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 19,
                         fontWeight: FontWeight.bold,
@@ -462,7 +463,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'Ses Modu & Efekt',
+                            context.tr('audio_mode_effect'),
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.85),
                               fontSize: 12.5,
@@ -476,11 +477,11 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           _buildEffectChip(
-                              'Normal', 'normal', Icons.music_note_rounded),
+                              context.tr('normal'), 'normal', Icons.music_note_rounded),
                           _buildEffectChip(
-                              'Nightcore', 'nightcore', Icons.bolt_rounded),
+                              context.tr('nightcore'), 'nightcore', Icons.bolt_rounded),
                           _buildEffectChip(
-                              'Bass Boost', 'bassboost', Icons.speaker_rounded),
+                              context.tr('bass_boost'), 'bassboost', Icons.speaker_rounded),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -674,9 +675,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                             size: 19,
                             color: Colors.white,
                           ),
-                          label: const Text(
-                            'Video İndir',
-                            style: TextStyle(
+                          label: Text(
+                            context.tr('download_video_btn'),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 14.5,
                               fontWeight: FontWeight.w600,
@@ -707,10 +708,10 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                           ),
                           label: Text(
                             _enableTrimming
-                                ? 'Nakaratı MP3 Olarak İndir'
+                                ? context.tr('chorus_trimming')
                                 : (_selectedEffect != 'normal'
-                                    ? 'MP3 İndir ($_selectedEffect)'
-                                    : 'MP3 İndir'),
+                                    ? '${context.tr('download_audio_btn')} ($_selectedEffect)'
+                                    : context.tr('download_audio_btn')),
                             style: const TextStyle(
                               color: QuickDownloadDialog.accentColor,
                               fontSize: 14.5,

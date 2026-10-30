@@ -12,6 +12,7 @@ import 'auth_service.dart';
 import 'backend_settings.dart';
 import 'locale_service.dart';
 import 'privacy_policy_screen.dart';
+import 'l10n/l10n_extension.dart';
 
 /// VidSave Premium Aylık Abonelik Ekranı
 ///
@@ -481,6 +482,16 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         taxFootnote = 'Todos los impuestos incluidos.';
         buttonText = 'Suscribirse - \$0.99 / Mes';
         break;
+      case 'it':
+        priceTitle = 'Solo 0,99 € / Mese - Tutte le Tasse Incluse';
+        taxFootnote = 'Tutte le imposte e IVA incluse.';
+        buttonText = 'Abbonati - 0,99 € / Mese';
+        break;
+      case 'pt':
+        priceTitle = 'Apenas \$0.99 / Mês - Impostos Incluídos';
+        taxFootnote = 'Todos os impostos e IVA incluídos.';
+        buttonText = 'Assinar - \$0.99 / Mês';
+        break;
       case 'de':
         priceTitle = 'Nur 0,99 € / Monat - Inkl. MwSt.';
         taxFootnote = 'Alle Steuern und MwSt. inbegriffen.';
@@ -694,9 +705,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  isTurkish
-                                      ? 'PREMIUM AKTİF'
-                                      : 'PREMIUM ACTIVE',
+                                  context.tr('pro_active'),
                                   style: const TextStyle(
                                     color: Color(0xFF1DB954),
                                     fontSize: 12,

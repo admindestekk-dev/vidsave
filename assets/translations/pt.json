@@ -1,0 +1,20 @@
+{
+  "app_name": "VidSave",
+  "app_title": "VidSave",
+  "download_video": "Baixar Vídeo",
+  "download_mp3": "Baixar MP3",
+  "downloads": "Downloads",
+  "activate_pro_version": "Ativar Versão Pro",
+  "fast_and_safe_downloads": "Downloads Rápidos e Seguros",
+  "delete_account": "Excluir Conta",
+  "support_and_contact": "Suporte e Contato",
+  "support_code": "Código de Suporte",
+  "support_code_title": "Código de Suporte (User ID)",
+  "contact_us": "Fale Conosco / Obter Suporte",
+  "support_email": "admindestekk@gmail.com",
+  "code_copied": "Código de suporte copiado para a área de transferência!",
+  "pricing_text": "Apenas $0.99 / Mês",
+  "pricing_full": "Apenas $0.99 / Mês - Impostos Incluídos",
+  "subscribe_button": "Assinar - $0.99 / Mês",
+  "vat_included": "Todos os impostos e IVA incluídos."
+}
