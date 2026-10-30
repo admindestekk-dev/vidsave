@@ -6,7 +6,9 @@ import 'app_localizations.dart';
 import 'download_item_model.dart';
 import 'lyrics_bottom_sheet.dart';
 import 'music_player.dart';
+import 'screens/private_vault_screen.dart';
 import 'services/download_manager.dart';
+import 'services/private_vault_service.dart';
 import 'storage_service.dart';
 import 'video_player_screen.dart';
 
@@ -199,6 +201,18 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Gizli Kasa',
+            icon: const Icon(Icons.shield_rounded, color: _primaryOrange),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const PrivateVaultScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             tooltip: l10n.text('filter_all'),
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadInitialData,
@@ -327,7 +341,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                                   i < storedItems.length;
                                   i++
                                 ) ...[
-                                  _buildDownloadCard(storedItems[i]),
+                                  _buildDownloadCard(context, storedItems[i]),
                                   if (i < storedItems.length - 1)
                                     const SizedBox(height: 12),
                                 ],
@@ -544,7 +558,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   }
 
   /// Geçmiş indirme kartı (Kapak resmi, format etiketi, MB, oynat ve sil)
-  Widget _buildDownloadCard(DownloadItemModel item) {
+  Widget _buildDownloadCard(BuildContext cardContext, DownloadItemModel item) {
     final isAudio = item.isAudio;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final gradient = isAudio
@@ -687,6 +701,31 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                 ),
                 tooltip: AppLocalizations.of(context).text('btn_play'),
                 onPressed: () => _openFile(context, item),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.lock_outline_rounded,
+                  color: Color(0xFF90A4AE),
+                ),
+                tooltip: 'Gizli Klasöre Taşı',
+                onPressed: () async {
+                  final source = File(item.filePath);
+                  if (source.existsSync()) {
+                    final messenger = ScaffoldMessenger.maybeOf(cardContext);
+                    await PrivateVaultService.instance.importFileToVault(
+                      sourceFile: source,
+                      originalName: item.name,
+                      type: item.type,
+                    );
+                    await StorageService.removeItem(item.id);
+                    messenger?.showSnackBar(
+                      const SnackBar(
+                        content: Text('Dosya şifrelenerek Gizli Klasöre taşındı! 🔒'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
               ),
               IconButton(
                 icon: const Icon(

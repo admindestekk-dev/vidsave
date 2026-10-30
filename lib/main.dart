@@ -29,6 +29,7 @@ import 'locale_service.dart';
 import 'video_player_screen.dart';
 import 'auth_gate.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/in_app_media_browser_screen.dart';
 import 'remote_config_service.dart';
 import 'welcome_screen.dart';
 import 'home_screen.dart';
@@ -715,27 +716,52 @@ class _DownloadPageState extends State<_DownloadPage> {
                     ],
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => BulkDownloadScreen(
-                          resolver: widget.resolver,
-                          downloader: widget.downloader,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const InAppMediaBrowserScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.language_rounded, size: 18),
+                      label: const Text('Tarayıcı'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFFFF5436),
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.layers_rounded, size: 18),
-                  label: const Text('Toplu İndir'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(context).primaryColor,
-                    textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
                     ),
-                  ),
+                    const SizedBox(width: 4),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => BulkDownloadScreen(
+                              resolver: widget.resolver,
+                              downloader: widget.downloader,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.layers_rounded, size: 18),
+                      label: const Text('Toplu İndir'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context).primaryColor,
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

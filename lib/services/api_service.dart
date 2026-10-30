@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../app_dio.dart';
+import 'multi_threaded_downloader.dart';
 
 /// Varsayılan canlı sunucu adresi (Render Pro 7/24 Kesintisiz Canlı API).
 /// Port numarası içermeyen doğrudan standart ve şifreli HTTPS adresi.
@@ -382,24 +383,15 @@ class ApiService {
     final downloadClient = AppDio.createClient();
 
     try {
-      await downloadClient.download(
-        effectiveUrl,
-        savePath,
-        options: Options(
-          headers: aggressiveHeaders,
-          followRedirects: true,
-          maxRedirects: 10,
-          receiveTimeout: const Duration(minutes: 30),
-          sendTimeout: const Duration(seconds: 30),
-          validateStatus: (status) =>
-              status != null && status >= 200 && status < 400,
-        ),
-        deleteOnError: true,
-        onReceiveProgress: onProgress,
+      // Çoklu parçacıklı (Multi-threaded Range Accelerator) hızlandırma motorunu devreye sok
+      final accelerator = MultiThreadedDownloader(dioClient: downloadClient, threadCount: 4);
+      return await accelerator.downloadWithAccelerator(
+        url: effectiveUrl,
+        savePath: savePath,
+        headers: aggressiveHeaders,
+        onProgress: onProgress,
         cancelToken: cancelToken,
       );
-
-      return targetFile;
     } on DioException catch (dioErr) {
       // 403 Forbidden durumunda alternatif mobil tarayıcı kimliği (Android Chrome / no-cors) ile otomatik tekrar dene
       if (dioErr.response?.statusCode == 403) {
