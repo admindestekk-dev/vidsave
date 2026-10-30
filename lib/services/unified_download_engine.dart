@@ -11,6 +11,7 @@ import '../download_notification_service.dart';
 import '../media_downloader.dart';
 import '../storage_service.dart';
 import 'api_service.dart';
+import 'download_manager.dart';
 
 /// VidSave Evrensel Birleşik İndirme Motoru (Unified Download Engine)
 ///
@@ -129,6 +130,14 @@ class UnifiedDownloadEngine {
     int? lastReceivedBytes;
     String downloadSpeed = '0 KB/s';
 
+    final taskId = DateTime.now().millisecondsSinceEpoch.toString();
+    DownloadManager.instance.startTask(
+      id: taskId,
+      title: defaultTitle,
+      url: targetUrl,
+      type: normalizedType,
+    );
+
     onStatus?.call('İndiriliyor…');
 
     try {
@@ -231,6 +240,14 @@ class UnifiedDownloadEngine {
                 status,
               );
 
+              DownloadManager.instance.updateProgress(
+                id: taskId,
+                received: received,
+                total: total > 0 ? total : null,
+                progress: normProgress,
+                speed: downloadSpeed,
+              );
+
               if (percent != null && percent != lastNotifPercent) {
                 lastNotifPercent = percent;
                 unawaited(
@@ -260,8 +277,11 @@ class UnifiedDownloadEngine {
               filePath: downloadedFile.path,
               downloadedAt: DateTime.now(),
               sourceUrl: targetUrl,
+              thumbnailUrl: analyzeResult.thumbnail,
             ),
           );
+
+          DownloadManager.instance.completeTask(taskId);
 
           // Sistem galerisine/medya deposuna güvenle kaydet
           unawaited(MediaDownloader.publishToMediaStore(downloadedFile));
@@ -347,6 +367,14 @@ class UnifiedDownloadEngine {
             status,
           );
 
+          DownloadManager.instance.updateProgress(
+            id: taskId,
+            received: received,
+            total: total != null && total > 0 ? total : null,
+            progress: normProgress,
+            speed: downloadSpeed,
+          );
+
           if (percent != null && percent != lastNotifPercent) {
             lastNotifPercent = percent;
             unawaited(
@@ -381,6 +409,8 @@ class UnifiedDownloadEngine {
         ),
       );
 
+      DownloadManager.instance.completeTask(taskId);
+
       unawaited(MediaDownloader.publishToMediaStore(downloadedFile));
 
       await notifService.showCompleted(
@@ -391,6 +421,7 @@ class UnifiedDownloadEngine {
 
       return downloadedFile;
     } catch (e) {
+      DownloadManager.instance.failTask(taskId);
       debugPrint('UnifiedDownloadEngine download hatası: $e');
       unawaited(
         notifService.showError(

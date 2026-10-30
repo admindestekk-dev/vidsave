@@ -9,6 +9,7 @@ class DownloadItemModel {
   final String filePath;
   final DateTime downloadedAt;
   final String? sourceUrl;
+  final String? thumbnailUrl;
 
   DownloadItemModel({
     required this.id,
@@ -18,6 +19,7 @@ class DownloadItemModel {
     required this.filePath,
     required this.downloadedAt,
     this.sourceUrl,
+    this.thumbnailUrl,
   });
 
   /// Dosya boyutunu okunabilir metin formatına (KB, MB, GB) çevirir.
@@ -54,6 +56,7 @@ class DownloadItemModel {
           ? DateTime.tryParse(json['downloadedAt'] as String) ?? DateTime.now()
           : DateTime.now(),
       sourceUrl: json['sourceUrl'] as String?,
+      thumbnailUrl: json['thumbnailUrl'] as String?,
     );
   }
 
@@ -67,6 +70,7 @@ class DownloadItemModel {
       'filePath': filePath,
       'downloadedAt': downloadedAt.toIso8601String(),
       if (sourceUrl != null) 'sourceUrl': sourceUrl,
+      if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
     };
   }
 }

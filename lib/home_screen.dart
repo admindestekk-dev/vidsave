@@ -14,6 +14,7 @@ import 'auth_service.dart';
 import 'backend_settings.dart';
 import 'media_downloader.dart';
 import 'subscription_screen.dart';
+import 'downloads_screen.dart';
 import 'services/api_service.dart';
 import 'services/unified_download_engine.dart';
 import 'app_localizations.dart';
@@ -395,9 +396,6 @@ class _PremiumBannerState extends State<PremiumBanner> {
 
   @override
   Widget build(BuildContext context) {
-    final isTurkish =
-        Localizations.maybeLocaleOf(context)?.languageCode == 'tr';
-
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
@@ -451,44 +449,18 @@ class _PremiumBannerState extends State<PremiumBanner> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              _isPremium
-                                  ? context.tr('vidsave_pro_active')
-                                  : context.tr('activate_pro_version'),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.2,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (!_isPremium) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.25),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                isTurkish ? '9,99 TL' : '\$0.99',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                      Text(
+                        _isPremium
+                            ? context.tr('vidsave_pro_active')
+                            : context.tr('activate_pro_version'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 3),
                       Text(
@@ -767,6 +739,18 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
           content: Text('${context.tr('quick_download_success')}$targetFileName'),
           backgroundColor: const Color(0xFF20B8C5),
           behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'GÖRÜNTÜLE',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const DownloadsScreen(),
+                ),
+              );
+            },
+          ),
         ),
       );
 

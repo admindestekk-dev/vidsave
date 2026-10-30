@@ -290,6 +290,18 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           content: Text('Başarıyla indirildi: $fileName'),
           backgroundColor: const Color(0xFF20B8C5),
           behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'GÖRÜNTÜLE',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const DownloadsScreen(),
+                ),
+              );
+            },
+          ),
         ),
       );
     } catch (e, stack) {
@@ -840,11 +852,16 @@ class _DownloadPageState extends State<_DownloadPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             const Text(
-              'Backend adresi ve API anahtarı Ayarlar sekmesinden ayarlanır.',
+              '© 2026 VidSave. All rights reserved.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF87949D), fontSize: 12),
+              style: TextStyle(
+                color: Color(0xFF87949D),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.3,
+              ),
             ),
           ],
         ),
