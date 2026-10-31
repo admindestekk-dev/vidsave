@@ -146,6 +146,8 @@ class VidSaveHomePage extends StatefulWidget {
 class _VidSaveHomePageState extends State<VidSaveHomePage>
     with WidgetsBindingObserver {
   int _selectedIndex = 2;
+  final GlobalKey<InAppMediaBrowserScreenState> _browserKey =
+      GlobalKey<InAppMediaBrowserScreenState>();
   late final MediaLibrary _library =
       widget.library ?? PhotoManagerMediaLibrary();
   late final BackendSettingsStore _backendSettingsStore =
@@ -353,8 +355,13 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   /// because the home page is the only route on the stack. Instead we walk the
   /// user back to the İndir tab first and only leave the app when they are
   /// already there.
-  void _handlePop(bool didPop, Object? result) {
+  Future<void> _handlePop(bool didPop, Object? result) async {
     if (didPop) return;
+    if (_selectedIndex == 0) {
+      final handled =
+          await _browserKey.currentState?.handleBackAction() ?? false;
+      if (handled) return;
+    }
     if (_selectedIndex != _homeIndex) {
       _onDestinationSelected(_homeIndex);
       return;
@@ -388,6 +395,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
         index: _selectedIndex,
         children: [
           InAppMediaBrowserScreen(
+            key: _browserKey,
             onCloseTab: () => _onDestinationSelected(_homeIndex),
           ),
           BulkDownloadScreen(

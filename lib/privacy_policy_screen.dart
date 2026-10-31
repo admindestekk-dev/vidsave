@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import 'locale_service.dart';
 
 /// VidSave Gizlilik Politikası Ekranı
@@ -54,7 +55,9 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     const accentColor = Color(0xFF006673);
     final cardBg = isDark ? const Color(0xFF1E262B) : Colors.white;
-    final borderColor = isDark ? const Color(0xFF2C353D) : const Color(0xFFEDF2F7);
+    final borderColor = isDark
+        ? const Color(0xFF2C353D)
+        : const Color(0xFFEDF2F7);
 
     return Scaffold(
       appBar: AppBar(
@@ -65,7 +68,10 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
         actions: [
           TextButton.icon(
             onPressed: _toggleLanguage,
-            icon: Text(_isTurkish ? '🇺🇸' : '🇹🇷', style: const TextStyle(fontSize: 16)),
+            icon: Text(
+              _isTurkish ? '🇺🇸' : '🇹🇷',
+              style: const TextStyle(fontSize: 16),
+            ),
             label: Text(
               _isTurkish ? 'EN' : 'TR',
               style: const TextStyle(fontWeight: FontWeight.bold),
@@ -96,7 +102,9 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: accentColor.withValues(alpha: 0.25)),
+                  border: Border.all(
+                    color: accentColor.withValues(alpha: 0.25),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -104,16 +112,24 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                            color: const Color(0xFF10B981)
+                                .withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: const Color(0xFF10B981)),
                           ),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.verified_user_rounded, size: 14, color: Color(0xFF10B981)),
+                              Icon(
+                                Icons.verified_user_rounded,
+                                size: 14,
+                                color: Color(0xFF10B981),
+                              ),
                               SizedBox(width: 5),
                               Text(
                                 'Google Play Data Safety Compliant',
@@ -145,7 +161,9 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                           : 'Last Updated: October 19, 2026 · Version: 1.0.0+1',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? Colors.white60 : const Color(0xFF718096),
+                        color: isDark
+                            ? Colors.white60
+                            : const Color(0xFF718096),
                       ),
                     ),
                   ],
@@ -173,7 +191,9 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                   border: Border.all(color: borderColor),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.2 : 0.04,
+                      ),
                       blurRadius: 10,
                       offset: const Offset(0, 3),
                     ),
@@ -184,11 +204,20 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.mail_outline_rounded, color: accentColor, size: 24),
+                        const Icon(
+                          Icons.mail_outline_rounded,
+                          color: accentColor,
+                          size: 24,
+                        ),
                         const SizedBox(width: 10),
                         Text(
-                          _isTurkish ? 'Resmi Destek ve İletişim' : 'Official Support & Contact',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                          _isTurkish
+                              ? 'Resmi Destek ve İletişim'
+                              : 'Official Support & Contact',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ],
                     ),
@@ -199,7 +228,9 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                           : 'For any inquiries regarding our privacy policy, personal data, or account deletion, reach out to us anytime:',
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark ? Colors.white70 : const Color(0xFF4A5568),
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF4A5568),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -207,7 +238,9 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                       style: FilledButton.styleFrom(
                         backgroundColor: accentColor,
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       onPressed: _launchEmail,
                       icon: const Icon(Icons.email_rounded, size: 18),
@@ -220,12 +253,16 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       onPressed: _launchWebPolicy,
                       icon: const Icon(Icons.language_rounded, size: 18),
                       label: Text(
-                        _isTurkish ? 'Resmi Web Sayfasında Aç' : 'Open Official Web Page',
+                        _isTurkish
+                            ? 'Resmi Web Sayfasında Aç'
+                            : 'Open Official Web Page',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -330,8 +367,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
           icon: Icons.credit_card_rounded,
           iconColor: const Color(0xFFEC4899),
           title: '6. Google Play Faturalandırma & Abonelikler',
-          content:
-              'Premium abonelik işlemleri doğrudan resmi Google Play Billing (Google Play Faturalandırma Sistemi) üzerinden yürütülür. Kredi kartı veya finansal bilgileriniz geliştirici tarafından asla görülmez ve kaydedilmez.',
+          content: 'Premium abonelik işlemleri doğrudan resmi Google Play Billing (Google Play Faturalandırma Sistemi) üzerinden yürütülür. Kredi kartı veya finansal bilgileriniz geliştirici tarafından asla görülmez ve kaydedilmez.',
         ),
         _buildPolicyCard(
           cardBg: cardBg,
@@ -353,8 +389,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
           icon: Icons.child_care_rounded,
           iconColor: const Color(0xFF06B6D4),
           title: '8. Çocukların Gizliliği (COPPA)',
-          content:
-              'VidSave, 13 yaşın (veya bulunulan ülkedeki yasal yaş sınırının) altındaki çocuklara yönelik değildir ve bilerek çocuklardan kişisel veri toplamaz.',
+          content: 'VidSave, 13 yaşın (veya bulunulan ülkedeki yasal yaş sınırının) altındaki çocuklara yönelik değildir ve bilerek çocuklardan kişisel veri toplamaz.',
         ),
         _buildPolicyCard(
           cardBg: cardBg,
@@ -362,9 +397,10 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
           isDark: isDark,
           icon: Icons.gavel_rounded,
           iconColor: const Color(0xFF64748B),
-          title: '9. Telif Hakları, Adil Kullanım ve Sorumluluk Reddi',
+          title: '9. Telif Hakları, YouTube Kısıtlaması ve Sorumluluk Reddi',
           content:
-              'VidSave, telif hakkı ile korunan içeriklerin izinsiz indirilmesini veya çoğaltılmasını teşvik etmez. Uygulama yalnızca kişisel arşivleme, açık lisanslı içerikler ve adil kullanım (Fair Use) amacıyla tasarlanmıştır. İndirilen içeriklerin telif haklarına uygunluğundan kullanıcı sorumludur.',
+              '• Google Play Store ve YouTube Kısıtlaması: Google Play Store Hizmet Şartları ve telif hakları politikaları gereği, YouTube platformuna ait videoların ve ses içeriklerinin indirilmesi yasal olarak kesinlikle kısıtlanmıştır ve yasaktır. VidSave; YouTube indirmelerini teknik ve yasal olarak engeller, hiçbir YouTube indirme talebini işleme almaz. VidSave; Instagram, TikTok ve Facebook platformlarında yasal sınırlar dahilinde kesintisiz hizmet sunmaktadır.\n\n'
+              '• Adil Kullanım ve Telif Hakları: VidSave, telif hakkı ile korunan içeriklerin izinsiz indirilmesini veya çoğaltılmasını teşvik etmez. Uygulama yalnızca kişisel arşivleme, açık lisanslı içerikler ve adil kullanım (Fair Use) amacıyla tasarlanmıştır. İndirilen içeriklerin ilgili platformların hizmet şartlarına ve telif haklarına uygunluğundan tamamen kullanıcı sorumludur.',
         ),
       ];
     }
@@ -440,8 +476,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
         icon: Icons.credit_card_rounded,
         iconColor: const Color(0xFFEC4899),
         title: '6. Google Play Billing & Subscriptions',
-        content:
-            'All in-app purchases are securely handled through the official Google Play Billing system. No credit card or financial information is ever processed or stored by the developer.',
+        content: 'All in-app purchases are securely handled through the official Google Play Billing system. No credit card or financial information is ever processed or stored by the developer.',
       ),
       _buildPolicyCard(
         cardBg: cardBg,
@@ -463,8 +498,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
         icon: Icons.child_care_rounded,
         iconColor: const Color(0xFF06B6D4),
         title: '8. Children\'s Privacy (COPPA)',
-        content:
-            'VidSave is not directed to children under 13 years of age, and we do not knowingly collect personal information from children.',
+        content: 'VidSave is not directed to children under 13 years of age, and we do not knowingly collect personal information from children.',
       ),
       _buildPolicyCard(
         cardBg: cardBg,
@@ -472,9 +506,10 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
         isDark: isDark,
         icon: Icons.gavel_rounded,
         iconColor: const Color(0xFF64748B),
-        title: '9. Copyright, Fair Use & Disclaimer',
+        title: '9. Copyright, YouTube Restrictions & Disclaimer',
         content:
-            'VidSave does not encourage or facilitate unauthorized downloading of copyrighted content. The application is built for personal archiving, open-source media, and fair use purposes. Users are strictly responsible for adhering to applicable copyright laws and platform terms of service.',
+            '• Google Play Store & YouTube Restrictions: In strict accordance with Google Play Store Terms of Service and developer content policies, downloading content from the YouTube platform is legally restricted and strictly prohibited. VidSave does not support, process, or permit downloading any video or audio from YouTube. VidSave operates legally and seamlessly for platforms such as Instagram, TikTok, and Facebook.\n\n'
+            '• Fair Use & Copyright Compliance: VidSave does not encourage or facilitate unauthorized downloading or redistribution of copyrighted content. The application is built solely for personal archiving, open-source media, and fair use purposes. Users are strictly responsible for adhering to applicable copyright laws and individual platform terms of service.',
       ),
     ];
   }

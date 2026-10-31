@@ -1,8 +1,33 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../quick_download_dialog.dart';
 import '../services/unified_download_engine.dart';
+
+/// Web tarayıcısı yönlendirme politikası (Navigation Policy)
+enum NavigationActionPolicy {
+  /// İsteği iptal eder, tarayıcının harici şemaya geçmesini engeller.
+  CANCEL,
+
+  /// İsteğe izin verir, sayfanın normal akışında yüklenmesini sağlar.
+  ALLOW,
+}
+
+/// Harici şemaları (fb://, whatsapp://, intent:// vb.) havada yakalayan ve
+/// net::ERR_UNKNOWN_URL_SCHEME beyaz ekran hatasını önleyen güvenlik filtresi.
+NavigationActionPolicy shouldOverrideUrlLoading(String url) {
+  final cleanUrl = url.trim().toLowerCase();
+  final isHttp = cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://');
+
+  if (!isHttp) {
+    debugPrint('[VidSave Koruma] Harici uygulama linki engellendi: $url');
+    return NavigationActionPolicy.CANCEL;
+  }
+
+  return NavigationActionPolicy.ALLOW;
+}
 
 /// VidSave Dahili Sosyal Medya Tarayıcısı (In-App Media Browser)
 ///
@@ -23,10 +48,10 @@ class InAppMediaBrowserScreen extends StatefulWidget {
 
   @override
   State<InAppMediaBrowserScreen> createState() =>
-      _InAppMediaBrowserScreenState();
+      InAppMediaBrowserScreenState();
 }
 
-class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
+class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   WebViewController? _controller;
   final TextEditingController _urlBarController = TextEditingController();
 
@@ -35,6 +60,19 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   bool _isVideoActive = false;
   String _pageTitle = '';
   static const Color _neonOrange = Color(0xFFFF5436);
+
+  @visibleForTesting
+  String? get detectedVideoUrl => _detectedVideoUrl;
+
+  @visibleForTesting
+  bool get isVideoActive => _isVideoActive;
+
+  @visibleForTesting
+  String get pageTitle => _pageTitle;
+
+  @visibleForTesting
+  void handleIncomingDetectorMessage(String message) =>
+      _handleIncomingDetectorMessage(message);
 
   void _onVideoDetected(String url) {
     if (!mounted) return;
@@ -47,69 +85,280 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     });
   }
 
-  // Sayfadaki video ve akış linklerini MutationObserver ve dinamik DOM tarayıcısı ile
-  // lazy load / infinite scroll durumlarında bile anında havada yakalayan agresif JavaScript avcısı
-  static const String _videoDetectionScript = '''
-    (function() {
-      if (window.__vidsaveObserverInstalled) return;
-      window.__vidsaveObserverInstalled = true;
+  void _handleIncomingDetectorMessage(String rawMsg) {
+    if (!mounted) return;
+    final message = rawMsg.trim();
+    if (message.isEmpty) return;
 
-      function notifyVideo(url) {
-        if (!url || typeof url !== 'string') return;
-        var clean = url.trim();
-        if ((clean.startsWith('http://') || clean.startsWith('https://')) && !clean.startsWith('blob:')) {
-          if (window.VidSaveDetector && window.VidSaveDetector.postMessage) {
-            window.VidSaveDetector.postMessage(clean);
-          }
-          if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
-            window.flutter_inappwebview.callHandler('VidSaveVideoYakalandi', clean);
-          }
+    try {
+      if (message.startsWith('{') && message.endsWith('}')) {
+        final data = jsonDecode(message) as Map<String, dynamic>;
+        final mediaUrl = data['mediaUrl'] as String?;
+        final pageUrl = data['pageUrl'] as String?;
+        final title = data['title'] as String?;
+
+        final validMedia = (mediaUrl != null &&
+                mediaUrl.isNotEmpty &&
+                mediaUrl.startsWith('http') &&
+                !mediaUrl.startsWith('blob:'))
+            ? mediaUrl
+            : null;
+
+        final validPage = (pageUrl != null &&
+                pageUrl.isNotEmpty &&
+                pageUrl.startsWith('http'))
+            ? pageUrl
+            : null;
+
+        final target = validMedia ?? validPage;
+        if (target != null) {
+          setState(() {
+            _detectedVideoUrl = target;
+            _isVideoActive = true;
+            if (title != null && title.trim().isNotEmpty) {
+              _pageTitle = title.trim();
+            }
+            if (validPage != null && validPage.isNotEmpty) {
+              _urlBarController.text = validPage;
+            }
+          });
+          return;
         }
       }
+    } catch (_) {
+      // Düz URL formatı desteği
+    }
 
-      function scanElements() {
+    _onVideoDetected(message);
+  }
+
+  // Sayfada o an aktif olarak izlenen/oynatılan videoyu anlık tespit eden ve
+  // kullanıcı video değiştirdiğinde (Instagram Reels, TikTok, Facebook Watch, YouTube)
+  // buton hedefini otomatik güncelleyen akıllı JavaScript avcısı
+  static const String _videoDetectionScript = '''
+    (function() {
+      if (window.__vidsaveObserverInstalled) {
+        if (window.__vidsaveCheckActiveVideo) {
+          window.__vidsaveCheckActiveVideo();
+        }
+        return;
+      }
+      window.__vidsaveObserverInstalled = true;
+
+      var lastReportedMedia = null;
+      var lastReportedPage = null;
+
+      function postToFlutter(payload) {
         try {
-          var vids = document.querySelectorAll('video');
-          for (var i = 0; i < vids.length; i++) {
-            var v = vids[i];
-            var src = v.currentSrc || v.src || v.getAttribute('src');
-            if (src) { notifyVideo(src); }
-            var sources = v.querySelectorAll('source');
-            for (var j = 0; j < sources.length; j++) {
-              var sSrc = sources[j].src || sources[j].getAttribute('src');
-              if (sSrc) { notifyVideo(sSrc); }
-            }
+          var jsonStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+          if (window.VidSaveDetector && window.VidSaveDetector.postMessage) {
+            window.VidSaveDetector.postMessage(jsonStr);
           }
-          var allSources = document.querySelectorAll('source[src*=".mp4"], source[src*="googlevideo"], source[src*="cdn"]');
-          for (var k = 0; k < allSources.length; k++) {
-            var url = allSources[k].src || allSources[k].getAttribute('src');
-            if (url) { notifyVideo(url); }
+          if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+            window.flutter_inappwebview.callHandler('VidSaveVideoYakalandi', jsonStr);
           }
         } catch(e) {}
       }
 
-      scanElements();
+      function extractMediaSrc(videoEl) {
+        if (!videoEl) return null;
+        var src = videoEl.currentSrc || videoEl.src || videoEl.getAttribute('src');
+        if (src && typeof src === 'string') {
+          var s = src.trim();
+          if ((s.startsWith('http://') || s.startsWith('https://')) && !s.startsWith('blob:')) {
+            return s;
+          }
+        }
+        var sources = videoEl.querySelectorAll('source');
+        for (var i = 0; i < sources.length; i++) {
+          var sSrc = sources[i].src || sources[i].getAttribute('src');
+          if (sSrc && typeof sSrc === 'string') {
+            var clean = sSrc.trim();
+            if ((clean.startsWith('http://') || clean.startsWith('https://')) && !clean.startsWith('blob:')) {
+              return clean;
+            }
+          }
+        }
+        return null;
+      }
 
-      // MutationObserver: Instagram, TikTok, Shorts gibi lazy-load ve dinamik eklenen videoları havada yakalar
+      function findPostUrl(videoEl) {
+        if (!videoEl) return window.location.href;
+        try {
+          var anchor = videoEl.closest('a[href*="/reel/"], a[href*="/p/"], a[href*="/watch"], a[href*="/video/"], a[href*="/shorts/"]');
+          if (anchor && anchor.href) {
+            return anchor.href;
+          }
+        } catch(e) {}
+        return window.location.href;
+      }
+
+      function reportActiveVideo(videoEl, isPlaying) {
+        if (!videoEl) return;
+        var mediaUrl = extractMediaSrc(videoEl);
+        var pageUrl = findPostUrl(videoEl);
+        var title = document.title || '';
+
+        // Aynı video ve aynı sayfa URL'si ise gereksiz tekrar gönderme
+        if (mediaUrl === lastReportedMedia && pageUrl === lastReportedPage) {
+          return;
+        }
+
+        lastReportedMedia = mediaUrl;
+        lastReportedPage = pageUrl;
+
+        postToFlutter({
+          type: 'video_active',
+          mediaUrl: mediaUrl || '',
+          pageUrl: pageUrl,
+          title: title,
+          isPlaying: !!isPlaying
+        });
+      }
+
+      function attachVideoListeners(videoEl) {
+        if (!videoEl || videoEl.__vidsaveAttached) return;
+        videoEl.__vidsaveAttached = true;
+
+        // Video oynatılmaya başladığı an 'aktif izlenen video' olarak bildir
+        videoEl.addEventListener('play', function() {
+          reportActiveVideo(videoEl, true);
+        }, { passive: true });
+
+        videoEl.addEventListener('playing', function() {
+          reportActiveVideo(videoEl, true);
+        }, { passive: true });
+
+        videoEl.addEventListener('timeupdate', function() {
+          if (!videoEl.paused && !videoEl.ended) {
+            var currentMedia = extractMediaSrc(videoEl);
+            if (currentMedia && currentMedia !== lastReportedMedia) {
+              reportActiveVideo(videoEl, true);
+            }
+          }
+        }, { passive: true });
+      }
+
+      // O an oynatılan (playing) veya kullanıcının ekranında en görünür olan videoyu tespit et
+      function checkPlayingOrVisibleVideo() {
+        var vids = document.querySelectorAll('video');
+        if (!vids || vids.length === 0) return;
+
+        // 1. Önce aktif olarak çalan (paused == false) videoyu ara
+        var playingVid = null;
+        for (var i = 0; i < vids.length; i++) {
+          attachVideoListeners(vids[i]);
+          if (!vids[i].paused && !vids[i].ended && vids[i].currentTime > 0) {
+            playingVid = vids[i];
+            break;
+          }
+        }
+
+        if (playingVid) {
+          reportActiveVideo(playingVid, true);
+          return;
+        }
+
+        // 2. Çalan yoksa ekranın ortasındaki (viewport) en görünür videoyu bul
+        var bestVideo = null;
+        var maxVisibility = 0;
+        var windowHeight = window.innerHeight || document.documentElement.clientHeight || 800;
+
+        for (var j = 0; j < vids.length; j++) {
+          var v = vids[j];
+          attachVideoListeners(v);
+          var rect = v.getBoundingClientRect();
+          var visibleHeight = Math.max(0, Math.min(rect.bottom, windowHeight) - Math.max(rect.top, 0));
+          if (visibleHeight > maxVisibility) {
+            maxVisibility = visibleHeight;
+            bestVideo = v;
+          }
+        }
+
+        if (bestVideo && maxVisibility > 120) {
+          reportActiveVideo(bestVideo, false);
+        } else if (vids.length > 0 && !lastReportedMedia) {
+          reportActiveVideo(vids[0], false);
+        }
+      }
+
+      window.__vidsaveCheckActiveVideo = checkPlayingOrVisibleVideo;
+
+      // İlk kontrol
+      checkPlayingOrVisibleVideo();
+
+      // Kullanıcı sayfayı kaydırdıkça izlenen videoyu anlık güncelle
+      window.addEventListener('scroll', checkPlayingOrVisibleVideo, { passive: true });
+
+      // SPA (Single Page Application) geçişlerinde URL değiştiğinde hemen yeni videoyu tespit et
+      function onRouteChanged() {
+        setTimeout(function() {
+          lastReportedMedia = null;
+          lastReportedPage = null;
+          checkPlayingOrVisibleVideo();
+        }, 350);
+      }
+
+      var origPushState = history.pushState;
+      if (origPushState) {
+        history.pushState = function() {
+          var res = origPushState.apply(this, arguments);
+          onRouteChanged();
+          return res;
+        };
+      }
+
+      var origReplaceState = history.replaceState;
+      if (origReplaceState) {
+        history.replaceState = function() {
+          var res = origReplaceState.apply(this, arguments);
+          onRouteChanged();
+          return res;
+        };
+      }
+
+      window.addEventListener('popstate', onRouteChanged, { passive: true });
+
+      // MutationObserver: Dinamik eklenen (lazy-load) videoları yakala ve dinleyicileri bağla
       try {
         var observer = new MutationObserver(function(mutations) {
+          var hasNewNodes = false;
           for (var i = 0; i < mutations.length; i++) {
-            var mut = mutations[i];
-            if (mut.addedNodes && mut.addedNodes.length > 0) {
-              scanElements();
+            if (mutations[i].addedNodes && mutations[i].addedNodes.length > 0) {
+              hasNewNodes = true;
               break;
             }
+          }
+          if (hasNewNodes) {
+            checkPlayingOrVisibleVideo();
           }
         });
         observer.observe(document.body || document.documentElement, {
           childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ['src', 'currentSrc']
+          subtree: true
         });
       } catch(e) {}
 
-      setInterval(scanElements, 1500);
+      // Harici şemaları (fb://, intent:// vb.) DOM tıklamalarında da havada yakala ve sustur
+      try {
+        document.addEventListener('click', function(e) {
+          var target = e.target;
+          while (target && target.tagName !== 'A') {
+            target = target.parentElement;
+          }
+          if (target && target.href) {
+            var href = target.href.toLowerCase();
+            if (!href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('javascript:')) {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[VidSave Koruma] Harici uygulama linki engellendi: ' + target.href);
+            }
+          }
+        }, true);
+      } catch(e) {}
+
+      // Periyodik kontrol
+      setInterval(checkPlayingOrVisibleVideo, 1200);
     })();
   ''';
 
@@ -125,23 +374,29 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         ..addJavaScriptChannel(
           'VidSaveDetector',
           onMessageReceived: (JavaScriptMessage msg) {
-            final url = msg.message.trim();
-            if (url.isNotEmpty && url.startsWith('http')) {
-              _onVideoDetected(url);
-            }
+            _handleIncomingDetectorMessage(msg.message);
           },
         )
         ..addJavaScriptChannel(
           'VidSaveVideoYakalandi',
           onMessageReceived: (JavaScriptMessage msg) {
-            final url = msg.message.trim();
-            if (url.isNotEmpty && url.startsWith('http')) {
-              _onVideoDetected(url);
-            }
+            _handleIncomingDetectorMessage(msg.message);
           },
         )
         ..setNavigationDelegate(
           NavigationDelegate(
+            onNavigationRequest: (NavigationRequest request) {
+              final policy = shouldOverrideUrlLoading(request.url);
+              if (policy == NavigationActionPolicy.CANCEL) {
+                return NavigationDecision.prevent;
+              }
+              return NavigationDecision.navigate;
+            },
+            onWebResourceError: (WebResourceError error) {
+              debugPrint(
+                '[VidSave Tarayıcı] WebResourceError (${error.errorCode}): ${error.description}',
+              );
+            },
             onPageStarted: (String url) {
               if (mounted) {
                 setState(() {
@@ -233,30 +488,45 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     );
   }
 
+  /// Geri tuşu aksiyonunu yönetir.
+  /// Tarayıcı geçmişinde geri gidilebiliyorsa bir önceki sayfaya döner ve `true` döner.
+  /// Sayfa geçmişi bittiğinde modal/sekme kapanır ve `true` döner.
+  Future<bool> handleBackAction() async {
+    final controller = _controller;
+    final canGoBack = controller != null && await controller.canGoBack();
+    if (canGoBack) {
+      await controller.goBack();
+      return true;
+    }
+    if (!mounted) return false;
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return true;
+    } else if (widget.onCloseTab != null) {
+      widget.onCloseTab!();
+      return true;
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF14191F),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1E2630),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () async {
-            final navigator = Navigator.of(context);
-            final controller = _controller;
-            final canGoBack = controller != null && await controller.canGoBack();
-            if (canGoBack) {
-              await controller.goBack();
-            } else if (mounted) {
-              if (navigator.canPop()) {
-                navigator.pop();
-              } else if (widget.onCloseTab != null) {
-                widget.onCloseTab!();
-              }
-            }
-          },
-        ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await handleBackAction();
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF14191F),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1E2630),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: handleBackAction,
+          ),
         title: Container(
           height: 40,
           decoration: BoxDecoration(
@@ -374,6 +644,7 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

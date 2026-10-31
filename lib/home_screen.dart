@@ -568,6 +568,109 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+/// Verilen metnin YouTube platformuna ait olup olmadığını tespit eder.
+bool isYouTubeUrl(String text) {
+  final lower = text.trim().toLowerCase();
+  return lower.contains('youtube.com') || lower.contains('youtu.be');
+}
+
+/// Google Play Store Hizmet Şartları ve Telif Hakları Politikalarına %100 uyum
+/// sağlayan, koyu premium temalı (Color(0xff1e1e1e)) ve kurumsal dille hazırlanmış yasal uyarı dialogu.
+Future<void> showYouTubeRestrictionDialog(BuildContext context) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      elevation: 12,
+      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF5436).withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.gavel_rounded,
+              color: Color(0xFFFF5436),
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Text(
+              'Yasal Uyarı',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 8),
+          const Text(
+            'Google Play Store Hizmet Şartları ve telif hakları politikaları gereği, YouTube platformuna ait videoların indirilmesi yasal olarak kısıtlanmıştır. VidSave; Instagram, TikTok ve Facebook platformlarında kesintisiz hizmet sunmaktadır.',
+            style: TextStyle(
+              color: Color(0xFFE2E8F0),
+              fontSize: 14,
+              height: 1.5,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 44,
+            child: ElevatedButton(
+              key: const Key('youtube_restriction_dialog_ok_button'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF5436),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text(
+                'ANLADIM',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// YouTube yasal kontrol kalkanı: Metin YouTube bağlantısı içeriyorsa
+/// indirmeyi sunucuya gitmeden havada keser ve yasal AlertDialog fırlatır.
+/// YouTube linki tespit edilirse `true` döner; aksi halde `false` döner.
+bool checkAndShowYouTubeRestriction(BuildContext context, String text) {
+  if (isYouTubeUrl(text)) {
+    showYouTubeRestrictionDialog(context);
+    return true;
+  }
+  return false;
+}
+
 /// VidSave Otomatik Algılama - Sunucu Tabanlı Hızlı İndirme Penceresi
 class QuickDownloadWindow extends StatefulWidget {
   const QuickDownloadWindow({
@@ -646,6 +749,11 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
       setState(() {
         _errorMessage = context.tr('quick_download_empty_url');
       });
+      return;
+    }
+
+    // Google Play Store Hizmet Şartları ve Telif Hakları Yasal Kalkanı
+    if (checkAndShowYouTubeRestriction(context, rawUrl)) {
       return;
     }
 
@@ -847,6 +955,8 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
             controller: _controller,
             focusNode: _focusNode,
             enabled: !_isAnalyzing && !_isDownloading,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _handleDownloadPressed('video'),
             style: TextStyle(
               fontSize: 14,
               color: isDark ? Colors.white : const Color(0xFF172B3A),
@@ -1181,6 +1291,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                   child: SizedBox(
                     height: 46,
                     child: ElevatedButton.icon(
+                      key: const Key('download_search_button'),
                       onPressed: () => _handleDownloadPressed('video'),
                       icon: const Icon(Icons.videocam_rounded, size: 20),
                       label: Text(
