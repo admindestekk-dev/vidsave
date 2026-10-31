@@ -20,6 +20,7 @@ import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/media_downloader.dart';
 import 'package:vid_downloader_app/media_library.dart';
 import 'package:vid_downloader_app/quick_download_dialog.dart';
+import 'package:vid_downloader_app/screens/in_app_media_browser_screen.dart';
 
 class _IntegrationTestMediaLibrary implements MediaLibrary {
   const _IntegrationTestMediaLibrary();
@@ -204,7 +205,7 @@ void main() {
       debugPrint('  [BAŞARILI] Ana Ekran, Hızlı İndirme Paneli ve ${kDownloadPlatforms.length} adet Platform Butonu doğrulandı.');
     });
 
-    testWidgets('3. Alt Sekmeler Arası Canlı Geçiş (Videolar, Müzik, Ayarlar, İndir)', (
+    testWidgets('3. Alt Sekmeler Arası Canlı Geçiş (Tarayıcı, Toplu İndirme, Ayarlar, İndir)', (
       WidgetTester tester,
     ) async {
       debugPrint('\n======================================================');
@@ -212,20 +213,29 @@ void main() {
       debugPrint('======================================================');
       await _ensureHomePage(tester);
 
-      // Videolar
-      await tester.tap(find.text('Videolar').first);
+      // Tarayıcı
+      await tester.tap(find.descendant(
+        of: find.byType(BottomNavigationBar),
+        matching: find.text('Tarayıcı'),
+      ));
       await tester.pumpAndSettle(const Duration(seconds: 1));
-      expect(find.text('Cihazda gösterilecek videolar bulunamadı.'), findsOneWidget);
-      debugPrint('  [BAŞARILI] Videolar sekmesine geçildi.');
+      expect(find.byType(InAppMediaBrowserScreen), findsOneWidget);
+      debugPrint('  [BAŞARILI] Tarayıcı sekmesine geçildi.');
 
-      // Müzik
-      await tester.tap(find.text('Müzik').first);
+      // Toplu İndirme
+      await tester.tap(find.descendant(
+        of: find.byType(BottomNavigationBar),
+        matching: find.text('Toplu İndirme'),
+      ));
       await tester.pumpAndSettle(const Duration(seconds: 1));
-      expect(find.text('Cihazda gösterilecek müzik bulunamadı.'), findsOneWidget);
-      debugPrint('  [BAŞARILI] Müzik sekmesine geçildi.');
+      expect(find.byType(BulkDownloadScreen), findsOneWidget);
+      debugPrint('  [BAŞARILI] Toplu İndirme sekmesine geçildi.');
 
       // Ayarlar
-      await tester.tap(find.text('Ayarlar').first);
+      await tester.tap(find.descendant(
+        of: find.byType(BottomNavigationBar),
+        matching: find.text('Ayarlar'),
+      ));
       await tester.pumpAndSettle(const Duration(seconds: 1));
       expect(find.text('Uygulama Ayarları'), findsOneWidget);
       expect(find.text('Dil Seçimi / Language'), findsOneWidget);
@@ -233,7 +243,10 @@ void main() {
       debugPrint('  [BAŞARILI] Ayarlar sekmesi doğrulandı.');
 
       // İndir sekmesine dönüş
-      await tester.tap(find.text('İndir').first);
+      await tester.tap(find.descendant(
+        of: find.byType(BottomNavigationBar),
+        matching: find.text('İndir'),
+      ));
       await tester.pumpAndSettle(const Duration(seconds: 1));
       expect(find.byType(QuickDownloadWindow), findsOneWidget);
       debugPrint('  [BAŞARILI] İndir ana ekranına dönüldü.');

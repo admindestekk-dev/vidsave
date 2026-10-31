@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -7,13 +8,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 
+import 'package:vid_downloader_app/bulk_download_screen.dart';
 import 'package:vid_downloader_app/download_platforms.dart';
+import 'package:vid_downloader_app/downloads_screen.dart';
 import 'package:vid_downloader_app/media_library.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/home_screen.dart';
 import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/more_screen.dart';
 import 'package:vid_downloader_app/music_player.dart';
+import 'package:vid_downloader_app/screens/in_app_media_browser_screen.dart';
 import 'package:vid_downloader_app/video_player_screen.dart';
 import 'package:vid_downloader_app/welcome_screen.dart';
 import 'package:vid_downloader_app/app_localizations.dart';
@@ -81,8 +85,13 @@ void main() {
     BottomNavigationBar navBar() =>
         tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar));
 
+    final browserTab = find.descendant(
+      of: find.byType(BottomNavigationBar),
+      matching: find.text('Tarayıcı'),
+    );
+
     // From another tab, back should snap to İndir and NOT close the app.
-    await tester.tap(find.text('Videolar').first);
+    await tester.tap(browserTab);
     await tester.pumpAndSettle();
     expect(navBar().currentIndex, 0);
 
@@ -116,23 +125,37 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Videolar').first);
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Cihazda gösterilecek videolar bulunamadı.'),
-      findsOneWidget,
+    final browserTab = find.descendant(
+      of: find.byType(BottomNavigationBar),
+      matching: find.text('Tarayıcı'),
+    );
+    final bulkTab = find.descendant(
+      of: find.byType(BottomNavigationBar),
+      matching: find.text('Toplu İndirme'),
+    );
+    final moreTab = find.descendant(
+      of: find.byType(BottomNavigationBar),
+      matching: find.text('Ayarlar'),
+    );
+    final downloadTab = find.descendant(
+      of: find.byType(BottomNavigationBar),
+      matching: find.text('İndir'),
     );
 
-    await tester.tap(find.text('Müzik').first);
+    await tester.tap(browserTab);
     await tester.pumpAndSettle();
-    expect(find.text('Cihazda gösterilecek müzik bulunamadı.'), findsOneWidget);
+    expect(find.byType(InAppMediaBrowserScreen), findsOneWidget);
 
-    await tester.tap(find.text('Ayarlar').first);
+    await tester.tap(bulkTab);
+    await tester.pumpAndSettle();
+    expect(find.byType(BulkDownloadScreen), findsOneWidget);
+
+    await tester.tap(moreTab);
     await tester.pumpAndSettle();
     expect(find.text('Uygulama Ayarları'), findsOneWidget);
     expect(find.text('Dil Seçimi / Language'), findsOneWidget);
 
-    await tester.tap(find.text('İndir').first);
+    await tester.tap(downloadTab);
     await tester.pumpAndSettle();
     expect(find.text('İNDİR'), findsNWidgets(kDownloadPlatforms.length));
   });
@@ -193,7 +216,7 @@ void main() {
     expect(find.text('Ayarlar güvenli biçimde kaydedildi.'), findsOneWidget);
   });
 
-  testWidgets('tapping a video opens the full-screen player', (
+  testWidgets('VideoPlayerScreen opens with video asset and factory', (
     WidgetTester tester,
   ) async {
     final asset = AssetEntity(
@@ -206,70 +229,51 @@ void main() {
       createDateSecond: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     );
     final neverInitialized = Completer<VideoPlayerController>().future;
+
     await tester.pumpWidget(
       MaterialApp(
-        home: VidSaveHomePage(
-          library: _TestMediaLibrary(assets: [asset]),
-          backendSettingsStore: _EmptyBackendSettingsStore(),
-          videoPlayerControllerFactory: (_) => neverInitialized,
+        home: VideoPlayerScreen(
+          asset: asset,
+          title: 'clip.mp4',
+          controllerFactory: (_) => neverInitialized,
         ),
       ),
     );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Videolar').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(Card).first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.byType(VideoPlayerScreen), findsOneWidget);
-    expect(find.text('clip.mp4'), findsNWidgets(2));
+    expect(find.text('clip.mp4'), findsOneWidget);
     expect(find.byTooltip('Geri'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Geri'));
-    await tester.pumpAndSettle();
-    expect(find.byType(VideoPlayerScreen), findsNothing);
   });
 
-  testWidgets('tapping music opens the player and starts playback', (
+  testWidgets('MusicPlayerScreen opens with audio file and plays audio', (
     WidgetTester tester,
   ) async {
-    final asset = AssetEntity(
-      id: 'test-audio',
-      typeInt: AssetType.audio.index,
-      width: 0,
-      height: 0,
-      duration: 45,
-      title: 'track.mp3',
-      createDateSecond: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-    );
+    final tempDir = Directory.systemTemp.createTempSync('widget_aud_test');
+    final audioFile = File('${tempDir.path}/track.mp3')
+      ..writeAsStringSync('dummy');
     final player = _FakeMusicPlayer();
+
     await tester.pumpWidget(
       MaterialApp(
-        home: VidSaveHomePage(
-          library: _TestMediaLibrary(assets: [asset]),
-          backendSettingsStore: _EmptyBackendSettingsStore(),
-          musicPlayerFactory: (_) => player,
-          musicSourceResolver: (_) async => UrlSource('file:///track.mp3'),
+        home: MusicPlayerScreen(
+          file: audioFile,
+          title: 'track.mp3',
+          playerFactory: (_) => player,
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Müzik').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(Card).first);
-    await tester.pumpAndSettle();
-
     expect(find.byType(MusicPlayerScreen), findsOneWidget);
     expect(find.text('Şimdi Çalıyor'), findsOneWidget);
-    expect(player.source, isA<UrlSource>());
+    expect(player.source, isA<DeviceFileSource>());
     expect(player.isPlaying, isTrue);
-    expect(player.resumeCount, 1);
 
-    await tester.tap(find.byTooltip('Geri'));
-    await tester.pumpAndSettle();
+    try {
+      tempDir.deleteSync(recursive: true);
+    } catch (_) {}
   });
 
   testWidgets('WelcomeScreen renders guest bypass button and proceeds to app', (

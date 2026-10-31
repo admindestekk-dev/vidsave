@@ -15,9 +15,11 @@ class InAppMediaBrowserScreen extends StatefulWidget {
   const InAppMediaBrowserScreen({
     super.key,
     this.initialUrl = 'https://www.google.com',
+    this.onCloseTab,
   });
 
   final String initialUrl;
+  final VoidCallback? onCloseTab;
 
   @override
   State<InAppMediaBrowserScreen> createState() =>
@@ -25,14 +27,25 @@ class InAppMediaBrowserScreen extends StatefulWidget {
 }
 
 class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
-  late final WebViewController _controller;
+  WebViewController? _controller;
   final TextEditingController _urlBarController = TextEditingController();
 
   bool _isLoading = true;
   String? _detectedVideoUrl;
-  bool _showDownloadButton = false;
+  bool _isVideoActive = false;
   String _pageTitle = '';
   static const Color _neonOrange = Color(0xFFFF5436);
+
+  void _onVideoDetected(String url) {
+    if (!mounted) return;
+    final clean = url.trim();
+    if (clean.isEmpty) return;
+
+    setState(() {
+      _detectedVideoUrl = clean;
+      _isVideoActive = true;
+    });
+  }
 
   // Sayfadaki video ve akış linklerini MutationObserver ve dinamik DOM tarayıcısı ile
   // lazy load / infinite scroll durumlarında bile anında havada yakalayan agresif JavaScript avcısı
@@ -105,59 +118,60 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     super.initState();
     _urlBarController.text = widget.initialUrl;
 
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF14191F))
-      ..addJavaScriptChannel(
-        'VidSaveDetector',
-        onMessageReceived: (JavaScriptMessage msg) {
-          final url = msg.message.trim();
-          if (url.isNotEmpty && url.startsWith('http') && mounted) {
-            setState(() {
-              _detectedVideoUrl = url;
-              _showDownloadButton = true;
-            });
-          }
-        },
-      )
-      ..addJavaScriptChannel(
-        'VidSaveVideoYakalandi',
-        onMessageReceived: (JavaScriptMessage msg) {
-          final url = msg.message.trim();
-          if (url.isNotEmpty && url.startsWith('http') && mounted) {
-            setState(() {
-              _detectedVideoUrl = url;
-              _showDownloadButton = true;
-            });
-          }
-        },
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (String url) {
-            if (mounted) {
-              setState(() {
-                _isLoading = true;
-                _urlBarController.text = url;
-                _detectedVideoUrl = null;
-                _showDownloadButton = false;
-              });
+    try {
+      _controller = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(const Color(0xFF14191F))
+        ..addJavaScriptChannel(
+          'VidSaveDetector',
+          onMessageReceived: (JavaScriptMessage msg) {
+            final url = msg.message.trim();
+            if (url.isNotEmpty && url.startsWith('http')) {
+              _onVideoDetected(url);
             }
           },
-          onPageFinished: (String url) async {
-            if (mounted) {
-              setState(() => _isLoading = false);
+        )
+        ..addJavaScriptChannel(
+          'VidSaveVideoYakalandi',
+          onMessageReceived: (JavaScriptMessage msg) {
+            final url = msg.message.trim();
+            if (url.isNotEmpty && url.startsWith('http')) {
+              _onVideoDetected(url);
             }
-            final title = await _controller.getTitle();
-            if (mounted && title != null) {
-              setState(() => _pageTitle = title);
-            }
-            // Sayfa yüklemesi tamamlandığında agresif MutationObserver JavaScript avcısını enjekte et
-            await _controller.runJavaScript(_videoDetectionScript);
           },
-        ),
-      )
-      ..loadRequest(Uri.parse(widget.initialUrl));
+        )
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onPageStarted: (String url) {
+              if (mounted) {
+                setState(() {
+                  _isLoading = true;
+                  _urlBarController.text = url;
+                  _detectedVideoUrl = null;
+                  _isVideoActive = false;
+                });
+              }
+            },
+            onPageFinished: (String url) async {
+              if (mounted) {
+                setState(() => _isLoading = false);
+              }
+              final controller = _controller;
+              if (controller != null) {
+                final title = await controller.getTitle();
+                if (mounted && title != null) {
+                  setState(() => _pageTitle = title);
+                }
+                // Sayfa yüklemesi tamamlandığında agresif MutationObserver JavaScript avcısını enjekte et
+                await controller.runJavaScript(_videoDetectionScript);
+              }
+            },
+          ),
+        )
+        ..loadRequest(Uri.parse(widget.initialUrl));
+    } catch (e) {
+      debugPrint('WebViewController init skipped: $e');
+    }
   }
 
   @override
@@ -177,7 +191,7 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         raw = 'https://www.google.com/search?q=${Uri.encodeComponent(raw)}';
       }
     }
-    _controller.loadRequest(Uri.parse(raw));
+    _controller?.loadRequest(Uri.parse(raw));
   }
 
   void _triggerDownload() {
@@ -229,12 +243,16 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () async {
-            final navigator = Navigator.of(context);
-            final canGoBack = await _controller.canGoBack();
+            final controller = _controller;
+            final canGoBack = controller != null && await controller.canGoBack();
             if (canGoBack) {
-              await _controller.goBack();
+              await controller.goBack();
             } else if (mounted) {
-              navigator.pop();
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              } else if (widget.onCloseTab != null) {
+                widget.onCloseTab!();
+              }
             }
           },
         ),
@@ -266,14 +284,22 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => _controller.reload(),
+            onPressed: () => _controller?.reload(),
           ),
         ],
       ),
       body: Stack(
         children: [
-          WebViewWidget(controller: _controller),
-          if (_isLoading)
+          if (_controller != null)
+            WebViewWidget(controller: _controller!)
+          else
+            const Center(
+              child: Text(
+                'Tarayıcı',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+          if (_isLoading && _controller != null)
             const LinearProgressIndicator(
               minHeight: 3,
               backgroundColor: Colors.transparent,
@@ -281,22 +307,72 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
             ),
         ],
       ),
-      // Video Yakalandığında Ekranda Parlayan Turuncu Aksiyon Butonu
-      floatingActionButton: (_showDownloadButton && _detectedVideoUrl != null)
-          ? FloatingActionButton.extended(
-              onPressed: _triggerDownload,
-              backgroundColor: _neonOrange,
-              icon: const Icon(Icons.bolt_rounded, color: Colors.white),
-              label: const Text(
+      // Sayfa açıldığı andan itibaren görünen VidSave İndir butonu:
+      // Henüz bir video açılmamışsa (video algılanmamışsa) pasif görünür ve tıklanamaz.
+      // Herhangi bir video açıldığında aktifleşir, parlar ve indirmeye hazır olur.
+      floatingActionButton: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(32),
+          boxShadow: _isVideoActive
+              ? [
+                  BoxShadow(
+                    color: _neonOrange.withValues(alpha: 0.45),
+                    blurRadius: 18,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: FloatingActionButton.extended(
+          onPressed: _isVideoActive ? _triggerDownload : null,
+          elevation: _isVideoActive ? 6 : 0,
+          highlightElevation: _isVideoActive ? 10 : 0,
+          backgroundColor: _isVideoActive
+              ? _neonOrange
+              : const Color(0xFF2C323B).withValues(alpha: 0.85),
+          foregroundColor: _isVideoActive ? Colors.white : Colors.white38,
+          icon: Icon(
+            _isVideoActive ? Icons.bolt_rounded : Icons.videocam_outlined,
+            color: _isVideoActive ? Colors.white : Colors.white38,
+            size: 22,
+          ),
+          label: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
                 'VidSave İndir',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: _isVideoActive ? Colors.white : Colors.white38,
                   fontWeight: FontWeight.w900,
+                  fontSize: 14,
                   letterSpacing: 0.5,
                 ),
               ),
-            )
-          : null,
+              if (!_isVideoActive) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Video Bekleniyor',
+                    style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/download_item_model.dart';
+import 'package:vid_downloader_app/downloads_screen.dart';
 import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/media_library.dart';
 import 'package:vid_downloader_app/music_player.dart';
@@ -147,13 +148,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 1. En alttaki bardan Müzik sekmesine tıkla
-    final musicTab = find.text('Müzik').first;
-    expect(musicTab, findsOneWidget);
-    await tester.tap(musicTab);
+    // 1. Ana sayfadaki MP3 kategori kartına tıkla
+    final audioCategoryCard =
+        find.byKey(const ValueKey('audio_category_card'));
+    await tester.ensureVisible(audioCategoryCard);
+    await tester.pumpAndSettle();
+    await tester.tap(audioCategoryCard);
     await tester.pumpAndSettle();
 
-    // 2. İndirilen MP3 dosyasının Müzik sekmesinde listelendiğini doğrula
+    // 2. İndirilen MP3 dosyasının DownloadsScreen ekranında listelendiğini doğrula
+    expect(find.byType(DownloadsScreen), findsOneWidget);
     expect(find.text('favori_sarki.mp3'), findsOneWidget);
 
     // 3. Şarkı kartına tıkla ve müzik çaların açıldığını doğrula
@@ -174,3 +178,4 @@ class _EmptyBackendSettingsStore implements BackendSettingsStore {
   @override
   Future<void> save(BackendSettings settings) async {}
 }
+

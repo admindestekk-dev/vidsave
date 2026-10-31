@@ -21,9 +21,16 @@ import 'video_player_screen.dart';
 ///    (MP4/MP3), dosya boyutu, oynatma, şarkı sözleri (karaoke) ve silme kontrolleri.
 /// 3. Filtreleme: Tümü, Videolar, Müzikler (MP3).
 class DownloadsScreen extends StatefulWidget {
-  const DownloadsScreen({super.key, this.initialFilter = 'all'});
+  const DownloadsScreen({
+    super.key,
+    this.initialFilter = 'all',
+    this.musicPlayerFactory,
+    this.videoPlayerControllerFactory,
+  });
 
   final String initialFilter;
+  final AudioPlayerFactory? musicPlayerFactory;
+  final VideoPlayerControllerFactory? videoPlayerControllerFactory;
 
   @override
   State<DownloadsScreen> createState() => _DownloadsScreenState();
@@ -166,14 +173,21 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     if (item.isAudio) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (context) =>
-              MusicPlayerScreen(file: file, title: item.name, autoStart: true),
+          builder: (context) => MusicPlayerScreen(
+            file: file,
+            title: item.name,
+            autoStart: true,
+            playerFactory: widget.musicPlayerFactory,
+          ),
         ),
       );
     } else {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (context) => VideoPlayerScreen(file: file, title: item.name),
+          builder: (context) => VideoPlayerScreen(
+            file: file,
+            title: item.name,
+          ),
         ),
       );
     }

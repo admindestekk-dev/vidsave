@@ -158,8 +158,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       widget.mediaResolver ?? _clientResolver;
   late final MediaDownloader _mediaDownloader =
       widget.mediaDownloader ?? MediaDownloader();
-  final _videoLibraryKey = GlobalKey<_MediaLibraryPageState>();
-  final _musicLibraryKey = GlobalKey<_MediaLibraryPageState>();
   PermissionState? _permissionState;
   Object? _permissionError;
   bool _permissionLoading = true;
@@ -210,13 +208,29 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       downloader: _mediaDownloader,
       onDownloadCompleted: (file, kind) {
         if (!mounted) return;
-        if (kind == DownloadKind.audio) {
-          _musicLibraryKey.currentState?.reload();
-          _onDestinationSelected(1);
-        } else {
-          _videoLibraryKey.currentState?.reload();
-          _onDestinationSelected(0);
-        }
+        final isAudio = kind == DownloadKind.audio;
+        final fileName = file.path.split(Platform.pathSeparator).last;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Başarıyla indirildi: $fileName'),
+            backgroundColor: const Color(0xFF20B8C5),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'GÖRÜNTÜLE',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => DownloadsScreen(
+                      initialFilter: isAudio ? 'audio' : 'video',
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
       },
       onDownloadVideo: () {
         _triggerDirectDownload(url, kind: DownloadKind.video);
@@ -348,11 +362,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     });
   }
 
-  /// Jumps to the Videolar (0) or Müzik (1) tab, used by the İndirilenler cards.
-  void _openLibrary(int index) {
-    _onDestinationSelected(index);
-  }
-
   /// The tab the app starts on; the back button returns here before exiting.
   static const int _homeIndex = 2;
 
@@ -384,56 +393,32 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: false,
-        title: const VidSaveBrandTitle(),
-      ),
+      appBar: (_selectedIndex == 2 || _selectedIndex == 3)
+          ? AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              centerTitle: false,
+              title: const VidSaveBrandTitle(),
+            )
+          : null,
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          _MediaLibraryPage(
-            key: _videoLibraryKey,
-            title: l10n.text('nav_videos'),
-            type: RequestType.video,
-            library: _library,
-            permissionState: _permissionState,
-            permissionLoading: _permissionLoading,
-            permissionError: _permissionError,
-            onRetryPermission: _requestMediaPermission,
-            videoPlayerControllerFactory: widget.videoPlayerControllerFactory,
-            musicPlayerFactory: widget.musicPlayerFactory,
-            musicSourceResolver: widget.musicSourceResolver,
+          InAppMediaBrowserScreen(
+            onCloseTab: () => _onDestinationSelected(_homeIndex),
           ),
-          _MediaLibraryPage(
-            key: _musicLibraryKey,
-            title: l10n.text('nav_music'),
-            type: RequestType.audio,
-            library: _library,
-            permissionState: _permissionState,
-            permissionLoading: _permissionLoading,
-            permissionError: _permissionError,
-            onRetryPermission: _requestMediaPermission,
-            videoPlayerControllerFactory: null,
-            musicPlayerFactory: widget.musicPlayerFactory,
-            musicSourceResolver: widget.musicSourceResolver,
+          BulkDownloadScreen(
+            resolver: _mediaResolver,
+            downloader: _mediaDownloader,
+            settingsStore: _backendSettingsStore,
           ),
           _DownloadPage(
             resolver: _mediaResolver,
             downloader: _mediaDownloader,
             showPremiumBanner: widget.showPremiumBanner,
-            onDownloaded: (kind) {
-              if (kind == DownloadKind.audio) {
-                _musicLibraryKey.currentState?.reload();
-                _onDestinationSelected(1);
-              } else {
-                _videoLibraryKey.currentState?.reload();
-                _onDestinationSelected(0);
-              }
-            },
-            onOpenLibrary: _openLibrary,
+            musicPlayerFactory: widget.musicPlayerFactory,
+            videoPlayerControllerFactory: widget.videoPlayerControllerFactory,
           ),
           MoreScreen(store: _backendSettingsStore, resolver: _backendResolver),
         ],
@@ -448,14 +433,14 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
         unselectedFontSize: 12,
         items: [
           BottomNavigationBarItem(
-            icon: const Icon(Icons.video_library_outlined),
-            activeIcon: const Icon(Icons.video_library_rounded),
-            label: l10n.text('nav_videos'),
+            icon: const Icon(Icons.language_outlined),
+            activeIcon: const Icon(Icons.language_rounded),
+            label: l10n.text('nav_browser'),
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.headphones_outlined),
-            activeIcon: const Icon(Icons.headphones_rounded),
-            label: l10n.text('nav_music'),
+            icon: const Icon(Icons.layers_outlined),
+            activeIcon: const Icon(Icons.layers_rounded),
+            label: l10n.text('nav_bulk_download'),
           ),
           BottomNavigationBarItem(
             icon: const Icon(Icons.download_outlined),
@@ -488,12 +473,16 @@ class _DownloadPage extends StatefulWidget {
     this.onDownloaded,
     this.onOpenLibrary,
     this.showPremiumBanner = true,
+    this.musicPlayerFactory,
+    this.videoPlayerControllerFactory,
   });
 
   final MediaResolver resolver;
   final MediaDownloader downloader;
   final ValueChanged<DownloadKind>? onDownloaded;
   final bool showPremiumBanner;
+  final AudioPlayerFactory? musicPlayerFactory;
+  final VideoPlayerControllerFactory? videoPlayerControllerFactory;
 
   /// Called with the tab index (0 = Videolar, 1 = Müzik) when a category card
   /// in the İndirilenler section is tapped.
@@ -849,8 +838,12 @@ class _DownloadPageState extends State<_DownloadPage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) =>
-                                const DownloadsScreen(initialFilter: 'video'),
+                            builder: (_) => DownloadsScreen(
+                              initialFilter: 'video',
+                              musicPlayerFactory: widget.musicPlayerFactory,
+                              videoPlayerControllerFactory:
+                                  widget.videoPlayerControllerFactory,
+                            ),
                           ),
                         );
                       },
@@ -868,8 +861,12 @@ class _DownloadPageState extends State<_DownloadPage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) =>
-                                const DownloadsScreen(initialFilter: 'audio'),
+                            builder: (_) => DownloadsScreen(
+                              initialFilter: 'audio',
+                              musicPlayerFactory: widget.musicPlayerFactory,
+                              videoPlayerControllerFactory:
+                                  widget.videoPlayerControllerFactory,
+                            ),
                           ),
                         );
                       },
