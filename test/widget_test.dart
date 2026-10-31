@@ -10,7 +10,6 @@ import 'package:video_player/video_player.dart';
 
 import 'package:vid_downloader_app/bulk_download_screen.dart';
 import 'package:vid_downloader_app/download_platforms.dart';
-import 'package:vid_downloader_app/downloads_screen.dart';
 import 'package:vid_downloader_app/media_library.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/home_screen.dart';
@@ -406,9 +405,7 @@ class _TestBackendSettingsStore implements BackendSettingsStore {
 }
 
 class _TestMediaLibrary implements MediaLibrary {
-  const _TestMediaLibrary({this.assets = const []});
-
-  final List<AssetEntity> assets;
+  const _TestMediaLibrary();
 
   @override
   Future<PermissionState> requestPermission() async =>
@@ -420,7 +417,6 @@ class _TestMediaLibrary implements MediaLibrary {
     required int page,
     required int pageSize,
   }) async {
-    if (page == 0) return assets;
     return [];
   }
 

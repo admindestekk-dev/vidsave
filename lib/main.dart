@@ -158,9 +158,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       widget.mediaResolver ?? _clientResolver;
   late final MediaDownloader _mediaDownloader =
       widget.mediaDownloader ?? MediaDownloader();
-  PermissionState? _permissionState;
-  Object? _permissionError;
-  bool _permissionLoading = true;
 
   @override
   void initState() {
@@ -327,18 +324,8 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   }
 
   Future<void> _requestMediaPermission() async {
-    setState(() {
-      _permissionLoading = true;
-      _permissionError = null;
-    });
-
     try {
-      final permissionState = await _library.requestPermission();
-      if (!mounted) return;
-      setState(() {
-        _permissionState = permissionState;
-        _permissionLoading = false;
-      });
+      await _library.requestPermission();
     } catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(
@@ -348,11 +335,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           context: ErrorDescription('while requesting media library access'),
         ),
       );
-      if (!mounted) return;
-      setState(() {
-        _permissionError = error;
-        _permissionLoading = false;
-      });
     }
   }
 
@@ -470,8 +452,6 @@ class _DownloadPage extends StatefulWidget {
   const _DownloadPage({
     required this.resolver,
     required this.downloader,
-    this.onDownloaded,
-    this.onOpenLibrary,
     this.showPremiumBanner = true,
     this.musicPlayerFactory,
     this.videoPlayerControllerFactory,
@@ -479,14 +459,9 @@ class _DownloadPage extends StatefulWidget {
 
   final MediaResolver resolver;
   final MediaDownloader downloader;
-  final ValueChanged<DownloadKind>? onDownloaded;
   final bool showPremiumBanner;
   final AudioPlayerFactory? musicPlayerFactory;
   final VideoPlayerControllerFactory? videoPlayerControllerFactory;
-
-  /// Called with the tab index (0 = Videolar, 1 = Müzik) when a category card
-  /// in the İndirilenler section is tapped.
-  final ValueChanged<int>? onOpenLibrary;
 
   @override
   State<_DownloadPage> createState() => _DownloadPageState();
@@ -608,7 +583,6 @@ class _DownloadPageState extends State<_DownloadPage> {
         fallbackDownloader: widget.downloader,
       );
 
-      widget.onDownloaded?.call(kind);
       final fileName = file.path.split(Platform.pathSeparator).last;
       if (!mounted) return;
       setState(() {
@@ -641,7 +615,6 @@ class _DownloadPageState extends State<_DownloadPage> {
         platform: platform,
         resolver: widget.resolver,
         downloader: widget.downloader,
-        onDownloaded: widget.onDownloaded,
       ),
     );
   }
@@ -1172,7 +1145,6 @@ class _MediaItemEntry {
 
 class _MediaLibraryPage extends StatefulWidget {
   const _MediaLibraryPage({
-    super.key,
     required this.title,
     required this.type,
     required this.library,

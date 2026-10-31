@@ -243,13 +243,14 @@ class _InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () async {
+            final navigator = Navigator.of(context);
             final controller = _controller;
             final canGoBack = controller != null && await controller.canGoBack();
             if (canGoBack) {
               await controller.goBack();
             } else if (mounted) {
-              if (Navigator.canPop(context)) {
-                Navigator.pop(context);
+              if (navigator.canPop()) {
+                navigator.pop();
               } else if (widget.onCloseTab != null) {
                 widget.onCloseTab!();
               }
