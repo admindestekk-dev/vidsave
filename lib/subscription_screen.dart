@@ -645,11 +645,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final isTurkish = lang == 'tr';
 
     final productPrice = _offlineSandboxMode
-        ? '29.99 TL'
+        ? (isTurkish ? '9,99 TL' : 'TRY 9.99')
         : _monthlyProduct?.price ??
               (_liveMode ? null : (isTurkish ? '9,99 TL' : '\$0.99'));
     final priceTitle = _offlineSandboxMode
-        ? '29.99 TL / Ay'
+        ? (isTurkish ? 'Aylık 9,99 TL' : 'TRY 9.99 / month')
         : productPrice == null
         ? (isTurkish ? 'Mağaza fiyatı alınamadı' : 'Store price unavailable')
         : isTurkish

@@ -34,7 +34,7 @@ void main() {
 
   group('OnboardingScreen & SharedPreferences Flow', () {
     testWidgets(
-      'renders all 3 steps with PageView, Dots and Next/Finish buttons',
+      'renders all 4 steps with PageView, Dots and Next/Finish buttons',
       (WidgetTester tester) async {
         await tester.pumpWidget(
           MaterialApp(
@@ -79,6 +79,16 @@ void main() {
         );
         expect(find.textContaining('4K'), findsNothing);
         expect(find.textContaining('320 kbps'), findsNothing);
+        expect(find.text('İLERİ'), findsOneWidget);
+
+        // 4. Adıma ilerle: diğer uygulamalardaki kısayol kurulumu
+        await tester.tap(find.byKey(const Key('onboarding_action_button')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('ADIM 4 · ANDROID'), findsOneWidget);
+        expect(find.text('Diğer Uygulamalarda VidSave'), findsOneWidget);
+        expect(find.text('Kullanım erişimi'), findsOneWidget);
+        expect(find.textContaining('Bağlantıyı kopyala'), findsOneWidget);
         expect(find.text('BAŞLA'), findsOneWidget);
 
         // BAŞLA butonuna tıklandığında SharedPreferences kaydedilir ve ana sayfaya geçilir

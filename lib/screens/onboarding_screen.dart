@@ -9,10 +9,11 @@ import '../main.dart';
 
 /// VidSave Profesyonel Tanıtım Rehberi (Onboarding Screen)
 ///
-/// 3 Adımlı Geçişli PageView Mimarisi:
+/// 4 Adımlı Geçişli PageView Mimarisi:
 ///   1. Adım: Linki Kopyala (Desteklenen platformlardan video/müzik linkini kopyalayın)
 ///   2. Adım: VidSave'e Yapıştır (VidSave linki anında algılar veya kutuya yapıştırın)
 ///   3. Adım: Formatı Seç ve İndir (İster 4K MP4 video ister 320kbps MP3 olarak cihazınıza kaydedin)
+///   4. Adım: Diğer uygulamalarda VidSave kısayolunu etkinleştirin ve kullanın (Android)
 ///
 /// Tasarım Dili:
 ///   - Koyu Premium Arka Plan: `Color(0xFF121212)`
@@ -106,7 +107,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _nextPage() {
     HapticFeedback.selectionClick();
-    if (_currentPage < 2) {
+    if (_currentPage < 3) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 380),
         curve: Curves.easeInOutCubic,
@@ -118,7 +119,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLastPage = _currentPage == 2;
+    final isLastPage = _currentPage == 3;
     final l10n = AppLocalizations.of(context);
     final isTurkish = l10n.locale.languageCode.toLowerCase() == 'tr';
 
@@ -262,6 +263,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           : 'Choose video or MP3 and select an available quality to start. Your file appears in the app’s Downloads section and is also saved to Downloads/VidSave on Android.',
                       illustration: _buildStepIllustration3(isTurkish),
                     ),
+
+                    // 4. Adım: Diğer uygulamalarda VidSave kısayolu
+                    _buildStepPage(
+                      stepNumber: '4',
+                      icon: Icons.open_in_new_rounded,
+                      badgeText: isTurkish
+                          ? 'ADIM 4 · ANDROID'
+                          : 'STEP 4 · ANDROID',
+                      title: isTurkish
+                          ? 'Diğer Uygulamalarda VidSave'
+                          : 'VidSave Over Other Apps',
+                      description: isTurkish
+                          ? 'Ayarlar > “Diğer uygulamalarda VidSave İndir” anahtarını aç. Android’de iki izni VidSave için etkinleştirip uygulamaya dön; gerekirse anahtarı tekrar aç. Desteklenen uygulamada bağlantıyı kopyala ve ekrandaki VidSave düğmesine dokun.'
+                          : 'Open Settings > “Download VidSave in other apps”. Enable both Android permissions for VidSave, return to the app and turn the switch on again if needed. Copy a link in a supported app and tap the VidSave button.',
+                      illustration: _buildStepIllustration4(isTurkish),
+                    ),
                   ],
                 ),
               ),
@@ -275,7 +292,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     // Noktacıklar (Dots)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(3, (index) {
+                      children: List.generate(4, (index) {
                         final isSelected = _currentPage == index;
                         return AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
@@ -728,6 +745,128 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 4. Adım İllüstrasyonu: İzinler ve uygulama üzeri indirme düğmesi
+  Widget _buildStepIllustration4(bool isTurkish) {
+    final steps = isTurkish
+        ? [
+            'Ayarlar > Diğer uygulamalar',
+            'Diğer uygulamaların üzerinde göster',
+            'Kullanım erişimi',
+          ]
+        : [
+            'Settings > Other apps shortcut',
+            'Display over other apps',
+            'Usage access',
+          ];
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 320, maxHeight: 230),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _cardDark,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: _neonOrange.withValues(alpha: 0.35),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _neonOrange.withValues(alpha: 0.15),
+            blurRadius: 28,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var index = 0; index < steps.length; index++) ...[
+            Row(
+              children: [
+                Container(
+                  width: 25,
+                  height: 25,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _neonOrange.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      color: _neonOrange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    steps[index],
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (index > 0)
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF20B8C5),
+                    size: 17,
+                  ),
+              ],
+            ),
+            if (index < steps.length - 1)
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(height: 7, width: 1, color: Colors.white24),
+                ),
+              ),
+          ],
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: _neonOrange,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.download_rounded,
+                  color: Colors.white,
+                  size: 17,
+                ),
+                const SizedBox(width: 7),
+                Flexible(
+                  child: Text(
+                    isTurkish
+                        ? 'Bağlantıyı kopyala · VidSave’e dokun'
+                        : 'Copy link · Tap VidSave',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
                   ),

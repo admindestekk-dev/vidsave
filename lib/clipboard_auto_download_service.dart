@@ -1,17 +1,25 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Pano (Clipboard) üzerindeki metinleri kontrol eden ve desteklenen
 /// video/müzik bağlantılarını (özellikle Instagram ve TikTok) tespit eden yardımcı servis.
 class ClipboardAutoDownloadService {
   ClipboardAutoDownloadService._();
 
+  static const _lastHandledUrlKey = 'clipboard_auto_download_last_handled_url';
   static String? _lastHandledUrl;
 
   /// Desteklenen bağlantı desenleri (FB, IG, TT, YT, VM, X, DM vb.).
   static final List<RegExp> _supportedUrlPatterns = [
     RegExp(r'https?://(?:www\.)?instagram\.com/[^\s]+', caseSensitive: false),
     RegExp(r'https?://(?:www\.)?instagr\.am/[^\s]+', caseSensitive: false),
-    RegExp(r'https?://(?:www\.|vm\.|vt\.)?tiktok\.com/[^\s]+', caseSensitive: false),
+    RegExp(
+      r'https?://(?:www\.|vm\.|vt\.)?tiktok\.com/[^\s]+',
+      caseSensitive: false,
+    ),
     RegExp(r'https?://(?:www\.)?douyin\.com/[^\s]+', caseSensitive: false),
     RegExp(r'https?://(?:www\.)?youtube\.com/[^\s]+', caseSensitive: false),
     RegExp(r'https?://youtu\.be/[^\s]+', caseSensitive: false),
@@ -48,26 +56,42 @@ class ClipboardAutoDownloadService {
   /// Panoyu kontrol eder. Eğer yeni ve desteklenen bir URL varsa döndürür,
   /// daha önce işlenmişse veya desteklenmiyorsa null döndürür.
   static Future<String?> checkClipboardForDownloadUrl() async {
+    String? text;
     try {
       final data = await Clipboard.getData(Clipboard.kTextPlain);
-      final text = data?.text;
-      final url = extractUrl(text);
-
-      if (url != null && url != _lastHandledUrl) {
-        return url;
-      }
+      text = data?.text;
     } catch (_) {
       // Pano erişim kısıtlaması vb. durumlarda sessizce geç
+      return null;
     }
-    return null;
-  }
 
-  /// Verilen URL'yi "işlendi" olarak işaretler; böylece aynı link arka arkaya tekrar sorulmaz.
-  static void markAsHandled(String url) {
+    final url = extractUrl(text);
+    if (url == null || url == _lastHandledUrl) return null;
+
+    final preferences = await SharedPreferences.getInstance();
+    if (url == _lastHandledUrl) return null;
+    final fingerprint = _fingerprint(url);
+    if (fingerprint == preferences.getString(_lastHandledUrlKey)) {
+      _lastHandledUrl = url;
+      return null;
+    }
+
     _lastHandledUrl = url;
+    try {
+      if (!await preferences.setString(_lastHandledUrlKey, fingerprint)) {
+        throw StateError('Algılanan bağlantı durumu kaydedilemedi.');
+      }
+    } catch (_) {
+      if (_lastHandledUrl == url) _lastHandledUrl = null;
+      rethrow;
+    }
+    return url;
   }
 
-  /// Testler veya sıfırlama için son işlenen linki temizler.
+  static String _fingerprint(String url) =>
+      sha256.convert(utf8.encode(url)).toString();
+
+  /// Testlerde uygulama belleğinin yeniden başlatılmasını taklit etmek için kullanılır.
   static void resetLastHandled() {
     _lastHandledUrl = null;
   }

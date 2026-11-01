@@ -190,17 +190,24 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
 
   /// Pano içeriğini kontrol edip desteklenen video linki tespit edilirse QuickDownloadDialog açar.
   Future<void> _checkClipboard() async {
-    final url =
-        await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
-    if (url != null && mounted) {
-      _showClipboardPrompt(url);
+    try {
+      final url =
+          await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
+      if (url != null && mounted) {
+        _showClipboardPrompt(url);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Bağlantı algılama durumu kaydedilemedi: $error'),
+        ),
+      );
     }
   }
 
   /// Kullanıcıya ekran ortasında açılan 'VidSave Algıladı' Quick Download Dialog penceresi.
   void _showClipboardPrompt(String url) {
-    ClipboardAutoDownloadService.markAsHandled(url);
-
     QuickDownloadDialog.show(
       context: context,
       videoTitle: url,

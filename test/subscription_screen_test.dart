@@ -179,7 +179,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('29.99 TL / Ay'), findsOneWidget);
+    expect(find.text('Aylık 9,99 TL'), findsOneWidget);
+    expect(find.text('9,99 TL / Ay'), findsNothing);
     expect(
       find.text('Çevrimdışı test modu: Gerçek ödeme alınmaz.'),
       findsOneWidget,
@@ -263,7 +264,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('29.99 TL / Ay'), findsOneWidget);
+    expect(find.text('Aylık 9,99 TL'), findsOneWidget);
     expect(find.text('Aboneliği Başlat (Test Sürümü)'), findsOneWidget);
     await fakeIap.purchaseStreamController.close();
   });

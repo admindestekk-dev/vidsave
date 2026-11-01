@@ -57,12 +57,12 @@ code alone.
 ## Premium offline sandbox
 
 In debug builds, if the Play Store is unavailable or the monthly product cannot
-be loaded, the Premium screen offers a clearly labeled local test option at
-`29.99 TL / Ay`. Activating it stores a 30-day Premium test entitlement on the
-device only and returns to the main download tab. It does not contact the
-backend or charge a payment method. This fallback is disabled in release builds;
-production purchases continue to require a valid store product and purchase
-verification.
+be loaded, the Premium screen offers a clearly labeled local test option showing
+`9,99 TL / Ay` as a sample price. Activating it stores a 30-day Premium test
+entitlement on the device only and returns to the main download tab. It does not
+contact the backend or charge a payment method; the sample price is not billed.
+This fallback is disabled in release builds; production purchases continue to
+require a valid store product and purchase verification.
 
 ## Android external-app download shortcut
 
@@ -73,9 +73,13 @@ and displays the shortcut for Facebook, Instagram, TikTok, Vimeo, X/Twitter,
 Dailymotion, and Pinterest. It does not read page contents or URLs. Tapping the
 shortcut opens VidSave; users can copy a link in the social app first to use the
 existing clipboard prompt. A persistent notification is shown while the feature
-is enabled. This overlay is Android-only; iOS does not allow apps to draw over
-other apps. Review the current Google Play policies and declare the special-use
-foreground service and usage-access purpose accurately before publishing.
+is enabled. A fingerprint of the last detected clipboard link is remembered on
+the device so the same stale link is not prompted again after switching apps or
+restarting VidSave; the link itself is not stored, and a different copied link
+is still detected normally. This overlay is Android-only; iOS does not allow
+apps to draw over other apps. Review the current Google Play policies and
+declare the special-use foreground service and usage-access purpose accurately
+before publishing.
 
 ## Getting Started
 
