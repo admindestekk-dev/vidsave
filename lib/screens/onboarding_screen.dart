@@ -20,11 +20,7 @@ import '../main.dart';
 ///   - Sayfa Noktacıkları (Dot Indicators): Seçili sayfa genişler, neon parlar
 ///   - Butonlar: Sağ üstte 'GEÇ / SKIP', altta dinamik 'İLERİ / BAŞLA'
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({
-    super.key,
-    this.onCompleted,
-    this.homeBuilder,
-  });
+  const OnboardingScreen({super.key, this.onCompleted, this.homeBuilder});
 
   /// Onboarding tamamlandığında (veya geçildiğinde) tetiklenecek opsiyonel callback.
   final VoidCallback? onCompleted;
@@ -234,9 +230,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       badgeText: isTurkish ? 'ADIM 1' : 'STEP 1',
                       title: isTurkish ? 'Linki Kopyala' : 'Copy the Link',
                       description: isTurkish
-                          ? 'Instagram, TikTok, YouTube veya diğer platformlarda beğendiğin videonun paylaşım bağlantısını panoya kopyala.'
-                          : 'Copy the share link of the video or music you want to download from Instagram, TikTok, YouTube or other platforms.',
-                      illustration: _buildStepIllustration1(),
+                          ? 'İndirmek istediğin içerikte Paylaş’a dokun ve Bağlantıyı Kopyala seçeneğini kullan. VidSave yalnızca desteklenen ve erişilebilir bağlantıları işleyebilir.'
+                          : 'Tap Share on the content you want, then choose Copy Link. VidSave can process links that are supported and accessible.',
+                      illustration: _buildStepIllustration1(isTurkish),
                     ),
 
                     // 2. Adım: VidSave'e Yapıştır
@@ -248,9 +244,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ? 'VidSave\'e Yapıştır'
                           : 'Paste to VidSave',
                       description: isTurkish
-                          ? 'VidSave kopyaladığın bağlantıyı anında otomatik algılar veya hızlı indirme kutusuna doğrudan yapıştırabilirsin.'
-                          : 'VidSave automatically detects copied links or you can simply paste the URL into the quick download field.',
-                      illustration: _buildStepIllustration2(),
+                          ? 'VidSave’e dön. Bağlantı otomatik algılanmazsa indirme alanına dokunup Yapıştır’ı seç. Ardından bağlantıyı kontrol ederek devam et.'
+                          : 'Return to VidSave. If the link is not detected automatically, tap the download field and choose Paste, then continue.',
+                      illustration: _buildStepIllustration2(isTurkish),
                     ),
 
                     // 3. Adım: Formatı Seç ve İndir
@@ -262,9 +258,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ? 'Formatı Seç ve İndir'
                           : 'Select Format & Download',
                       description: isTurkish
-                          ? 'İster 4K / HD Video ister 320 kbps stüdyo kalitesinde MP3 ses olarak yüksek hızda cihazına tek dokunuşla kaydet!'
-                          : 'Save as 4K / HD Video or 320 kbps studio-grade MP3 audio with blazing fast speed at a single tap!',
-                      illustration: _buildStepIllustration3(),
+                          ? 'Sunulan seçeneklerden video veya MP3 biçimini ve kaliteyi belirleyip indirmeyi başlat. Dosyan uygulamadaki İndirilenler bölümünde görünür; Android’de ayrıca İndirilenler/VidSave klasörüne kaydedilir.'
+                          : 'Choose video or MP3 and select an available quality to start. Your file appears in the app’s Downloads section and is also saved to Downloads/VidSave on Android.',
+                      illustration: _buildStepIllustration3(isTurkish),
                     ),
                   ],
                 ),
@@ -453,7 +449,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   /// 1. Adım İllüstrasyonu: Link kopyalama simülasyonu
-  Widget _buildStepIllustration1() {
+  Widget _buildStepIllustration1(bool isTurkish) {
     return Container(
       constraints: const BoxConstraints(maxWidth: 280, maxHeight: 220),
       padding: const EdgeInsets.all(22),
@@ -509,21 +505,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white12),
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
+                const Icon(
                   Icons.check_circle_rounded,
                   size: 16,
                   color: Color(0xFF20B8C5),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Flexible(
                   child: Text(
-                    'https://... kopyalandı',
+                    isTurkish ? 'Bağlantı panoya kopyalandı' : 'Link copied',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
@@ -539,7 +535,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   /// 2. Adım İllüstrasyonu: VidSave otomatik algılama & yapıştırma
-  Widget _buildStepIllustration2() {
+  Widget _buildStepIllustration2(bool isTurkish) {
     return Container(
       constraints: const BoxConstraints(maxWidth: 280, maxHeight: 220),
       padding: const EdgeInsets.all(22),
@@ -569,21 +565,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: _neonOrange.withValues(alpha: 0.3)),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.bolt_rounded, color: _neonOrange, size: 22),
-                SizedBox(width: 10),
+                const Icon(Icons.bolt_rounded, color: _neonOrange, size: 22),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'VidSave Algıladı! ✨',
-                    style: TextStyle(
+                    isTurkish ? 'Bağlantı hazır' : 'Link is ready',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                Icon(Icons.auto_awesome_rounded, color: _neonOrange, size: 16),
+                const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: _neonOrange,
+                  size: 16,
+                ),
               ],
             ),
           ),
@@ -611,10 +611,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Medya analiz ediliyor…',
-                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                      isTurkish
+                          ? 'Bağlantı kontrol ediliyor…'
+                          : 'Checking link…',
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                      ),
                     ),
                   ),
                 ],
@@ -627,7 +632,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   /// 3. Adım İllüstrasyonu: Video & MP3 indirme butonları
-  Widget _buildStepIllustration3() {
+  Widget _buildStepIllustration3(bool isTurkish) {
     return Container(
       constraints: const BoxConstraints(maxWidth: 280, maxHeight: 220),
       padding: const EdgeInsets.all(22),
@@ -664,17 +669,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
               ],
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.videocam_rounded, color: Colors.white, size: 18),
-                SizedBox(width: 8),
+                const Icon(
+                  Icons.videocam_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
                 Flexible(
                   child: Text(
-                    'Video İndir (4K / HD)',
+                    isTurkish
+                        ? 'Video • Kalite seçenekleri'
+                        : 'Video • Quality options',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -700,17 +711,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
               ],
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.music_note_rounded, color: Colors.white, size: 18),
-                SizedBox(width: 8),
+                const Icon(
+                  Icons.music_note_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
                 Flexible(
                   child: Text(
-                    'MP3 İndir (320 kbps)',
+                    isTurkish ? 'Ses • MP3' : 'Audio • MP3',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,

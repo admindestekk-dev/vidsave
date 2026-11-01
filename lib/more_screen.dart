@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'auth_service.dart';
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
+import 'admob_test_screen.dart';
 import 'locale_service.dart';
 import 'media_downloader.dart';
 import 'privacy_policy_screen.dart';
@@ -140,9 +141,9 @@ class _MoreScreenState extends State<MoreScreen> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Dil Seçimi / Language',
+                          context.tr('language_dialog_title'),
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -174,7 +175,10 @@ class _MoreScreenState extends State<MoreScreen> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            leading: Text(flag, style: const TextStyle(fontSize: 26)),
+                            leading: Text(
+                              flag,
+                              style: const TextStyle(fontSize: 26),
+                            ),
                             title: Text(
                               native,
                               style: const TextStyle(
@@ -184,7 +188,10 @@ class _MoreScreenState extends State<MoreScreen> {
                             ),
                             subtitle: Text(name),
                             trailing: isSelected
-                                ? const Icon(Icons.check_circle_rounded, color: _accent)
+                                ? const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: _accent,
+                                  )
                                 : null,
                             onTap: () async {
                               await LocaleService.setLocale(Locale(code));
@@ -258,9 +265,7 @@ class _MoreScreenState extends State<MoreScreen> {
                             ),
                           ),
                           Text(
-                            LocaleService.currentLanguageCode == 'tr'
-                                ? 'Ayarlar ve Tercihler'
-                                : 'Settings & Preferences',
+                            context.tr('settings_preferences'),
                             style: const TextStyle(
                               fontSize: 12,
                               color: Colors.grey,
@@ -280,7 +285,10 @@ class _MoreScreenState extends State<MoreScreen> {
               // =============================================================
               Text(
                 context.tr('app_settings'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 10),
 
@@ -376,38 +384,45 @@ class _MoreScreenState extends State<MoreScreen> {
                           Icons.account_circle_outlined,
                           color: _accent,
                         ),
-                        title: const Text('Profilim ve Hesap'),
-                        subtitle: const Text('Google hesabı ve üyelik bilgileri'),
+                        title: Text(context.tr('account_profile')),
+                        subtitle: Text(context.tr('account_details')),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
                               icon: const Icon(Icons.logout_rounded, size: 20),
-                              tooltip: 'Çıkış Yap',
+                              tooltip: context.tr('logout'),
                               onPressed: _logout,
                             ),
-                            const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                            const Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              size: 16,
+                            ),
                           ],
                         ),
                         onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => ProfileScreen(
-                                authService: _authService,
-                                onLoggedOut: () {
+                          Navigator.of(context)
+                              .push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => ProfileScreen(
+                                    authService: _authService,
+                                    onLoggedOut: () {
+                                      setState(() {
+                                        _hasStoredSession =
+                                            _authService.hasStoredSession;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              )
+                              .then((_) {
+                                if (mounted) {
                                   setState(() {
-                                    _hasStoredSession = _authService.hasStoredSession;
+                                    _hasStoredSession =
+                                        _authService.hasStoredSession;
                                   });
-                                },
-                              ),
-                            ),
-                          ).then((_) {
-                            if (mounted) {
-                              setState(() {
-                                _hasStoredSession = _authService.hasStoredSession;
+                                }
                               });
-                            }
-                          });
                         },
                       ),
                       const Divider(),
@@ -477,15 +492,11 @@ class _MoreScreenState extends State<MoreScreen> {
                   ),
                 ),
                 title: Text(
-                  LocaleService.currentLanguageCode == 'tr'
-                      ? 'Gizli Kasa (Private Vault)'
-                      : 'Private Vault',
+                  context.tr('private_vault'),
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 subtitle: Text(
-                  LocaleService.currentLanguageCode == 'tr'
-                      ? 'Şifreli ve kilitli yerel medya deposu'
-                      : 'Encrypted and locked local media storage',
+                  context.tr('private_vault_description'),
                   style: const TextStyle(fontSize: 12),
                 ),
                 trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
@@ -504,7 +515,10 @@ class _MoreScreenState extends State<MoreScreen> {
               // =============================================================
               Text(
                 context.tr('support_and_contact'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 10),
               FutureBuilder<String>(
@@ -532,7 +546,7 @@ class _MoreScreenState extends State<MoreScreen> {
                           ),
                         ),
                         title: Text(
-                          isTr ? 'Kullanıcı Kimliğiniz (ID)' : 'Support Code (User ID)',
+                          context.tr('support_user_id'),
                           style: const TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
@@ -573,9 +587,7 @@ class _MoreScreenState extends State<MoreScreen> {
                           ),
                         ),
                         title: Text(
-                          isTr
-                              ? 'Bize Ulaşın / Destek Alın'
-                              : 'Contact Us / Get Support',
+                          context.tr('contact_support'),
                           style: const TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
@@ -583,10 +595,7 @@ class _MoreScreenState extends State<MoreScreen> {
                         ),
                         subtitle: const Text(
                           supportEmail,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                         trailing: const Icon(
                           Icons.arrow_forward_ios_rounded,
@@ -608,24 +617,15 @@ class _MoreScreenState extends State<MoreScreen> {
               // DİĞERLERİ (OTHERS) - 4 MODERN KART
               // =============================================================
               const SizedBox(height: 24),
-              _buildSectionHeader(
-                context,
-                title: LocaleService.currentLanguageCode == 'tr'
-                    ? 'Diğerleri'
-                    : 'Others',
-              ),
+              _buildSectionHeader(context, title: context.tr('other_section')),
               const SizedBox(height: 12),
               _buildModernMenuCard(
                 context,
                 icon: Icons.star_rounded,
                 iconColor: const Color(0xFFF59E0B),
                 iconBgColor: const Color(0xFFFEF3C7),
-                title: LocaleService.currentLanguageCode == 'tr'
-                    ? 'Bizi Değerlendirin'
-                    : 'Rate Us',
-                subtitle: LocaleService.currentLanguageCode == 'tr'
-                    ? 'Google Play Store\'da 5 yıldız vererek bize destek olun'
-                    : 'Support us with 5 stars on Google Play Store',
+                title: context.tr('rate_app'),
+                subtitle: context.tr('rate_app_description'),
                 onTap: _rateApp,
               ),
               const SizedBox(height: 10),
@@ -634,12 +634,8 @@ class _MoreScreenState extends State<MoreScreen> {
                 icon: Icons.share_rounded,
                 iconColor: const Color(0xFF3B82F6),
                 iconBgColor: const Color(0xFFDBEAFE),
-                title: LocaleService.currentLanguageCode == 'tr'
-                    ? 'Uygulamayı Paylaş'
-                    : 'Share App',
-                subtitle: LocaleService.currentLanguageCode == 'tr'
-                    ? 'VidSave\'i arkadaşlarınızla ve ailenizle paylaşın'
-                    : 'Share VidSave with friends and family',
+                title: context.tr('share_app'),
+                subtitle: context.tr('share_app_description'),
                 onTap: _shareApp,
               ),
               const SizedBox(height: 10),
@@ -648,12 +644,8 @@ class _MoreScreenState extends State<MoreScreen> {
                 icon: Icons.shield_rounded,
                 iconColor: const Color(0xFF10B981),
                 iconBgColor: const Color(0xFFD1FAE5),
-                title: LocaleService.currentLanguageCode == 'tr'
-                    ? 'Gizlilik Politikası'
-                    : 'Privacy Policy',
-                subtitle: LocaleService.currentLanguageCode == 'tr'
-                    ? 'Veri güvenliği ve kullanım şartlarını inceleyin'
-                    : 'Review data privacy and terms of service',
+                title: context.tr('privacy_policy'),
+                subtitle: context.tr('privacy_policy_description'),
                 onTap: _openPrivacyPolicy,
               ),
               const SizedBox(height: 10),
@@ -662,12 +654,8 @@ class _MoreScreenState extends State<MoreScreen> {
                 icon: Icons.lock_outline_rounded,
                 iconColor: const Color(0xFF8B5CF6),
                 iconBgColor: const Color(0xFFEDE9FE),
-                title: LocaleService.currentLanguageCode == 'tr'
-                    ? 'Sorumluluk Reddi'
-                    : 'Disclaimer',
-                subtitle: LocaleService.currentLanguageCode == 'tr'
-                    ? 'Telif hakları ve yasal kullanım bildirimi'
-                    : 'Copyrights and legal disclaimer',
+                title: context.tr('disclaimer'),
+                subtitle: context.tr('disclaimer_description'),
                 onTap: () => _showDisclaimerDialog(context),
               ),
               const SizedBox(height: 16),
@@ -690,17 +678,17 @@ class _MoreScreenState extends State<MoreScreen> {
                     size: 20,
                   ),
                 ),
-                title: const Text(
-                  'Hesabımı Sil',
-                  style: TextStyle(
+                title: Text(
+                  context.tr('delete_account'),
+                  style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                     color: Colors.redAccent,
                   ),
                 ),
-                subtitle: const Text(
-                  'Hesabınızı, indirme geçmişinizi ve tüm kayıtlarınızı kalıcı olarak silin.',
-                  style: TextStyle(fontSize: 12),
+                subtitle: Text(
+                  context.tr('delete_account_description'),
+                  style: const TextStyle(fontSize: 12),
                 ),
                 trailing: const Icon(
                   Icons.arrow_forward_ios,
@@ -736,6 +724,26 @@ class _MoreScreenState extends State<MoreScreen> {
                   ],
                 ),
                 const SizedBox(height: 4),
+                ListTile(
+                  key: const Key('admob_test_tools'),
+                  leading: const Icon(Icons.ads_click_rounded, color: _accent),
+                  title: const Text('AdMob test reklamları'),
+                  subtitle: const Text(
+                    'Banner, geçiş, açılış ve yerel reklam biçimlerini test edin',
+                  ),
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 16,
+                  ),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AdmobTestScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(),
                 // Gerçek backend ayar formu buraya gömülür.
                 BackendSettingsPanel(
                   store: widget.store,
@@ -754,11 +762,8 @@ class _MoreScreenState extends State<MoreScreen> {
       await _authService.logout();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Çıkış yapılamadı. Lütfen tekrar deneyin.'),
-        ),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(context.tr('logout_failed'))));
       return;
     }
 
@@ -774,21 +779,21 @@ class _MoreScreenState extends State<MoreScreen> {
       context: context,
       builder: (dialogCtx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-            SizedBox(width: 8),
-            Text('Hesabımı Sil'),
+            const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            const SizedBox(width: 8),
+            Text(context.tr('delete_account')),
           ],
         ),
-        content: const Text(
-          'Hesabınızı ve tüm indirme geçmişinizi kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
-          style: TextStyle(fontSize: 14, height: 1.4),
+        content: Text(
+          context.tr('delete_account_warning'),
+          style: const TextStyle(fontSize: 14, height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(),
-            child: const Text('Vazgeç'),
+            child: Text(context.tr('btn_cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -801,7 +806,7 @@ class _MoreScreenState extends State<MoreScreen> {
               Navigator.of(dialogCtx).pop();
               await _executeDeleteAccount();
             },
-            child: const Text('Evet, Kalıcı Olarak Sil'),
+            child: Text(context.tr('delete_account_confirm')),
           ),
         ],
       ),
@@ -817,6 +822,7 @@ class _MoreScreenState extends State<MoreScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(SubscriptionScreen.prefKeyIsPremium);
       await prefs.remove(SubscriptionScreen.prefKeySubscribedAt);
+      await prefs.remove(SubscriptionScreen.prefKeyPremiumUntil);
       await prefs.remove(WelcomeScreen.prefKeyHasSeenWelcome);
       await prefs.remove(SecureAuthTokenStore.prefKeyUserEmail);
       await prefs.remove(SecureAuthTokenStore.prefKeyUserName);
@@ -830,14 +836,9 @@ class _MoreScreenState extends State<MoreScreen> {
       );
     } catch (_) {
       if (!mounted) return;
-      final isTurkish = LocaleService.currentLanguageCode == 'tr';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            isTurkish
-                ? 'Hesap silinemedi. Bağlantınızı kontrol edip tekrar deneyin.'
-                : 'Account deletion failed. Check your connection and try again.',
-          ),
+          content: Text(context.tr('account_delete_failed')),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -879,7 +880,11 @@ class _MoreScreenState extends State<MoreScreen> {
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -909,10 +914,7 @@ class _MoreScreenState extends State<MoreScreen> {
     final emailLaunchUri = Uri(
       scheme: 'mailto',
       path: supportEmail,
-      queryParameters: {
-        'subject': subject,
-        'body': body,
-      },
+      queryParameters: {'subject': subject, 'body': body},
     );
 
     try {
@@ -992,7 +994,9 @@ class _MoreScreenState extends State<MoreScreen> {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? const Color(0xFF1E262B) : Colors.white;
-    final borderColor = isDark ? const Color(0xFF2C353D) : const Color(0xFFEDF2F7);
+    final borderColor = isDark
+        ? const Color(0xFF2C353D)
+        : const Color(0xFFEDF2F7);
 
     return Container(
       decoration: BoxDecoration(
@@ -1042,7 +1046,9 @@ class _MoreScreenState extends State<MoreScreen> {
                         subtitle,
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark ? Colors.white60 : const Color(0xFF718096),
+                          color: isDark
+                              ? Colors.white60
+                              : const Color(0xFF718096),
                         ),
                       ),
                     ],
@@ -1107,15 +1113,12 @@ class _MoreScreenState extends State<MoreScreen> {
   /// 3. Gizlilik Politikası: Uygulama içi tam metin ekranını açar (çevrimdışı ve web destekli)
   void _openPrivacyPolicy() {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const PrivacyPolicyScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const PrivacyPolicyScreen()),
     );
   }
 
   /// 4. Sorumluluk Reddi (Disclaimer): Şık yasal bilgilendirme modalı
   void _showDisclaimerDialog(BuildContext context) {
-    final isTr = LocaleService.currentLanguageCode == 'tr';
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog<void>(
@@ -1139,7 +1142,7 @@ class _MoreScreenState extends State<MoreScreen> {
             ),
             const SizedBox(width: 12),
             Text(
-              isTr ? 'Sorumluluk Reddi' : 'Legal Disclaimer',
+              context.tr('disclaimer'),
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
             ),
           ],
@@ -1149,9 +1152,7 @@ class _MoreScreenState extends State<MoreScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              isTr
-                  ? 'Bu uygulama telif hakkı içeren materyallerin indirilmesini teşvik etmez. Tüm sorumluluk kullanıcıya aittir.'
-                  : 'This application does not encourage downloading copyrighted material. All responsibility belongs to the user.',
+              context.tr('disclaimer_body'),
               style: const TextStyle(
                 fontSize: 14,
                 height: 1.5,
@@ -1160,9 +1161,7 @@ class _MoreScreenState extends State<MoreScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              isTr
-                  ? 'VidSave yalnızca kişisel kullanım, açık kaynak ve adil kullanım (Fair Use) kapsamındaki içeriklerin arşivlenmesi amacıyla tasarlanmıştır.'
-                  : 'VidSave is intended solely for personal use and archival purposes under Fair Use guidelines.',
+              context.tr('disclaimer_scope'),
               style: TextStyle(
                 fontSize: 12.5,
                 height: 1.4,
@@ -1181,7 +1180,7 @@ class _MoreScreenState extends State<MoreScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(isTr ? 'Anladım' : 'Got it'),
+            child: Text(context.tr('got_it')),
           ),
         ],
       ),

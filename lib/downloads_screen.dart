@@ -6,6 +6,7 @@ import 'app_localizations.dart';
 import 'download_item_model.dart';
 import 'lyrics_bottom_sheet.dart';
 import 'music_player.dart';
+import 'premium_player_screen.dart';
 import 'screens/private_vault_screen.dart';
 import 'services/download_manager.dart';
 import 'services/private_vault_service.dart';
@@ -170,27 +171,15 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
       return;
     }
 
-    if (item.isAudio) {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => MusicPlayerScreen(
-            file: file,
-            title: item.name,
-            autoStart: true,
-            playerFactory: widget.musicPlayerFactory,
-          ),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => PremiumPlayerScreen(
+          file: file,
+          title: item.name,
+          audioPlayerFactory: item.isAudio ? widget.musicPlayerFactory : null,
         ),
-      );
-    } else {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => VideoPlayerScreen(
-            file: file,
-            title: item.name,
-          ),
-        ),
-      );
-    }
+      ),
+    );
   }
 
   String _formatDate(DateTime dt) {
@@ -734,7 +723,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     await StorageService.removeItem(item.id);
                     messenger?.showSnackBar(
                       const SnackBar(
-                        content: Text('Dosya şifrelenerek Gizli Klasöre taşındı! 🔒'),
+                        content: Text(
+                          'Dosya şifrelenerek Gizli Klasöre taşındı! 🔒',
+                        ),
                         behavior: SnackBarBehavior.floating,
                       ),
                     );

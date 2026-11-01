@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_exp;
 
@@ -7,8 +8,7 @@ import 'universal_scraper.dart';
 
 /// Sent on requests to perfectly mimic Chrome on Android and avoid 403 Forbidden / bot detection.
 const Map<String, String> kChromeMobileHeaders = {
-  'User-Agent':
-      'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+  'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
   'Accept': '*/*',
   'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
   'Connection': 'keep-alive',
@@ -29,13 +29,14 @@ class ClientMediaResolver implements MediaResolver {
     Dio? dioClient,
     yt_exp.YoutubeExplode? youtubeExplode,
     UniversalScraper? scraper,
-  }) : _scraper = scraper ??
-            (dioClient != null || youtubeExplode != null
-                ? UniversalScraper(
-                    dioClient: dioClient,
-                    youtubeExplode: youtubeExplode,
-                  )
-                : UniversalScraper.instance);
+  }) : _scraper =
+           scraper ??
+           (dioClient != null || youtubeExplode != null
+               ? UniversalScraper(
+                   dioClient: dioClient,
+                   youtubeExplode: youtubeExplode,
+                 )
+               : UniversalScraper.instance);
 
   final UniversalScraper _scraper;
 
@@ -62,13 +63,12 @@ class ClientMediaResolver implements MediaResolver {
     double? startTime,
     double? endTime,
     String? audioEffect,
-  }) =>
-      _scraper.resolve(
-        source,
-        kind,
-        height: height,
-        startTime: startTime,
-        endTime: endTime,
-        audioEffect: audioEffect,
-      );
+  }) => _scraper.resolve(
+    source,
+    kind,
+    height: height,
+    startTime: startTime,
+    endTime: endTime,
+    audioEffect: audioEffect,
+  );
 }

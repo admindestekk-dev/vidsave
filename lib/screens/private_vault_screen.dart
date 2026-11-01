@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../music_player.dart';
+import '../premium_player_screen.dart';
 import '../services/private_vault_service.dart';
-import '../video_player_screen.dart';
 
 /// VidSave Dahili Şifreli Gizli Klasör Ekranı (Private Vault Screen)
 ///
@@ -96,26 +95,13 @@ class _PrivateVaultScreenState extends State<PrivateVaultScreen> {
     final file = await PrivateVaultService.instance.getVaultFile(item);
     if (file == null || !mounted) return;
 
-    if (item.isAudio) {
-      Navigator.push(
-        context,
-        MaterialPageRoute<void>(
-          builder: (_) => MusicPlayerScreen(
-            file: file,
-            title: item.originalName,
-            autoStart: true,
-          ),
-        ),
-      );
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute<void>(
-          builder: (_) =>
-              VideoPlayerScreen(file: file, title: item.originalName),
-        ),
-      );
-    }
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            PremiumPlayerScreen(file: file, title: item.originalName),
+      ),
+    );
   }
 
   @override
@@ -387,11 +373,14 @@ class _PrivateVaultScreenState extends State<PrivateVaultScreen> {
                         ),
                         tooltip: 'Kasadan Çıkar (Restore)',
                         onPressed: () async {
-                          final restored = await PrivateVaultService.instance.exportFileFromVault(item);
+                          final restored = await PrivateVaultService.instance
+                              .exportFileFromVault(item);
                           if (restored != null && context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('"${item.originalName}" kasadan çıkarıldı! 🔓'),
+                                content: Text(
+                                  '"${item.originalName}" kasadan çıkarıldı! 🔓',
+                                ),
                                 behavior: SnackBarBehavior.floating,
                               ),
                             );

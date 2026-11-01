@@ -87,6 +87,7 @@ void main() {
       'preserve_this_setting': 'keep',
       SubscriptionScreen.prefKeyIsPremium: true,
       SubscriptionScreen.prefKeySubscribedAt: '2026-10-01T00:00:00.000',
+      SubscriptionScreen.prefKeyPremiumUntil: '2099-12-31T23:59:59Z',
       WelcomeScreen.prefKeyHasSeenWelcome: true,
     });
     LocaleService.localeNotifier.value = const Locale('tr');
@@ -139,6 +140,7 @@ void main() {
       expect(prefs.getString('preserve_this_setting'), 'keep');
       expect(prefs.getBool(SubscriptionScreen.prefKeyIsPremium), isNull);
       expect(prefs.getString(SubscriptionScreen.prefKeySubscribedAt), isNull);
+      expect(prefs.getString(SubscriptionScreen.prefKeyPremiumUntil), isNull);
       expect(prefs.getBool(WelcomeScreen.prefKeyHasSeenWelcome), isNull);
       expect(
         await UserIdentityService.getOrCreateUserId(),

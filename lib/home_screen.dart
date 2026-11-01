@@ -366,14 +366,12 @@ class _PremiumBannerState extends State<PremiumBanner> {
 
   Future<void> _checkPremium() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final isPrem =
-          prefs.getBool(SubscriptionScreen.prefKeyIsPremium) ?? false;
+      final isPrem = await SubscriptionScreen.readPremiumStatus();
       if (mounted && isPrem != _isPremium) {
         setState(() => _isPremium = isPrem);
       }
-    } catch (_) {
-      // SharedPreferences erişilemezse (test/mock eksikliği) sessizce geç
+    } catch (error, stackTrace) {
+      debugPrint('Premium durumu okunamadı: $error\n$stackTrace');
     }
   }
 
@@ -409,8 +407,9 @@ class _PremiumBannerState extends State<PremiumBanner> {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: (_isPremium ? const Color(0xFF0E7C4B) : const Color(0xFFFF5436))
-                .withValues(alpha: 0.35),
+            color:
+                (_isPremium ? const Color(0xFF0E7C4B) : const Color(0xFFFF5436))
+                    .withValues(alpha: 0.35),
             blurRadius: 14,
             offset: const Offset(0, 5),
           ),
@@ -521,12 +520,7 @@ class _PremiumBannerState extends State<PremiumBanner> {
 
 /// Standart HomeScreen arayüzü
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({
-    super.key,
-    this.authService,
-    this.store,
-    this.httpClient,
-  });
+  const HomeScreen({super.key, this.authService, this.store, this.httpClient});
 
   final AuthService? authService;
   final BackendSettingsStore? store;
@@ -582,9 +576,7 @@ Future<void> showYouTubeRestrictionDialog(BuildContext context) {
     barrierDismissible: true,
     builder: (dialogContext) => AlertDialog(
       backgroundColor: const Color(0xFF1E1E1E),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       elevation: 12,
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
@@ -682,7 +674,8 @@ class QuickDownloadWindow extends StatefulWidget {
 
   final String? initialUrl;
   final void Function(File file, String type)? onDownloadCompleted;
-  final void Function(String? title, String? thumbnail, int? duration)? onPreviewResolved;
+  final void Function(String? title, String? thumbnail, int? duration)?
+  onPreviewResolved;
 
   @override
   State<QuickDownloadWindow> createState() => _QuickDownloadWindowState();
@@ -736,7 +729,10 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     final d = Duration(seconds: seconds);
     final hours = d.inHours;
     final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final remainingSeconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final remainingSeconds = d.inSeconds
+        .remainder(60)
+        .toString()
+        .padLeft(2, '0');
     if (hours > 0) {
       return '$hours:$minutes:$remainingSeconds';
     }
@@ -786,7 +782,10 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     });
 
     // 2. API Veri Eşitlemesi: Sunucumuzdan /api/analyze ile title, thumbnail ve duration verilerini çek ve eşitle
-    final normalizedType = (type.toLowerCase() == 'mp3' || type.toLowerCase() == 'audio') ? 'mp3' : 'video';
+    final normalizedType =
+        (type.toLowerCase() == 'mp3' || type.toLowerCase() == 'audio')
+        ? 'mp3'
+        : 'video';
     try {
       final analyzeResult = await ApiService.instance.analyze(
         url: rawUrl,
@@ -795,14 +794,22 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
       if (mounted) {
         setState(() {
-          _videoTitle = analyzeResult.title.isNotEmpty ? analyzeResult.title : null;
-          _videoThumbnail = (analyzeResult.thumbnail != null && analyzeResult.thumbnail!.isNotEmpty)
+          _videoTitle = analyzeResult.title.isNotEmpty
+              ? analyzeResult.title
+              : null;
+          _videoThumbnail =
+              (analyzeResult.thumbnail != null &&
+                  analyzeResult.thumbnail!.isNotEmpty)
               ? analyzeResult.thumbnail
               : null;
           _videoDuration = analyzeResult.duration;
           _activeTitle = _videoTitle;
         });
-        widget.onPreviewResolved?.call(_videoTitle, _videoThumbnail, _videoDuration);
+        widget.onPreviewResolved?.call(
+          _videoTitle,
+          _videoThumbnail,
+          _videoDuration,
+        );
       }
     } catch (analyzeErr) {
       debugPrint('QuickDownloadWindow analiz ön denemesi: $analyzeErr');
@@ -828,23 +835,27 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
           setState(() {
             _receivedBytes = received;
             _totalBytes = total;
-            _downloadProgress =
-                progress != null ? (progress * 100).clamp(0.0, 100.0) : 0.0;
+            _downloadProgress = progress != null
+                ? (progress * 100).clamp(0.0, 100.0)
+                : 0.0;
             _downloadSpeed = speed;
             _statusMessage = status;
           });
         },
       );
 
-      final targetFileName =
-          downloadedFile.path.split(Platform.pathSeparator).last;
+      final targetFileName = downloadedFile.path
+          .split(Platform.pathSeparator)
+          .last;
       widget.onDownloadCompleted?.call(downloadedFile, type);
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${context.tr('quick_download_success')}$targetFileName'),
+          content: Text(
+            '${context.tr('quick_download_success')}$targetFileName',
+          ),
           backgroundColor: const Color(0xFF20B8C5),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
@@ -975,7 +986,9 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
               suffixIcon: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_controller.text.isNotEmpty && !_isAnalyzing && !_isDownloading)
+                  if (_controller.text.isNotEmpty &&
+                      !_isAnalyzing &&
+                      !_isDownloading)
                     IconButton(
                       icon: const Icon(Icons.clear_rounded, size: 18),
                       onPressed: () {
@@ -994,8 +1007,13 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                 ],
               ),
               filled: true,
-              fillColor: isDark ? const Color(0xFF141A22) : const Color(0xFFF8FAFC),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              fillColor: isDark
+                  ? const Color(0xFF141A22)
+                  : const Color(0xFFF8FAFC),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(
@@ -1070,16 +1088,17 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                           child: Image.network(
                             _videoThumbnail!,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              color: Colors.black54,
-                              child: const Center(
-                                child: Icon(
-                                  Icons.movie_rounded,
-                                  color: Colors.white38,
-                                  size: 42,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  color: Colors.black54,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.movie_rounded,
+                                      color: Colors.white38,
+                                      size: 42,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
                             loadingBuilder: (context, child, loadingProgress) {
                               if (loadingProgress == null) return child;
                               return Container(
@@ -1148,7 +1167,8 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (_videoTitle != null && _videoTitle!.isNotEmpty) ...[
+                          if (_videoTitle != null &&
+                              _videoTitle!.isNotEmpty) ...[
                             Text(
                               _videoTitle!,
                               maxLines: 2,
@@ -1192,7 +1212,9 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF141A22) : const Color(0xFFF1F5F9),
+                color: isDark
+                    ? const Color(0xFF141A22)
+                    : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: const Color(0xFFFF5436).withValues(alpha: 0.25),
@@ -1222,7 +1244,8 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFFF5436).withValues(alpha: 0.45),
+                          color: const Color(0xFFFF5436)
+                              .withValues(alpha: 0.45),
                           blurRadius: 10,
                           spreadRadius: 1,
                           offset: const Offset(0, 1),
@@ -1232,10 +1255,16 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: LinearProgressIndicator(
-                        value: _downloadProgress > 0 ? _downloadProgress / 100 : null,
+                        value: _downloadProgress > 0
+                            ? _downloadProgress / 100
+                            : null,
                         minHeight: 10,
-                        backgroundColor: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF5436)),
+                        backgroundColor: isDark
+                            ? Colors.white12
+                            : const Color(0xFFE2E8F0),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFFFF5436),
+                        ),
                       ),
                     ),
                   ),
@@ -1248,7 +1277,9 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                       Text(
                         _downloadProgress > 0
                             ? '%${_downloadProgress.toStringAsFixed(0)} İndiriliyor…'
-                            : (_statusMessage.isNotEmpty ? _statusMessage : 'İndiriliyor…'),
+                            : (_statusMessage.isNotEmpty
+                                  ? _statusMessage
+                                  : 'İndiriliyor…'),
                         style: const TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w800,
@@ -1260,7 +1291,9 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                         style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.white70 : const Color(0xFF475569),
+                          color: isDark
+                              ? Colors.white70
+                              : const Color(0xFF475569),
                         ),
                       ),
                     ],
@@ -1273,7 +1306,9 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
                       textAlign: TextAlign.right,
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                        color: isDark
+                            ? Colors.white38
+                            : const Color(0xFF94A3B8),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1444,4 +1479,3 @@ class VidSaveBrandTitle extends StatelessWidget {
     );
   }
 }
-

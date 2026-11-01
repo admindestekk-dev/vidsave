@@ -36,9 +36,13 @@ class _MemoryTokenStore implements AuthTokenStore {
 }
 
 class _FakeInAppPurchase extends Fake implements InAppPurchase {
+  _FakeInAppPurchase({this.price = '9,99 TL'});
+
+  final String price;
   final purchaseStreamController =
       StreamController<List<PurchaseDetails>>.broadcast();
   bool buyNonConsumableCalled = false;
+  bool restorePurchasesCalled = false;
 
   @override
   Stream<List<PurchaseDetails>> get purchaseStream =>
@@ -57,7 +61,7 @@ class _FakeInAppPurchase extends Fake implements InAppPurchase {
           id: SubscriptionScreen.productId,
           title: 'VidSave Premium Monthly',
           description: 'Monthly unlimited access',
-          price: '9,99 ₺',
+          price: price,
           rawPrice: 9.99,
           currencyCode: 'TRY',
         ),
@@ -87,6 +91,11 @@ class _FakeInAppPurchase extends Fake implements InAppPurchase {
 
   @override
   Future<void> completePurchase(PurchaseDetails purchase) async {}
+
+  @override
+  Future<void> restorePurchases({String? applicationUserName}) async {
+    restorePurchasesCalled = true;
+  }
 }
 
 AuthService _testAuthService(http.Client client) =>
@@ -111,30 +120,34 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets(
-    'SubscriptionScreen displays psychological Turkish pricing (9,99 TL)',
-    (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 2.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('SubscriptionScreen displays localized store pricing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(
-        _buildTestApp(
-          locale: const Locale('tr'),
-          home: const SubscriptionScreen(),
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('tr'),
+        home: SubscriptionScreen(
+          inAppPurchase: _FakeInAppPurchase(price: '9,99 TL'),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('Aylık Sadece 9,99 TL - KDV Dahil'), findsOneWidget);
-      expect(find.text('Tüm vergiler ve KDV dahildir.'), findsOneWidget);
-      expect(find.text('9,99 TL / Ay - Abone Ol'), findsOneWidget);
-    },
-  );
+    expect(find.text('Aylık 9,99 TL'), findsOneWidget);
+    expect(
+      find.text('Fiyat ve vergilendirme mağaza tarafından belirlenir.'),
+      findsOneWidget,
+    );
+    expect(find.text('9,99 TL / Ay - Abone Ol'), findsOneWidget);
+  });
 
   testWidgets(
-    'SubscriptionScreen displays psychological English pricing (\$0.99)',
+    'SubscriptionScreen uses the store price regardless of app locale',
     (tester) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 2.0;
@@ -144,14 +157,19 @@ void main() {
       await tester.pumpWidget(
         _buildTestApp(
           locale: const Locale('en'),
-          home: const SubscriptionScreen(),
+          home: SubscriptionScreen(
+            inAppPurchase: _FakeInAppPurchase(price: '\$0.99'),
+          ),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Only \$0.99 / Month - All Taxes Included'), findsOneWidget);
-      expect(find.text('All taxes and VAT included.'), findsOneWidget);
-      expect(find.text('Subscribe - \$0.99 / Mo'), findsOneWidget);
+      expect(find.text('\$0.99 / month'), findsOneWidget);
+      expect(
+        find.text('Price and applicable taxes are set by the store.'),
+        findsOneWidget,
+      );
+      expect(find.text('Subscribe - \$0.99 / month'), findsOneWidget);
     },
   );
 
@@ -176,7 +194,8 @@ void main() {
             'subscription': {
               'amount': 9.99,
               'currency': 'TRY',
-              'receiptMessage': 'Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!',
+              'premiumUntil': '2099-11-18T12:00:00Z',
+              'receiptMessage': 'Geliştirici test aboneliği etkinleştirildi.',
             },
           }),
           200,
@@ -188,6 +207,8 @@ void main() {
         _buildTestApp(
           locale: const Locale('tr'),
           home: SubscriptionScreen(
+            isPlayStoreLive: false,
+            inAppPurchase: _FakeInAppPurchase(),
             httpClient: mockClient,
             authService: _testAuthService(mockClient),
           ),
@@ -204,9 +225,7 @@ void main() {
 
       // Verify receipt message appears
       expect(
-        find.text(
-          'Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!',
-        ),
+        find.text('Geliştirici test aboneliği etkinleştirildi.'),
         findsWidgets,
       );
       expect(find.text('PREMIUM AKTİF'), findsOneWidget);
@@ -261,7 +280,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify price is displayed
-      expect(find.text('Aylık Sadece 9,99 TL - KDV Dahil'), findsOneWidget);
+      expect(find.text('Aylık 9,99 TL'), findsOneWidget);
 
       final subscribeButton = find.text('9,99 TL / Ay - Abone Ol');
       expect(subscribeButton, findsOneWidget);
@@ -284,7 +303,14 @@ void main() {
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool(SubscriptionScreen.prefKeyIsPremium), isTrue);
+      expect(
+        prefs.getString(SubscriptionScreen.prefKeyPremiumUntil),
+        '2026-11-18T12:00:00.000Z',
+      );
 
+      await tester.tap(find.byKey(const Key('restore_purchases')));
+      await tester.pump();
+      expect(fakeIap.restorePurchasesCalled, isTrue);
       fakeIap.purchaseStreamController.close();
     },
   );
@@ -343,7 +369,8 @@ void main() {
               'subscription': {
                 'amount': 9.99,
                 'currency': 'TRY',
-                'receiptMessage': 'Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!',
+                'premiumUntil': '2099-11-18T12:00:00Z',
+                'receiptMessage': 'Geliştirici test aboneliği etkinleştirildi.',
               },
             }),
             200,
@@ -384,4 +411,41 @@ void main() {
       fakeIap.purchaseStreamController.close();
     },
   );
+
+  testWidgets('failed debug subscription response never activates Premium', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final fakeIap = _FakeInAppPurchase();
+    final client = MockClient(
+      (_) async => http.Response('{"success":false}', 503),
+    );
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('tr'),
+        home: SubscriptionScreen(
+          isPlayStoreLive: false,
+          inAppPurchase: fakeIap,
+          httpClient: client,
+          authService: _testAuthService(client),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final subscribeButton = find.text('9,99 TL / Ay - Abone Ol');
+    await tester.ensureVisible(subscribeButton);
+    await tester.tap(subscribeButton);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(SubscriptionScreen.prefKeyIsPremium), isNull);
+    expect(await SubscriptionScreen.readPremiumStatus(), isFalse);
+    expect(find.text('PREMIUM AKTİF'), findsNothing);
+  });
 }

@@ -27,8 +27,7 @@ void main() async {
           streamUrl,
           options: Options(
             headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               'Referer': 'https://www.dailymotion.com/',
             },
           ),

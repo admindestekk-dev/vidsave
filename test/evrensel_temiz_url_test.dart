@@ -15,7 +15,8 @@ void main() {
     });
 
     test('replaces JSON escaped slashes and HTML entities', () {
-      const raw = r'https:\/\/v16-webapp-prime.tiktok.com\/video\/123?param=1&amp;val=2';
+      const raw =
+          r'https:\/\/v16-webapp-prime.tiktok.com\/video\/123?param=1&amp;val=2';
       expect(
         evrenselTemizUrl(raw),
         'https://v16-webapp-prime.tiktok.com/video/123?param=1&val=2',
@@ -23,7 +24,8 @@ void main() {
     });
 
     test(r'replaces unicode \u002F and \u0026 escape sequences', () {
-      const raw = r'https:\u002F\u002Fv16-webapp-prime.tiktok.com\u002Fvideo\u002F123';
+      const raw =
+          r'https:\u002F\u002Fv16-webapp-prime.tiktok.com\u002Fvideo\u002F123';
       expect(
         evrenselTemizUrl(raw),
         'https://v16-webapp-prime.tiktok.com/video/123',

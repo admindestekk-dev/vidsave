@@ -67,32 +67,25 @@ void main() {
   });
 
   group('BatchDownloadScreen - Dynamic Rows & UI Architecture', () {
-    testWidgets('renders 1 default empty row with "1.", TextField, and delete icon', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: BatchDownloadScreen(),
-        ),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      'renders 1 default empty row with "1.", TextField, and delete icon',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(const MaterialApp(home: BatchDownloadScreen()));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Toplu İndirme'), findsOneWidget);
-      expect(find.text('1.'), findsOneWidget);
-      expect(find.byType(TextField), findsOneWidget);
-      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
-      expect(find.text('Yeni Link Satırı Ekle'), findsOneWidget);
-      expect(find.text('Toplu İndirmeyi Başlat'), findsOneWidget);
-    });
+        expect(find.text('Toplu İndirme'), findsOneWidget);
+        expect(find.text('1.'), findsOneWidget);
+        expect(find.byType(TextField), findsOneWidget);
+        expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+        expect(find.text('Yeni Link Satırı Ekle'), findsOneWidget);
+        expect(find.text('Toplu İndirmeyi Başlat'), findsOneWidget);
+      },
+    );
 
     testWidgets('tapping "Yeni Link Satırı Ekle" adds new row dynamically', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: BatchDownloadScreen(),
-        ),
-      );
+      await tester.pumpWidget(const MaterialApp(home: BatchDownloadScreen()));
       await tester.pumpAndSettle();
 
       expect(find.byType(TextField), findsOneWidget);
@@ -118,11 +111,7 @@ void main() {
     testWidgets('tapping delete button removes row from list', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: BatchDownloadScreen(),
-        ),
-      );
+      await tester.pumpWidget(const MaterialApp(home: BatchDownloadScreen()));
       await tester.pumpAndSettle();
 
       // Add two more rows (total 3)
@@ -156,127 +145,138 @@ void main() {
       expect(find.text('3.'), findsNothing);
     });
 
-    testWidgets('empty link input triggers warning SnackBar when starting batch download', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: BatchDownloadScreen(),
-        ),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      'empty link input triggers warning SnackBar when starting batch download',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(const MaterialApp(home: BatchDownloadScreen()));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Toplu İndirmeyi Başlat'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Toplu İndirmeyi Başlat'));
+        await tester.pumpAndSettle();
 
-      expect(
-        find.text('Lütfen indirmek için en az bir geçerli video veya müzik linki girin.'),
-        findsOneWidget,
-      );
-    });
+        expect(
+          find.text(
+            'Lütfen indirmek için en az bir geçerli video veya müzik linki girin.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
   });
 
   group('BatchDownloadScreen - Queue & Rewarded Ad Consent Flow', () {
-    testWidgets('Free user gets AdMob Rewarded Consent Dialog before starting queue', (
-      WidgetTester tester,
-    ) async {
-      final fakeResolver = _FakeResolver();
-      final fakeDownloader = _FakeDownloader();
+    testWidgets(
+      'Free user gets AdMob Rewarded Consent Dialog before starting queue',
+      (WidgetTester tester) async {
+        final fakeResolver = _FakeResolver();
+        final fakeDownloader = _FakeDownloader();
 
-      // Mock free user (isPremium = false)
-      SharedPreferences.setMockInitialValues({
-        SubscriptionScreen.prefKeyIsPremium: false,
-      });
+        // Mock free user (isPremium = false)
+        SharedPreferences.setMockInitialValues({
+          SubscriptionScreen.prefKeyIsPremium: false,
+        });
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: BatchDownloadScreen(
-            resolver: fakeResolver,
-            downloader: fakeDownloader,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: BatchDownloadScreen(
+              resolver: fakeResolver,
+              downloader: fakeDownloader,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      // Enter valid link
-      await tester.enterText(find.byType(TextField).first, 'https://instagram.com/reel/abc');
-      await tester.pumpAndSettle();
+        // Enter valid link
+        await tester.enterText(
+          find.byType(TextField).first,
+          'https://instagram.com/reel/abc',
+        );
+        await tester.pumpAndSettle();
 
-      // Tap start
-      await tester.tap(find.text('Toplu İndirmeyi Başlat (1 Link)'));
-      await tester.pumpAndSettle();
+        // Tap start
+        await tester.tap(find.text('Toplu İndirmeyi Başlat (1 Link)'));
+        await tester.pumpAndSettle();
 
-      // Verify AdMob Rewarded Consent Dialog appears
-      expect(find.text('Ücretsiz İndirme Hakkı Kazan!'), findsOneWidget);
-      expect(find.text('Vazgeç'), findsOneWidget);
-      expect(find.text('Reklamı İzle ve Başlat'), findsOneWidget);
+        // Verify AdMob Rewarded Consent Dialog appears
+        expect(find.text('Ücretsiz İndirme Hakkı Kazan!'), findsOneWidget);
+        expect(find.text('Vazgeç'), findsOneWidget);
+        expect(find.text('Reklamı İzle ve Başlat'), findsOneWidget);
 
-      // Tap "Vazgeç" -> queue should NOT start
-      await tester.tap(find.text('Vazgeç'));
-      await tester.pumpAndSettle();
+        // Tap "Vazgeç" -> queue should NOT start
+        await tester.tap(find.text('Vazgeç'));
+        await tester.pumpAndSettle();
 
-      expect(fakeResolver.resolvedUrls, isEmpty);
-      expect(fakeDownloader.downloadedFiles, isEmpty);
+        expect(fakeResolver.resolvedUrls, isEmpty);
+        expect(fakeDownloader.downloadedFiles, isEmpty);
 
-      // Tap start again and confirm
-      await tester.tap(find.text('Toplu İndirmeyi Başlat (1 Link)'));
-      await tester.pumpAndSettle();
+        // Tap start again and confirm
+        await tester.tap(find.text('Toplu İndirmeyi Başlat (1 Link)'));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Reklamı İzle ve Başlat'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Reklamı İzle ve Başlat'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.pumpAndSettle();
 
-      expect(fakeResolver.resolvedUrls.length, 1);
-      expect(fakeDownloader.downloadedFiles.length, 1);
-      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
-    });
+        expect(fakeResolver.resolvedUrls.length, 1);
+        expect(fakeDownloader.downloadedFiles.length, 1);
+        expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+      },
+    );
 
-    testWidgets('Premium user directly bypasses AdMob dialog and executes sequential download', (
-      WidgetTester tester,
-    ) async {
-      final fakeResolver = _FakeResolver();
-      final fakeDownloader = _FakeDownloader();
+    testWidgets(
+      'Premium user directly bypasses AdMob dialog and executes sequential download',
+      (WidgetTester tester) async {
+        final fakeResolver = _FakeResolver();
+        final fakeDownloader = _FakeDownloader();
 
-      // Mock premium user (isPremium = true)
-      SharedPreferences.setMockInitialValues({
-        SubscriptionScreen.prefKeyIsPremium: true,
-      });
+        // Mock premium user (isPremium = true)
+        SharedPreferences.setMockInitialValues({
+          SubscriptionScreen.prefKeyIsPremium: true,
+          SubscriptionScreen.prefKeyPremiumUntil: '2099-12-31T23:59:59Z',
+        });
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: BatchDownloadScreen(
-            resolver: fakeResolver,
-            downloader: fakeDownloader,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: BatchDownloadScreen(
+              resolver: fakeResolver,
+              downloader: fakeDownloader,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      // Add two rows
-      await tester.tap(find.text('Yeni Link Satırı Ekle'));
-      await tester.pumpAndSettle();
+        // Add two rows
+        await tester.tap(find.text('Yeni Link Satırı Ekle'));
+        await tester.pumpAndSettle();
 
-      final textFields = find.byType(TextField);
-      await tester.enterText(textFields.at(0), 'https://tiktok.com/@user/video/1');
-      await tester.enterText(textFields.at(1), 'https://youtube.com/watch?v=2');
-      await tester.pumpAndSettle();
+        final textFields = find.byType(TextField);
+        await tester.enterText(
+          textFields.at(0),
+          'https://tiktok.com/@user/video/1',
+        );
+        await tester.enterText(
+          textFields.at(1),
+          'https://youtube.com/watch?v=2',
+        );
+        await tester.pumpAndSettle();
 
-      // Tap start
-      await tester.tap(find.text('Toplu İndirmeyi Başlat (2 Link)'));
-      await tester.pump();
+        // Tap start
+        await tester.tap(find.text('Toplu İndirmeyi Başlat (2 Link)'));
+        await tester.pump();
 
-      // No consent dialog should be shown for premium user
-      expect(find.text('Ücretsiz İndirme Hakkı Kazan!'), findsNothing);
+        // No consent dialog should be shown for premium user
+        expect(find.text('Ücretsiz İndirme Hakkı Kazan!'), findsNothing);
 
-      // Let queue finish
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pumpAndSettle();
+        // Let queue finish
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.pumpAndSettle();
 
-      expect(fakeResolver.resolvedUrls.length, 2);
-      expect(fakeDownloader.downloadedFiles.length, 2);
-      expect(find.byIcon(Icons.check_circle_rounded), findsNWidgets(2));
-    });
+        expect(fakeResolver.resolvedUrls.length, 2);
+        expect(fakeDownloader.downloadedFiles.length, 2);
+        expect(find.byIcon(Icons.check_circle_rounded), findsNWidgets(2));
+      },
+    );
   });
 }

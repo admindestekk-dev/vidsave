@@ -121,6 +121,9 @@ Future<MusicPlayback> openMusicPlayback(
 MusicPlayerController _defaultAudioPlayerFactory(AssetEntity asset) =>
     _AudioplayersMusicController();
 
+MusicPlayerController createMusicPlayerController() =>
+    _AudioplayersMusicController();
+
 Future<Source> _defaultAudioSourceResolver(AssetEntity asset) async {
   final origin = await asset.originFile;
   if (origin != null && origin.existsSync()) {
@@ -199,7 +202,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         _player = provided;
         await _subscribe(provided);
       } else if (widget.file != null) {
-        final dummyAsset = widget.asset ??
+        final dummyAsset =
+            widget.asset ??
             AssetEntity(
               id: widget.file!.path,
               typeInt: AssetType.audio.index,
@@ -207,7 +211,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
               height: 0,
               duration: 0,
             );
-        final player = widget.playerFactory?.call(dummyAsset) ??
+        final player =
+            widget.playerFactory?.call(dummyAsset) ??
             _AudioplayersMusicController();
         final source = DeviceFileSource(widget.file!.path);
         await player.setReleaseMode(ReleaseMode.stop);

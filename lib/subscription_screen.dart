@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:confetti/confetti.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -20,13 +21,9 @@ import 'l10n/l10n_extension.dart';
 /// Ürün Kimliği: `vidsave_premium_monthly`
 /// Satın alma gerçekleştiğinde makbuz backend `/api/auth/verify-purchase` endpoint'i
 /// ile doğrulanır, 3 saniyelik konfeti patlatılır ve premium durum SharedPreferences'a kaydedilir.
-/// Test Kalkanı (isPlayStoreLive):
-/// Uygulama henüz Google Play Store'da yayında olmadığı için sistem geliştirici test moduna
-/// uyumlu olarak varsayılan `false` değerindedir.
-/// • isPlayStoreLive == false: 'Abone Ol' basıldığında in_app_purchase motorunu çağırmaz,
-///   backend'deki /api/auth/subscribe-monthly test endpoint'ine istek atar, onay gelince konfetileri patlatır.
-/// • isPlayStoreLive == true: Buton doğrudan resmi Google Play Store ödeme penceresini açar.
-bool isPlayStoreLive = false;
+/// Debug builds may opt into the backend test endpoint. Release builds always
+/// use the platform store purchase flow.
+bool isPlayStoreLive = true;
 
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({
@@ -49,6 +46,43 @@ class SubscriptionScreen extends StatefulWidget {
   static const String productId = 'vidsave_premium_monthly';
   static const String prefKeyIsPremium = 'vidsave_is_premium';
   static const String prefKeySubscribedAt = 'vidsave_premium_subscribed_at';
+  static const String prefKeyPremiumUntil = 'vidsave_premium_until';
+
+  static Future<bool> readPremiumStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final expiryValue = prefs.getString(prefKeyPremiumUntil);
+    final expiry = expiryValue == null ? null : DateTime.tryParse(expiryValue);
+    final isActive =
+        prefs.getBool(prefKeyIsPremium) == true &&
+        expiry != null &&
+        expiry.isAfter(DateTime.now());
+    if (!isActive && prefs.getBool(prefKeyIsPremium) == true) {
+      await clearPremiumStatus();
+    }
+    return isActive;
+  }
+
+  static Future<void> savePremiumStatus(DateTime premiumUntil) async {
+    if (!premiumUntil.isAfter(DateTime.now())) {
+      throw ArgumentError.value(
+        premiumUntil,
+        'premiumUntil',
+        'Premium expiry must be in the future',
+      );
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(prefKeyIsPremium, true);
+    await prefs.setString(
+      prefKeyPremiumUntil,
+      premiumUntil.toUtc().toIso8601String(),
+    );
+  }
+
+  static Future<void> clearPremiumStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(prefKeyIsPremium);
+    await prefs.remove(prefKeyPremiumUntil);
+  }
 
   @override
   State<SubscriptionScreen> createState() => _SubscriptionScreenState();
@@ -103,9 +137,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Future<void> _checkCurrentPremiumStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isPremium =
-        prefs.getBool(SubscriptionScreen.prefKeyIsPremium) ?? false;
+    final isPremium = await SubscriptionScreen.readPremiumStatus();
     if (mounted) {
       setState(() {
         _isPremiumActive = isPremium;
@@ -124,16 +156,21 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       final response = await _inAppPurchase.queryProductDetails({
         SubscriptionScreen.productId,
       });
+      if (response.error != null) {
+        debugPrint('Abonelik ürünü sorgulanamadı: ${response.error!.message}');
+      }
+      ProductDetails? product;
+      for (final item in response.productDetails) {
+        if (item.id == SubscriptionScreen.productId) {
+          product = item;
+          break;
+        }
+      }
 
       if (mounted) {
         setState(() {
           _isAvailable = true;
-          if (response.productDetails.isNotEmpty) {
-            _monthlyProduct = response.productDetails.firstWhere(
-              (p) => p.id == SubscriptionScreen.productId,
-              orElse: () => response.productDetails.first,
-            );
-          }
+          _monthlyProduct = product;
         });
       }
     } catch (e) {
@@ -159,10 +196,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     List<PurchaseDetails> purchaseDetailsList,
   ) async {
     for (final purchaseDetails in purchaseDetailsList) {
-      if (purchaseDetails.status == PurchaseStatus.pending) {
-        if (mounted) setState(() => _loading = true);
-      } else {
-        if (purchaseDetails.status == PurchaseStatus.error) {
+      var shouldCompletePurchase =
+          purchaseDetails.status == PurchaseStatus.error;
+      try {
+        if (purchaseDetails.status == PurchaseStatus.pending) {
+          if (mounted) setState(() => _loading = true);
+        } else if (purchaseDetails.status == PurchaseStatus.error) {
           if (mounted) {
             setState(() => _loading = false);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -177,16 +216,20 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           }
         } else if (purchaseDetails.status == PurchaseStatus.purchased ||
             purchaseDetails.status == PurchaseStatus.restored) {
-          // Google'dan gelen dijital makbuzu doğrulamak için backend'e gönder
-          final verified = await _verifyPurchaseOnBackend(purchaseDetails);
-          if (verified && purchaseDetails.pendingCompletePurchase) {
-            await _inAppPurchase.completePurchase(purchaseDetails);
-          }
+          shouldCompletePurchase = await _verifyPurchaseOnBackend(
+            purchaseDetails,
+          );
         }
-
-        if (purchaseDetails.pendingCompletePurchase &&
-            purchaseDetails.status != PurchaseStatus.purchased) {
-          await _inAppPurchase.completePurchase(purchaseDetails);
+      } catch (error, stackTrace) {
+        debugPrint('Satın alma akışı işlenemedi: $error\n$stackTrace');
+        if (mounted) setState(() => _loading = false);
+      } finally {
+        if (shouldCompletePurchase && purchaseDetails.pendingCompletePurchase) {
+          try {
+            await _inAppPurchase.completePurchase(purchaseDetails);
+          } catch (error, stackTrace) {
+            debugPrint('Satın alma tamamlanamadı: $error\n$stackTrace');
+          }
         }
       }
     }
@@ -198,9 +241,23 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         purchaseDetails.verificationData.serverVerificationData.isNotEmpty
         ? purchaseDetails.verificationData.serverVerificationData
         : purchaseDetails.verificationData.localVerificationData;
+    if (purchaseDetails.productID != SubscriptionScreen.productId ||
+        token.isEmpty) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Satın alma bilgisi doğrulanamadı.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return false;
+    }
 
     final isTurkish = _isTurkish(context);
     final langCode = isTurkish ? 'tr' : 'en';
+    http.Client? ownedClient;
 
     try {
       String baseUrl = BackendSettings.defaultBaseUrl;
@@ -216,7 +273,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       }
 
       final uri = Uri.parse(baseUrl).resolve('/api/auth/verify-purchase');
-      final client = widget.httpClient ?? http.Client();
+      final client = widget.httpClient ?? (ownedClient = http.Client());
       final authService = widget.authService ?? AuthService.instance;
 
       final response = await client
@@ -229,9 +286,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ...await authService.authorizationHeaders(),
             },
             body: jsonEncode({
-              'token': token.isNotEmpty
-                  ? token
-                  : 'token_${purchaseDetails.purchaseID}',
+              'token': token,
               'productId': purchaseDetails.productID,
               'userId': await authService.userIdForRequests(),
               'lang': langCode,
@@ -254,23 +309,29 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       final isSuccess =
           response.statusCode == 200 &&
           (data['success'] == true || data['verified'] == true);
+      final premiumUntilValue = data['premiumUntil'] ?? data['premium_until'];
+      final premiumUntil = premiumUntilValue is String
+          ? DateTime.tryParse(premiumUntilValue)
+          : null;
 
-      if (!isSuccess) {
+      if (!isSuccess ||
+          premiumUntil == null ||
+          !premiumUntil.isAfter(DateTime.now())) {
         throw StateError(
-          data['message']?.toString() ?? 'Makbuz doğrulanamadı.',
+          data['message']?.toString() ??
+              'Makbuz doğrulanamadı veya abonelik süresi geçersiz.',
         );
       }
 
       final serverReceipt = data['receiptMessage']?.toString();
-      final fallbackReceipt = isTurkish
-          ? 'Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!'
-          : 'Invoice generated: \$0.99 (All taxes included) charged. Premium active!';
       final finalReceipt = (serverReceipt != null && serverReceipt.isNotEmpty)
           ? serverReceipt
-          : fallbackReceipt;
+          : isTurkish
+          ? 'Premium aboneliğiniz ${premiumUntil.toLocal()} tarihine kadar aktif.'
+          : 'Your Premium subscription is active until ${premiumUntil.toLocal()}.';
 
+      await SubscriptionScreen.savePremiumStatus(premiumUntil);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(SubscriptionScreen.prefKeyIsPremium, true);
       await prefs.setString(
         SubscriptionScreen.prefKeySubscribedAt,
         DateTime.now().toIso8601String(),
@@ -309,14 +370,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         ),
       );
       return false;
+    } finally {
+      ownedClient?.close();
     }
   }
 
-  bool get _liveMode => widget.isPlayStoreLive ?? isPlayStoreLive;
+  bool get _liveMode =>
+      !kDebugMode || (widget.isPlayStoreLive ?? isPlayStoreLive);
 
   /// Abone Ol butonuna basıldığında
   Future<void> _handleSubscribe() async {
-    if (_loading) return;
+    if (_loading || _isPremiumActive) return;
 
     // isPlayStoreLive == true (Gelecekteki resmi mağaza durumu):
     // Buton doğrudan resmi Google Play Store ödeme penceresini açar.
@@ -353,13 +417,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       }
     }
 
-    // isPlayStoreLive == false (Şu anki geliştirici test kalkanı):
-    // in_app_purchase motorunu çağırma (Play Store'da yüklü olmadığı için hata verir).
-    // Onun yerine backend'deki /api/auth/subscribe-monthly test fonksiyonuna istek at.
+    // The test endpoint is available only in debug builds.
     await _handleFallbackDirectSubscribe();
   }
 
   Future<void> _handleFallbackDirectSubscribe() async {
+    if (!kDebugMode) return;
     setState(() {
       _loading = true;
       _receiptMessage = null;
@@ -367,6 +430,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     final isTurkish = _isTurkish(context);
     final langCode = isTurkish ? 'tr' : 'en';
+    http.Client? ownedClient;
 
     try {
       String baseUrl = BackendSettings.defaultBaseUrl;
@@ -382,45 +446,53 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       }
 
       final uri = Uri.parse(baseUrl).resolve('/api/auth/subscribe-monthly');
-      final client = widget.httpClient ?? http.Client();
+      final client = widget.httpClient ?? (ownedClient = http.Client());
       final authService = widget.authService ?? AuthService.instance;
 
-      String? serverReceipt;
-      try {
-        final response = await client
-            .post(
-              uri,
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                if (apiKey.isNotEmpty) 'X-Api-Key': apiKey,
-                ...await authService.authorizationHeaders(),
-              },
-              body: jsonEncode({
-                'lang': langCode,
-                'userId': await authService.userIdForRequests(),
-              }),
-            )
-            .timeout(const Duration(seconds: 5));
-
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body) as Map<String, dynamic>;
-          final sub = data['subscription'] as Map<String, dynamic>?;
-          serverReceipt = sub?['receiptMessage']?.toString();
-        }
-      } catch (_) {
-        // Standalone client mode: approve simulated subscription directly on device
+      final response = await client
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              if (apiKey.isNotEmpty) 'X-Api-Key': apiKey,
+              ...await authService.authorizationHeaders(),
+            },
+            body: jsonEncode({
+              'lang': langCode,
+              'userId': await authService.userIdForRequests(),
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+      final data = jsonDecode(response.body);
+      final subscription = data is Map<String, dynamic>
+          ? data['subscription']
+          : null;
+      final premiumUntilValue = subscription is Map<String, dynamic>
+          ? subscription['premiumUntil'] ?? subscription['premium_until']
+          : null;
+      final premiumUntil = premiumUntilValue is String
+          ? DateTime.tryParse(premiumUntilValue)
+          : null;
+      if (response.statusCode != 200 ||
+          data is! Map<String, dynamic> ||
+          data['success'] != true ||
+          premiumUntil == null ||
+          !premiumUntil.isAfter(DateTime.now())) {
+        throw StateError('Test aboneliği sunucu tarafından onaylanmadı.');
       }
 
-      final fallbackReceipt = isTurkish
-          ? 'Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!'
-          : 'Invoice generated: \$0.99 (All taxes included) charged. Premium active!';
-      final finalReceipt = (serverReceipt != null && serverReceipt.isNotEmpty)
-          ? serverReceipt
-          : fallbackReceipt;
+      final serverReceipt = subscription is Map<String, dynamic>
+          ? subscription['receiptMessage']?.toString()
+          : null;
+      final finalReceipt = serverReceipt?.isNotEmpty == true
+          ? serverReceipt!
+          : isTurkish
+          ? 'Geliştirici test aboneliği etkinleştirildi.'
+          : 'Developer test subscription enabled.';
 
+      await SubscriptionScreen.savePremiumStatus(premiumUntil);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(SubscriptionScreen.prefKeyIsPremium, true);
       await prefs.setString(
         SubscriptionScreen.prefKeySubscribedAt,
         DateTime.now().toIso8601String(),
@@ -458,6 +530,31 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           backgroundColor: Colors.redAccent,
         ),
       );
+    } finally {
+      ownedClient?.close();
+    }
+  }
+
+  Future<void> _restorePurchases() async {
+    if (_loading || !_isAvailable) return;
+    setState(() => _loading = true);
+    try {
+      await _inAppPurchase.restorePurchases();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _isTurkish(context)
+                  ? 'Satın alımlar geri yüklenemedi: $error'
+                  : 'Purchases could not be restored: $error',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -466,63 +563,26 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final lang = _getLanguageCode(context);
     final isTurkish = lang == 'tr';
 
-    // 8 Küresel Dile Göre Dinamik Psikolojik Fiyatlandırma
-    final String priceTitle;
-    final String taxFootnote;
-    final String buttonText;
-
-    switch (lang) {
-      case 'tr':
-        priceTitle = 'Aylık Sadece 9,99 TL - KDV Dahil';
-        taxFootnote = 'Tüm vergiler ve KDV dahildir.';
-        buttonText = '9,99 TL / Ay - Abone Ol';
-        break;
-      case 'es':
-        priceTitle = 'Solo \$0.99 / Mes - Impuestos Incluidos';
-        taxFootnote = 'Todos los impuestos incluidos.';
-        buttonText = 'Suscribirse - \$0.99 / Mes';
-        break;
-      case 'it':
-        priceTitle = 'Solo 0,99 € / Mese - Tutte le Tasse Incluse';
-        taxFootnote = 'Tutte le imposte e IVA incluse.';
-        buttonText = 'Abbonati - 0,99 € / Mese';
-        break;
-      case 'pt':
-        priceTitle = 'Apenas \$0.99 / Mês - Impostos Incluídos';
-        taxFootnote = 'Todos os impostos e IVA incluídos.';
-        buttonText = 'Assinar - \$0.99 / Mês';
-        break;
-      case 'de':
-        priceTitle = 'Nur 0,99 € / Monat - Inkl. MwSt.';
-        taxFootnote = 'Alle Steuern und MwSt. inbegriffen.';
-        buttonText = 'Abonnieren - 0,99 € / Mt.';
-        break;
-      case 'fr':
-        priceTitle = 'Seulement 0,99 € / Mois - Taxes Comprises';
-        taxFootnote = 'Toutes taxes et TVA incluses.';
-        buttonText = 'S\'abonner - 0,99 € / Mois';
-        break;
-      case 'ru':
-        priceTitle = 'Всего 99 ₽ / Месяц - НДС включен';
-        taxFootnote = 'Все налоги и НДС включены.';
-        buttonText = 'Подписаться - 99 ₽ / Мес';
-        break;
-      case 'ar':
-        priceTitle = '0.99 \$ فقط / شهر - شامل الضرائب';
-        taxFootnote = 'جميع الضرائب وضريبة القيمة المضافة مشمولة.';
-        buttonText = 'اشتراك - 0.99 \$ / شهرياً';
-        break;
-      case 'zh':
-        priceTitle = '每月仅需 \$0.99 - 含税';
-        taxFootnote = '包含所有适用税费。';
-        buttonText = '订阅 - \$0.99 / 月';
-        break;
-      default: // en ve diğer diller
-        priceTitle = 'Only \$0.99 / Month - All Taxes Included';
-        taxFootnote = 'All taxes and VAT included.';
-        buttonText = 'Subscribe - \$0.99 / Mo';
-        break;
-    }
+    final productPrice = _monthlyProduct?.price;
+    final priceTitle = productPrice == null
+        ? (isTurkish ? 'Mağaza fiyatı alınamadı' : 'Store price unavailable')
+        : isTurkish
+        ? 'Aylık $productPrice'
+        : '$productPrice / month';
+    final taxFootnote = isTurkish
+        ? 'Fiyat ve vergilendirme mağaza tarafından belirlenir.'
+        : 'Price and applicable taxes are set by the store.';
+    final buttonText = _isPremiumActive
+        ? (isTurkish ? 'Premium Aktif' : 'Premium Active')
+        : productPrice == null
+        ? (isTurkish ? 'Ürün yüklenemedi' : 'Product unavailable')
+        : isTurkish
+        ? '$productPrice / Ay - Abone Ol'
+        : 'Subscribe - $productPrice / month';
+    final canSubscribe =
+        !_loading &&
+        !_isPremiumActive &&
+        (!_liveMode || (_isAvailable && _monthlyProduct != null));
 
     return Scaffold(
       backgroundColor: _darkBackground,
@@ -775,7 +835,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   SizedBox(
                     height: 54,
                     child: FilledButton(
-                      onPressed: _loading ? null : _handleSubscribe,
+                      onPressed: canSubscribe ? _handleSubscribe : null,
                       style: FilledButton.styleFrom(
                         backgroundColor: _accentColor,
                         foregroundColor: Colors.white,
@@ -805,6 +865,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                 letterSpacing: 0.4,
                               ),
                             ),
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('restore_purchases'),
+                    onPressed: _loading || !_isAvailable
+                        ? null
+                        : _restorePurchases,
+                    child: Text(
+                      isTurkish
+                          ? 'Satın alımları geri yükle'
+                          : 'Restore purchases',
                     ),
                   ),
 
@@ -925,10 +996,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             },
             child: const Text(
               'Web Sayfasında Aç',
-              style: TextStyle(
-                color: Color(0xFF64B5F6),
-                fontSize: 13,
-              ),
+              style: TextStyle(color: Color(0xFF64B5F6), fontSize: 13),
             ),
           ),
           TextButton(

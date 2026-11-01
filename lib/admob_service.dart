@@ -1,35 +1,51 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
 import 'subscription_screen.dart';
 
-/// VidSave AdMob Reklam Yönetim Servisi
+/// VidSave AdMob rewarded-ad manager.
 ///
-/// Google Play Store politikalarıyla uyumlu:
-/// 1. Resmi Android Ödüllü Test Reklam Kimliği: `ca-app-pub-3940256099942544/5224354917`
-/// 2. Akıllı Premium Filtresi:
-///    - `isPremium == true` ise (Aylık 9,99 TL ödeyen üyeler): Reklam kodları tamamen bypass edilir,
-///      hiçbir reklam gösterilmeden doğrudan indirme başlatılır.
-///    - `isPremium == false` ise (Giriş yapmamış veya ücretsiz üyeler): Zorunlu ödüllü reklam oynatılır.
-///      Kullanıcı reklamı sonuna kadar izlerse (`onUserEarnedReward`), indirme işlemi otomatik başlar.
+/// Uses Google's official demo ad units, which always serve test ads. Replace
+/// them with the app's own ad unit IDs only when configuring a production
+/// release; never click live ads while testing.
 class AdmobService {
   AdmobService._();
   static final AdmobService instance = AdmobService._();
 
-  /// Google Resmi Test Cihazı Kimlikleri & Reklam Birim Kimlikleri
-  /// iOS: ca-app-pub-3940256099942544/1712485313
-  /// Android: ca-app-pub-3940256099942544/5224354917
-  static String get rewardedAdUnitId {
+  /// Official Google demo ad units, used only for testing.
+  static const Map<String, Map<String, String>> testAdUnitIds = {
+    'android': {
+      'banner': 'ca-app-pub-3940256099942544/6300978111',
+      'interstitial': 'ca-app-pub-3940256099942544/1033173712',
+      'rewarded': 'ca-app-pub-3940256099942544/5224354917',
+      'native': 'ca-app-pub-3940256099942544/2247696110',
+      'appOpen': 'ca-app-pub-3940256099942544/9257395921',
+    },
+    'ios': {
+      'banner': 'ca-app-pub-3940256099942544/2934735716',
+      'interstitial': 'ca-app-pub-3940256099942544/4411468910',
+      'rewarded': 'ca-app-pub-3940256099942544/1712485313',
+      'native': 'ca-app-pub-3940256099942544/3986624511',
+      'appOpen': 'ca-app-pub-3940256099942544/5575463023',
+    },
+  };
+
+  static String testAdUnitId(String format) {
     if (kIsWeb) return '';
-    try {
-      if (Platform.isIOS) {
-        return 'ca-app-pub-3940256099942544/1712485313';
-      }
-    } catch (_) {}
-    return 'ca-app-pub-3940256099942544/5224354917';
+    final platform = Platform.isIOS ? 'ios' : 'android';
+    final adUnitId = testAdUnitIds[platform]?[format];
+    if (adUnitId == null) {
+      throw ArgumentError.value(format, 'format', 'Unsupported test ad format');
+    }
+    return adUnitId;
+  }
+
+  static String get rewardedAdUnitId {
+    return testAdUnitId('rewarded');
   }
 
   RewardedAd? _rewardedAd;
@@ -43,13 +59,12 @@ class AdmobService {
   Future<void> initialize() async {
     if (_isInitialized) return;
     try {
-      await MobileAds.instance.initialize();
-      // Tüm emülatörler ve test cihazları için otomatik test yapılandırması
+      // Apply request configuration before SDK initialization and before the
+      // first ad request.
       await MobileAds.instance.updateRequestConfiguration(
-        RequestConfiguration(
-          testDeviceIds: <String>[],
-        ),
+        RequestConfiguration(testDeviceIds: <String>[]),
       );
+      await MobileAds.instance.initialize();
       _isInitialized = true;
       unawaited(gatherConsentIfRequired());
       loadRewardedAd();
@@ -75,7 +90,9 @@ class AdmobService {
         () async {
           ConsentForm.loadAndShowConsentFormIfRequired((formError) {
             if (formError != null) {
-              debugPrint('AdmobService: UMP Form gösterim uyarısı: ${formError.message}');
+              debugPrint(
+                'AdmobService: UMP Form gösterim uyarısı: ${formError.message}',
+              );
             }
             _consentGathered = true;
             // Rıza verildikten sonra reklamı taze rıza parametreleriyle yükle
@@ -84,7 +101,9 @@ class AdmobService {
           });
         },
         (FormError error) {
-          debugPrint('AdmobService: UMP Consent Info güncelleme hatası: ${error.message}');
+          debugPrint(
+            'AdmobService: UMP Consent Info güncelleme hatası: ${error.message}',
+          );
           _consentGathered = true;
           loadRewardedAd();
           if (!completer.isCompleted) completer.complete();
@@ -100,7 +119,9 @@ class AdmobService {
     return completer.future.timeout(
       const Duration(seconds: 4),
       onTimeout: () {
-        debugPrint('AdmobService: UMP zaman aşımına uğradı, işleme devam ediliyor.');
+        debugPrint(
+          'AdmobService: UMP zaman aşımına uğradı, işleme devam ediliyor.',
+        );
       },
     );
   }
@@ -164,9 +185,9 @@ class AdmobService {
   /// Kullanıcının aktif Premium üyeliği olup olmadığını shared_preferences üzerinden sorgular
   Future<bool> checkIsPremium() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool(SubscriptionScreen.prefKeyIsPremium) ?? false;
-    } catch (_) {
+      return await SubscriptionScreen.readPremiumStatus();
+    } catch (error, stackTrace) {
+      debugPrint('Premium durumu okunamadı: $error\n$stackTrace');
       return false;
     }
   }
@@ -209,7 +230,9 @@ class AdmobService {
 
     // 1. PREMIUM BYPASS: Ücretli abone ise reklamı tamamen atla
     if (isPremium) {
-      debugPrint('AdmobService: Premium aktif. AdMob bypass edildi, indirme başlatılıyor.');
+      debugPrint(
+        'AdmobService: Premium aktif. AdMob bypass edildi, indirme başlatılıyor.',
+      );
       await onRewardEarned();
       return;
     }
@@ -237,7 +260,9 @@ class AdmobService {
         onFailed: () async {
           if (!completer.isCompleted) {
             completer.complete();
-            debugPrint('AdmobService: Reklam yüklenemedi, kullanıcı bekletilmeden indirmeye devam ediliyor.');
+            debugPrint(
+              'AdmobService: Reklam yüklenemedi, kullanıcı bekletilmeden indirmeye devam ediliyor.',
+            );
             await onRewardEarned();
           }
         },
@@ -248,7 +273,9 @@ class AdmobService {
         Future.delayed(const Duration(seconds: 4), () async {
           if (!completer.isCompleted) {
             completer.complete();
-            debugPrint('AdmobService: Reklam yükleme zaman aşımı (4 sn), indirme başlatılıyor.');
+            debugPrint(
+              'AdmobService: Reklam yükleme zaman aşımı (4 sn), indirme başlatılıyor.',
+            );
             await onRewardEarned();
           }
         }),
@@ -295,7 +322,9 @@ class AdmobService {
 
     ad.show(
       onUserEarnedReward: (AdWithoutView ad, RewardItem reward) async {
-        debugPrint('AdmobService: Kullanıcı reklamı sonuna kadar izledi, indirme başlatılıyor.');
+        debugPrint(
+          'AdmobService: Kullanıcı reklamı sonuna kadar izledi, indirme başlatılıyor.',
+        );
         earnedReward = true;
         await onRewardEarned();
       },

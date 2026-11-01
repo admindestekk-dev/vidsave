@@ -326,7 +326,7 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
                 style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
                 decoration: InputDecoration(
                   labelText: 'İndirilecek Bağlantılar (Her Satıra Bir Link)',
-                  hintText: 'https://www.instagram.com/reel/...\nhttps://www.tiktok.com/@user/...\nhttps://youtube.com/watch?v=...',
+                  hintText: 'https://www.instagram.com/reel/...\nhttps://www.tiktok.com/@user/...\nhttps://www.facebook.com/watch/...',
                   alignLabelWithHint: true,
                   filled: true,
                   fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,

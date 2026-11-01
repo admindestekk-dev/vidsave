@@ -79,6 +79,29 @@ void main() {
       }
     });
 
+    test('Settings labels are localized for all selectable languages', () {
+      const expectedLanguageLabels = {
+        'tr': 'Dil Seçimi / Language',
+        'en': 'Language',
+        'de': 'Sprache',
+        'fr': 'Langue',
+        'es': 'Idioma',
+        'it': 'Lingua',
+        'pt': 'Idioma',
+        'ar': 'اللغة',
+        'ru': 'Язык',
+        'zh': '语言',
+      };
+
+      for (final entry in expectedLanguageLabels.entries) {
+        final l10n = AppLocalizations(Locale(entry.key));
+        expect(l10n.text('language_selection'), entry.value);
+        expect(l10n.text('settings_preferences'), isNotEmpty);
+        expect(l10n.text('private_vault'), isNotEmpty);
+        expect(l10n.text('disclaimer_body'), isNotEmpty);
+      }
+    });
+
     test('Unknown world language (e.g. Swahili sw) falls back gracefully to English', () {
       final l10n = AppLocalizations(const Locale('sw'));
       expect(l10n.text('nav_videos'), 'Videos');

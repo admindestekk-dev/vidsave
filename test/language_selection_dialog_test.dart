@@ -47,78 +47,97 @@ void main() {
     LocaleService.localeNotifier.value = const Locale('tr');
   });
 
-  testWidgets('Language selection dialog opens with rounded corners and lists Turkish and English', (tester) async {
-    final store = _FakeSettingsStore();
-    final resolver = _FakeResolver();
+  testWidgets(
+    'Language selection dialog opens with rounded corners and lists Turkish and English',
+    (tester) async {
+      final store = _FakeSettingsStore();
+      final resolver = _FakeResolver();
 
-    await tester.pumpWidget(
-      _buildTestApp(
-        child: MoreScreen(store: store, resolver: resolver),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: MoreScreen(store: store, resolver: resolver),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    // Verify initial state is Turkish
-    expect(find.text('Dil Seçimi / Language'), findsOneWidget);
-    expect(find.text('🇹🇷 Türkçe'), findsOneWidget);
+      // Verify initial state is Turkish
+      expect(find.text('Dil Seçimi / Language'), findsOneWidget);
+      expect(find.text('🇹🇷 Türkçe'), findsOneWidget);
 
-    // Tap the Language ListTile
-    await tester.tap(find.text('Dil Seçimi / Language'));
-    await tester.pumpAndSettle();
+      // Tap the Language ListTile
+      await tester.tap(find.text('Dil Seçimi / Language'));
+      await tester.pumpAndSettle();
 
-    // Verify dialog opened
-    expect(find.byType(Dialog), findsOneWidget);
+      // Verify dialog opened
+      expect(find.byType(Dialog), findsOneWidget);
 
-    final dialogFinder = find.byType(Dialog);
-    final dialog = tester.widget<Dialog>(dialogFinder);
-    expect(dialog.shape, isA<RoundedRectangleBorder>());
-    final border = dialog.shape as RoundedRectangleBorder;
-    expect(border.borderRadius, BorderRadius.circular(20));
+      final dialogFinder = find.byType(Dialog);
+      final dialog = tester.widget<Dialog>(dialogFinder);
+      expect(dialog.shape, isA<RoundedRectangleBorder>());
+      final border = dialog.shape as RoundedRectangleBorder;
+      expect(border.borderRadius, BorderRadius.circular(20));
 
-    // Verify language options are listed (including flags)
-    expect(find.text('Türkçe'), findsWidgets);
-    expect(find.text('English'), findsWidgets);
-    expect(find.text('Español'), findsOneWidget);
-    expect(find.text('Deutsch'), findsOneWidget);
-    expect(find.text('Français'), findsOneWidget);
-    expect(find.text('Русский'), findsOneWidget);
-    expect(find.text('العربية'), findsOneWidget);
-    expect(find.text('简体中文'), findsOneWidget);
+      // Verify language options are listed (including flags)
+      expect(find.text('Türkçe'), findsWidgets);
+      expect(find.text('English'), findsWidgets);
+      expect(find.text('Español'), findsOneWidget);
+      expect(find.text('Deutsch'), findsOneWidget);
+      expect(find.text('Français'), findsOneWidget);
+      expect(find.text('Русский'), findsOneWidget);
+      expect(find.text('العربية'), findsOneWidget);
+      expect(find.text('简体中文'), findsOneWidget);
 
-    expect(find.text('🇹🇷'), findsOneWidget);
-    expect(find.text('🇺🇸'), findsOneWidget);
-    expect(find.text('🇪🇸'), findsOneWidget);
-    expect(find.text('🇩🇪'), findsOneWidget);
-    expect(find.text('🇫🇷'), findsOneWidget);
-    expect(find.text('🇷🇺'), findsOneWidget);
-    expect(find.text('🇸🇦'), findsOneWidget);
-    expect(find.text('🇨🇳'), findsOneWidget);
+      expect(find.text('🇹🇷'), findsOneWidget);
+      expect(find.text('🇺🇸'), findsOneWidget);
+      expect(find.text('🇪🇸'), findsOneWidget);
+      expect(find.text('🇩🇪'), findsOneWidget);
+      expect(find.text('🇫🇷'), findsOneWidget);
+      expect(find.text('🇷🇺'), findsOneWidget);
+      expect(find.text('🇸🇦'), findsOneWidget);
+      expect(find.text('🇨🇳'), findsOneWidget);
 
-    // Tap English option
-    await tester.tap(find.text('English').last);
-    await tester.pumpAndSettle();
+      // Tap English option
+      await tester.tap(find.text('English').last);
+      await tester.pumpAndSettle();
 
-    // Verify dialog closed
-    expect(find.byType(Dialog), findsNothing);
+      // Verify dialog closed
+      expect(find.byType(Dialog), findsNothing);
 
-    // Verify language changed to English reactively
-    expect(LocaleService.currentLanguageCode, 'en');
-    expect(find.text('🇺🇸 English'), findsOneWidget);
+      // Verify language changed to English reactively
+      expect(LocaleService.currentLanguageCode, 'en');
+      expect(find.text('🇺🇸 English'), findsOneWidget);
+      expect(find.text('Language'), findsOneWidget);
+      expect(find.text('Settings & Preferences'), findsOneWidget);
+      expect(find.text('Private Vault'), findsOneWidget);
 
-    // Open dialog again and select Turkish
-    await tester.tap(find.text('Dil Seçimi / Language'));
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget);
+      // Open dialog again and select Turkish
+      await tester.tap(find.text('Language').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('Language'), findsNWidgets(2));
 
-    await tester.tap(find.text('Türkçe').last);
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Français').last);
+      await tester.pumpAndSettle();
+      expect(LocaleService.currentLanguageCode, 'fr');
+      expect(find.text('Langue'), findsOneWidget);
+      expect(find.text('Paramètres et préférences'), findsOneWidget);
+      expect(find.text('Coffre privé'), findsOneWidget);
 
-    expect(find.byType(Dialog), findsNothing);
-    expect(LocaleService.currentLanguageCode, 'tr');
-    expect(find.text('🇹🇷 Türkçe'), findsOneWidget);
-  });
+      await tester.tap(find.text('Langue'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Türkçe').last);
+      await tester.pumpAndSettle();
 
-  testWidgets('MoreScreen renders Delete Account and confirms dialog', (tester) async {
+      expect(find.byType(Dialog), findsNothing);
+      expect(LocaleService.currentLanguageCode, 'tr');
+      expect(find.text('🇹🇷 Türkçe'), findsOneWidget);
+      expect(find.text('Dil Seçimi / Language'), findsOneWidget);
+    },
+  );
+
+  testWidgets('MoreScreen renders Delete Account and confirms dialog', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -142,7 +161,12 @@ void main() {
 
     // Verify warning dialog appeared
     expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.text('Hesabınızı ve tüm indirme geçmişinizi kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'), findsOneWidget);
+    expect(
+      find.text(
+        'Hesabınızı ve tüm indirme geçmişinizi kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      ),
+      findsOneWidget,
+    );
 
     final cancelButton = find.text('Vazgeç');
     expect(cancelButton, findsOneWidget);

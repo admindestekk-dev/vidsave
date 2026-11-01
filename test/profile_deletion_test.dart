@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,6 +69,7 @@ void main() {
       SecureAuthTokenStore.prefKeyUserName: 'Test Kullanıcı',
       SecureAuthTokenStore.prefKeyUserEmail: 'testuser@example.com',
       SubscriptionScreen.prefKeyIsPremium: true,
+      SubscriptionScreen.prefKeyPremiumUntil: '2099-12-31T23:59:59Z',
       WelcomeScreen.prefKeyHasSeenWelcome: true,
     });
   });
@@ -84,7 +86,10 @@ void main() {
       final client = MockClient((request) async {
         if (request.url.path == '/api/auth/delete-account') {
           deleteEndpointCalled = true;
-          return http.Response(jsonEncode({'status': 'ok', 'success': true}), 200);
+          return http.Response(
+            jsonEncode({'status': 'ok', 'success': true}),
+            200,
+          );
         }
         if (request.url.path == '/api/auth/me') {
           return http.Response(
@@ -143,6 +148,7 @@ void main() {
       expect(await tokenStore.readToken(), isNull);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool(SubscriptionScreen.prefKeyIsPremium), isNull);
+      expect(prefs.getString(SubscriptionScreen.prefKeyPremiumUntil), isNull);
     },
   );
 }

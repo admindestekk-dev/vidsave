@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -94,8 +95,15 @@ class SearchResultItem {
   factory SearchResultItem.fromJson(Map<String, dynamic> json) {
     return SearchResultItem(
       id: (json['id'] as String?) ?? '',
-      baslik: (json['baslik'] as String?) ?? (json['title'] as String?) ?? 'Bilinmeyen Başlık',
-      kanal: (json['kanal'] as String?) ?? (json['channel'] as String?) ?? (json['uploader'] as String?) ?? '',
+      baslik:
+          (json['baslik'] as String?) ??
+          (json['title'] as String?) ??
+          'Bilinmeyen Başlık',
+      kanal:
+          (json['kanal'] as String?) ??
+          (json['channel'] as String?) ??
+          (json['uploader'] as String?) ??
+          '',
       sure: (json['sure'] as String?) ?? (json['duration'] as String?) ?? '',
       url: (json['url'] as String?) ?? '',
     );
@@ -140,7 +148,8 @@ class ResolvedMedia {
   /// Audio effect filter ("normal", "nightcore", "bassboost")
   final String? audioEffect;
 
-  bool get requiresMuxing => audioUrl != null || audioByteStreamProvider != null;
+  bool get requiresMuxing =>
+      audioUrl != null || audioByteStreamProvider != null;
   bool get requiresAudioProcessing =>
       (startTime != null && startTime! > 0) ||
       (endTime != null && endTime! > 0) ||
@@ -176,7 +185,8 @@ String evrenselTemizUrl(String hamUrl) {
   }
 
   // Eğer metin bir arama sorgusuysa (boşluk içeriyor ve URL özellikleri taşımıyorsa) protokol ekleme
-  final hasUrlTraits = link.contains('/') || link.contains('.') || link.startsWith('http');
+  final hasUrlTraits =
+      link.contains('/') || link.contains('.') || link.startsWith('http');
   if (!hasUrlTraits) {
     return link;
   }
@@ -187,15 +197,24 @@ String evrenselTemizUrl(String hamUrl) {
   } else if (link.startsWith('https://')) {
     // geçerli https protokolü, koru
   } else if (RegExp(r'^https:/+', caseSensitive: false).hasMatch(link)) {
-    link = link.replaceFirst(RegExp(r'^https:/+', caseSensitive: false), 'https://');
+    link = link.replaceFirst(
+      RegExp(r'^https:/+', caseSensitive: false),
+      'https://',
+    );
   } else if (RegExp(r'^http:/+', caseSensitive: false).hasMatch(link)) {
-    link = link.replaceFirst(RegExp(r'^http:/+', caseSensitive: false), 'http://');
+    link = link.replaceFirst(
+      RegExp(r'^http:/+', caseSensitive: false),
+      'http://',
+    );
   } else {
     link = 'https://$link';
   }
 
   // 7. Protokolden hemen sonraki (host öncesi) fazla eğik çizgileri temizle (örn. https:////v16... -> https://v16...)
-  final protoMatch = RegExp(r'^(https?://)(.*)$', caseSensitive: false).firstMatch(link);
+  final protoMatch = RegExp(
+    r'^(https?://)(.*)$',
+    caseSensitive: false,
+  ).firstMatch(link);
   if (protoMatch != null) {
     final scheme = protoMatch.group(1)!;
     var rest = protoMatch.group(2)!;
@@ -644,6 +663,10 @@ class RemoteMediaResolver implements MediaResolver {
 /// Downloads [media] into the device's public `Download` folder while reporting
 /// byte-level progress, so the UI can show "indiriliyor… %42".
 class MediaDownloader {
+  static const MethodChannel _publicDownloadsChannel = MethodChannel(
+    'vidsave/public_downloads',
+  );
+
   MediaDownloader({
     http.Client? client,
     dio.Dio? dioClient,
@@ -669,9 +692,11 @@ class MediaDownloader {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
   }) async {
-    final cleanUrl = Uri.tryParse(evrenselTemizUrl(media.url.toString())) ?? media.url;
+    final cleanUrl =
+        Uri.tryParse(evrenselTemizUrl(media.url.toString())) ?? media.url;
     final cleanAudioUrl = media.audioUrl != null
-        ? (Uri.tryParse(evrenselTemizUrl(media.audioUrl.toString())) ?? media.audioUrl)
+        ? (Uri.tryParse(evrenselTemizUrl(media.audioUrl.toString())) ??
+              media.audioUrl)
         : null;
     final safeMedia = ResolvedMedia(
       url: cleanUrl,
@@ -724,11 +749,7 @@ class MediaDownloader {
     // Case 2: Post-processing needed for MP3 conversion, trimming or audio effects
     if (safeMedia.fileName.toLowerCase().endsWith('.mp3') ||
         safeMedia.requiresAudioProcessing) {
-      return _processAudioFile(
-        downloadedFile,
-        safeMedia,
-        directory,
-      );
+      return _processAudioFile(downloadedFile, safeMedia, directory);
     }
 
     await _publishToMediaStore(downloadedFile);
@@ -742,10 +763,13 @@ class MediaDownloader {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
   }) async {
-    final tempVideoName = 'temp_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
-    final tempAudioName = 'temp_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final tempVideoName =
+        'temp_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final tempAudioName =
+        'temp_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
 
-    final totalSize = (media.fileSizeInBytes ?? 0) + (media.audioFileSizeInBytes ?? 0);
+    final totalSize =
+        (media.fileSizeInBytes ?? 0) + (media.audioFileSizeInBytes ?? 0);
     int videoReceived = 0;
     int audioReceived = 0;
 
@@ -798,22 +822,22 @@ class MediaDownloader {
             timeout: timeout,
           )
         : (media.audioUrl != null
-            ? await _downloadSingleStream(
-                media.audioUrl!,
-                tempAudioName,
-                directory,
-                headers: media.downloadHeaders,
-                expectedSize: media.audioFileSizeInBytes,
-                onProgress: (received, total) {
-                  audioReceived = received;
-                  onProgress?.call(
-                    videoReceived + audioReceived,
-                    totalSize > 0 ? totalSize : null,
-                  );
-                },
-                timeout: timeout,
-              )
-            : null);
+              ? await _downloadSingleStream(
+                  media.audioUrl!,
+                  tempAudioName,
+                  directory,
+                  headers: media.downloadHeaders,
+                  expectedSize: media.audioFileSizeInBytes,
+                  onProgress: (received, total) {
+                    audioReceived = received;
+                    onProgress?.call(
+                      videoReceived + audioReceived,
+                      totalSize > 0 ? totalSize : null,
+                    );
+                  },
+                  timeout: timeout,
+                )
+              : null);
 
     if (audioFile == null) {
       return videoFile;
@@ -914,7 +938,9 @@ class MediaDownloader {
     } on TimeoutException {
       await sink.close();
       if (await file.exists()) await file.delete();
-      throw const MediaDownloadException('İndirme sırasında bağlantı zaman aşımına uğradı.');
+      throw const MediaDownloadException(
+        'İndirme sırasında bağlantı zaman aşımına uğradı.',
+      );
     } catch (error) {
       await sink.close();
       if (await file.exists()) await file.delete();
@@ -949,8 +975,7 @@ class MediaDownloader {
 
     // Platformların bot algılamasını ve 403 Forbidden engelini aşan yasal tarayıcı maskesi
     final browserHeaders = <String, String>{
-      'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': 'video/webm,video/mp4,video/*,audio/*,*/*;q=0.9',
       'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
       'Accept-Encoding': 'identity',
@@ -964,7 +989,8 @@ class MediaDownloader {
       'Sec-Fetch-Site': 'cross-site',
       'Sec-Fetch-User': '?1',
       'Upgrade-Insecure-Requests': '1',
-      'Referer': 'https://youtube.com', // Platform taklidi için dinamik değişebilir
+      'Referer':
+          'https://youtube.com', // Platform taklidi için dinamik değişebilir
       'Origin': 'https://youtube.com',
       ...headers,
     };
@@ -1020,28 +1046,35 @@ class MediaDownloader {
     // 3. AŞAMA: OTOMATİK TAMİR SİNYALİ (REMOTE CONFIG ENTEGRASYONU)
     // =========================================================================
     try {
-      final headResponse = await _dio.head<dynamic>(
-        effectiveUri.toString(),
-        options: dio.Options(
-          headers: browserHeaders,
-          followRedirects: true,
-          validateStatus: (status) => status != null && status < 500,
-        ),
-      ).timeout(const Duration(seconds: 15));
+      final headResponse = await _dio
+          .head<dynamic>(
+            effectiveUri.toString(),
+            options: dio.Options(
+              headers: browserHeaders,
+              followRedirects: true,
+              validateStatus: (status) => status != null && status < 500,
+            ),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (headResponse.statusCode == 200 || headResponse.statusCode == 206) {
         final contentTypeHeader =
-            (headResponse.headers.value('content-type') ?? '').toLowerCase().trim();
+            (headResponse.headers.value('content-type') ?? '')
+                .toLowerCase()
+                .trim();
         final contentLengthStr = headResponse.headers.value('content-length');
-        final contentLengthVal =
-            contentLengthStr != null ? int.tryParse(contentLengthStr) : null;
+        final contentLengthVal = contentLengthStr != null
+            ? int.tryParse(contentLengthStr)
+            : null;
 
         // 1. AŞAMA DENETİMİ: Content-Type kontrolü
-        final isBannedContentType = contentTypeHeader.contains('text/html') ||
+        final isBannedContentType =
+            contentTypeHeader.contains('text/html') ||
             contentTypeHeader.contains('application/json') ||
             contentTypeHeader.contains('text/plain');
 
-        final isMediaContentType = contentTypeHeader.startsWith('video/') ||
+        final isMediaContentType =
+            contentTypeHeader.startsWith('video/') ||
             contentTypeHeader.startsWith('audio/') ||
             contentTypeHeader.startsWith('image/') ||
             contentTypeHeader.contains('application/octet-stream') ||
@@ -1053,7 +1086,8 @@ class MediaDownloader {
             contentTypeHeader.contains('application/x-mpegurl') ||
             contentTypeHeader.contains('application/vnd.apple.mpegurl');
 
-        if (contentTypeHeader.isNotEmpty && (isBannedContentType || !isMediaContentType)) {
+        if (contentTypeHeader.isNotEmpty &&
+            (isBannedContentType || !isMediaContentType)) {
           // Derhal indirmeyi iptal et (abort), dosyayı diske yazma!
           if (await file.exists()) {
             try {
@@ -1082,13 +1116,16 @@ class MediaDownloader {
         // 2. AŞAMA DENETİMİ: Content-Length dosya boyutu güvenlik sigortası
         // Gelen HTML hata sayfaları genellikle 2 KB - 50 KB arasıdır.
         // Video için 1 MB, ses/MP3 için 10 KB altı ise indirmeyi durdur.
-        final isAudioTarget = targetFileName.toLowerCase().endsWith('.mp3') ||
+        final isAudioTarget =
+            targetFileName.toLowerCase().endsWith('.mp3') ||
             targetFileName.toLowerCase().endsWith('.m4a') ||
             targetFileName.toLowerCase().endsWith('.aac') ||
             targetFileName.toLowerCase().endsWith('.wav');
         final minAllowedBytes = isAudioTarget ? 10 * 1024 : kMinValidMediaBytes;
 
-        if (contentLengthVal != null && contentLengthVal > 0 && contentLengthVal < minAllowedBytes) {
+        if (contentLengthVal != null &&
+            contentLengthVal > 0 &&
+            contentLengthVal < minAllowedBytes) {
           if (await file.exists()) {
             try {
               await file.delete();
@@ -1124,27 +1161,30 @@ class MediaDownloader {
 
     // 1. Birincil İndirme Denemesi: Global Dio motoru ile Set-Cookie + Browser Headers Maskesi
     try {
-      await _dio.download(
-        effectiveUri.toString(),
-        file.path,
-        options: dio.Options(
-          headers: browserHeaders,
-          followRedirects: true,
-          validateStatus: (status) =>
-              status != null && status >= 200 && status < 300,
-        ),
-        deleteOnError: true,
-        onReceiveProgress: (received, total) {
-          final totalBytes = total > 0 ? total : expectedSize;
-          onProgress?.call(received, totalBytes);
-        },
-      ).timeout(timeout);
+      await _dio
+          .download(
+            effectiveUri.toString(),
+            file.path,
+            options: dio.Options(
+              headers: browserHeaders,
+              followRedirects: true,
+              validateStatus: (status) =>
+                  status != null && status >= 200 && status < 300,
+            ),
+            deleteOnError: true,
+            onReceiveProgress: (received, total) {
+              final totalBytes = total > 0 ? total : expectedSize;
+              onProgress?.call(received, totalBytes);
+            },
+          )
+          .timeout(timeout);
 
       if (await file.exists()) {
         final downloadedLength = await file.length();
 
         // 2. AŞAMA POST-DOWNLOAD SİGORTASI: İndirilen dosya video için 1 MB, MP3 için 10 KB altındaysa veya HTML içeriyorsa sil
-        final isAudioTarget = targetFileName.toLowerCase().endsWith('.mp3') ||
+        final isAudioTarget =
+            targetFileName.toLowerCase().endsWith('.mp3') ||
             targetFileName.toLowerCase().endsWith('.m4a') ||
             targetFileName.toLowerCase().endsWith('.aac') ||
             targetFileName.toLowerCase().endsWith('.wav');
@@ -1158,7 +1198,8 @@ class MediaDownloader {
           unawaited(
             RemoteConfigService.instance.reportBotBlockSignal(
               failedUrl: effectiveUri,
-              reason: 'Downloaded file smaller than 1MB: $downloadedLength bytes',
+              reason:
+                  'Downloaded file smaller than 1MB: $downloadedLength bytes',
               contentLength: downloadedLength,
             ),
           );
@@ -1182,9 +1223,7 @@ class MediaDownloader {
       }
       final statusCode = e.response?.statusCode;
       if (statusCode != null && (statusCode < 200 || statusCode >= 300)) {
-        throw MediaDownloadException(
-          'Medya indirilemedi (HTTP $statusCode).',
-        );
+        throw MediaDownloadException('Medya indirilemedi (HTTP $statusCode).');
       }
     } catch (_) {
       if (await file.exists()) {
@@ -1196,10 +1235,7 @@ class MediaDownloader {
 
     // 2. İkincil / Yedek İndirme Akışı (HTTP Client Streaming): Aynı başlık ve çerez maskesi ile
     final request = http.Request('GET', effectiveUri);
-    request.headers.addAll({
-      ...browserHeaders,
-      'Accept-Encoding': 'identity',
-    });
+    request.headers.addAll({...browserHeaders, 'Accept-Encoding': 'identity'});
 
     final http.StreamedResponse response;
     try {
@@ -1279,12 +1315,21 @@ class MediaDownloader {
     return file;
   }
 
-  /// Registers a freshly written file with the device media store.
+  /// Copies a finished download to the shared Downloads folder on Android and
+  /// registers supported media in the device gallery.
   ///
-  /// Best-effort: on platforms without a media store (or when the user has not
-  /// granted gallery access) we silently skip, because the file is already on
-  /// disk and the download itself succeeded.
+  /// Publishing is best-effort: the original downloaded file remains available
+  /// in the app even if the device does not allow exporting it.
   static Future<void> publishToMediaStore(File file) async {
+    if (Platform.isAndroid) {
+      final exported = await exportToPublicDownloads(file);
+      if (!exported) {
+        debugPrint(
+          'MediaDownloader: Dosya telefonun İndirilenler klasörüne aktarılamadı: ${file.path}',
+        );
+      }
+    }
+
     if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       final name = file.uri.pathSegments.last;
@@ -1302,8 +1347,43 @@ class MediaDownloader {
       }
       // Invalidate PhotoManager's internal cache so newly created files appear.
       await PhotoManager.clearFileCache();
-    } catch (_) {
-      // Ignore: publishing is a convenience, not a requirement.
+    } catch (error) {
+      debugPrint('MediaDownloader: Medya galerisine aktarılamadı: $error');
+    }
+  }
+
+  /// Writes the file into Android's shared `Download/VidSave` directory using
+  /// MediaStore, which works with scoped storage on modern Android versions.
+  static Future<bool> exportToPublicDownloads(File file) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      if (!await file.exists()) {
+        throw FileSystemException('İndirilen dosya bulunamadı.', file.path);
+      }
+      final savedUri = await _publicDownloadsChannel.invokeMethod<String>(
+        'saveToDownloads',
+        {'sourcePath': file.path, 'fileName': file.uri.pathSegments.last},
+      );
+      if (savedUri == null || savedUri.isEmpty) {
+        throw StateError('Android medya deposu kayıt konumu döndürmedi.');
+      }
+      debugPrint('MediaDownloader: Dosya telefona kaydedildi: $savedUri');
+      return true;
+    } on PlatformException catch (error) {
+      debugPrint(
+        'MediaDownloader: Ortak İndirilenler klasörüne kaydetme başarısız: '
+        '${error.message ?? error.code}',
+      );
+      return false;
+    } on MissingPluginException catch (error) {
+      debugPrint('MediaDownloader: Android kayıt servisi bulunamadı: $error');
+      return false;
+    } on FileSystemException catch (error) {
+      debugPrint('MediaDownloader: Dışa aktarılacak dosya okunamadı: $error');
+      return false;
+    } on StateError catch (error) {
+      debugPrint('MediaDownloader: Telefon depolama sonucu geçersiz: $error');
+      return false;
     }
   }
 
@@ -1339,7 +1419,11 @@ Future<Directory> _defaultDownloadDirectory() async {
       );
       if (extDownloads != null && extDownloads.isNotEmpty) {
         final dir = extDownloads.first;
-        if (await dir.exists() || (await dir.create(recursive: true).then((_) => true).catchError((_) => false))) {
+        if (await dir.exists() ||
+            (await dir
+                .create(recursive: true)
+                .then((_) => true)
+                .catchError((_) => false))) {
           return dir;
         }
       }
@@ -1354,7 +1438,9 @@ Future<Directory> _defaultDownloadDirectory() async {
         final directory = Directory(path);
         if (await directory.exists()) {
           // Verify directory is writable
-          final testFile = File('${directory.path}${Platform.pathSeparator}.vidsave_write_test');
+          final testFile = File(
+            '${directory.path}${Platform.pathSeparator}.vidsave_write_test',
+          );
           await testFile.writeAsString('test');
           await testFile.delete();
           return directory;
@@ -1368,7 +1454,9 @@ Future<Directory> _defaultDownloadDirectory() async {
   // 3. Guaranteed writable storage across all platforms and Android versions
   try {
     final base = await getApplicationDocumentsDirectory();
-    final downloadDir = Directory('${base.path}${Platform.pathSeparator}Download');
+    final downloadDir = Directory(
+      '${base.path}${Platform.pathSeparator}Download',
+    );
     if (!await downloadDir.exists()) {
       await downloadDir.create(recursive: true);
     }

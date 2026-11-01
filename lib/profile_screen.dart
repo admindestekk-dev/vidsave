@@ -13,11 +13,7 @@ import 'welcome_screen.dart';
 /// Google ile giriş yapmış kullanıcının profil fotoğrafını, adını,
 /// e-posta adresini ve Premium abonelik durumunu dinamik olarak gösterir.
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({
-    super.key,
-    this.authService,
-    this.onLoggedOut,
-  });
+  const ProfileScreen({super.key, this.authService, this.onLoggedOut});
 
   final AuthService? authService;
   final VoidCallback? onLoggedOut;
@@ -49,8 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final email = prefs.getString(SecureAuthTokenStore.prefKeyUserEmail) ?? '';
     final avatar =
         prefs.getString(SecureAuthTokenStore.prefKeyUserAvatarUrl) ?? '';
-    final isPremium =
-        prefs.getBool(SubscriptionScreen.prefKeyIsPremium) ?? false;
+    final isPremium = await SubscriptionScreen.readPremiumStatus();
 
     if (!mounted) return;
     setState(() {
@@ -94,11 +89,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 26),
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.redAccent,
+              size: 26,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                isTurkish ? 'Hesabı Kalıcı Olarak Sil' : 'Delete Account Permanently',
+                isTurkish
+                    ? 'Hesabı Kalıcı Olarak Sil'
+                    : 'Delete Account Permanently',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -112,21 +113,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
           isTurkish
               ? 'Hesabınızı ve sunucudaki tüm indirme geçmişinizi, üyelik kayıtlarınızı ve profil bilgilerinizi kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.'
               : 'Are you sure you want to permanently delete your account, subscription records, and profile data from our servers? This action cannot be undone.',
-          style: const TextStyle(color: Color(0xFFB0BEC5), fontSize: 14, height: 1.4),
+          style: const TextStyle(
+            color: Color(0xFFB0BEC5),
+            fontSize: 14,
+            height: 1.4,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(),
             child: Text(
               isTurkish ? 'Vazgeç' : 'Cancel',
-              style: const TextStyle(color: Color(0xFF8B9BA7), fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                color: Color(0xFF8B9BA7),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.redAccent,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             onPressed: () async {
               Navigator.of(dialogCtx).pop();
@@ -154,6 +164,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(SubscriptionScreen.prefKeyIsPremium);
       await prefs.remove(SubscriptionScreen.prefKeySubscribedAt);
+      await prefs.remove(SubscriptionScreen.prefKeyPremiumUntil);
       await prefs.remove(WelcomeScreen.prefKeyHasSeenWelcome);
       await prefs.remove(SecureAuthTokenStore.prefKeyUserName);
       await prefs.remove(SecureAuthTokenStore.prefKeyUserEmail);
@@ -185,8 +196,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final isTurkish =
-        l10n.locale.languageCode.toLowerCase() == 'tr';
+    final isTurkish = l10n.locale.languageCode.toLowerCase() == 'tr';
 
     return Scaffold(
       backgroundColor: _darkBackground,
@@ -200,9 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         centerTitle: true,
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: _brandColor),
-            )
+          ? const Center(child: CircularProgressIndicator(color: _brandColor))
           : SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               child: Column(
@@ -232,8 +240,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ? Image.network(
                                     _avatarUrl,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        _buildFallbackAvatar(),
+                                    errorBuilder: (
+                                      context,
+                                      error,
+                                      stackTrace,
+                                    ) => _buildFallbackAvatar(),
                                   )
                                 : _buildFallbackAvatar(),
                           ),
@@ -318,7 +329,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                isTurkish ? 'Üyelik Durumu' : 'Membership Status',
+                                isTurkish
+                                    ? 'Üyelik Durumu'
+                                    : 'Membership Status',
                                 style: const TextStyle(
                                   color: Color(0xFF8B9BA7),
                                   fontSize: 12,
@@ -329,9 +342,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               Text(
                                 _isPremium
                                     ? (isTurkish
-                                        ? 'VidSave Premium (Aktif)'
-                                        : 'VidSave Premium (Active)')
-                                    : (isTurkish ? 'Ücretsiz Üye' : 'Free Member'),
+                                          ? 'VidSave Premium (Aktif)'
+                                          : 'VidSave Premium (Active)')
+                                    : (isTurkish
+                                          ? 'Ücretsiz Üye'
+                                          : 'Free Member'),
                                 style: TextStyle(
                                   color: _isPremium
                                       ? const Color(0xFF1DB954)
@@ -383,7 +398,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton.icon(
-                      onPressed: () => _confirmDeleteAccount(context, isTurkish),
+                      onPressed: () =>
+                          _confirmDeleteAccount(context, isTurkish),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFD32F2F),
                         foregroundColor: Colors.white,
@@ -413,11 +429,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       color: const Color(0xFF2C353F),
       child: const Center(
-        child: Icon(
-          Icons.person_rounded,
-          color: Colors.white70,
-          size: 52,
-        ),
+        child: Icon(Icons.person_rounded, color: Colors.white70, size: 52),
       ),
     );
   }

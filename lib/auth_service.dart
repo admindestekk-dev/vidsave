@@ -153,7 +153,10 @@ class AuthService {
       } catch (e) {
         if (e is GoogleSignInException &&
             e.code == GoogleSignInExceptionCode.canceled) {
-          throw const AuthException('auth.cancelled', 'Google ile giriş iptal edildi.');
+          throw const AuthException(
+            'auth.cancelled',
+            'Google ile giriş iptal edildi.',
+          );
         }
         throw AuthException('auth.failed', 'Google ile giriş yapılamadı: $e');
       }
@@ -166,13 +169,22 @@ class AuthService {
 
     final prefs = await SharedPreferences.getInstance();
     if (effectiveEmail.isNotEmpty) {
-      await prefs.setString(SecureAuthTokenStore.prefKeyUserEmail, effectiveEmail);
+      await prefs.setString(
+        SecureAuthTokenStore.prefKeyUserEmail,
+        effectiveEmail,
+      );
     }
     if (effectiveName.isNotEmpty) {
-      await prefs.setString(SecureAuthTokenStore.prefKeyUserName, effectiveName);
+      await prefs.setString(
+        SecureAuthTokenStore.prefKeyUserName,
+        effectiveName,
+      );
     }
     if (effectiveAvatar.isNotEmpty) {
-      await prefs.setString(SecureAuthTokenStore.prefKeyUserAvatarUrl, effectiveAvatar);
+      await prefs.setString(
+        SecureAuthTokenStore.prefKeyUserAvatarUrl,
+        effectiveAvatar,
+      );
     }
 
     try {
@@ -193,8 +205,16 @@ class AuthService {
         final user = AuthUser.fromJson(userJson);
         await _tokenStore.saveToken(token);
         await _tokenStore.saveUserId(user.id);
-        if (data['is_premium'] == true) {
-          await prefs.setBool(SubscriptionScreen.prefKeyIsPremium, true);
+        final premiumUntilValue = data['premiumUntil'] ?? data['premium_until'];
+        final premiumUntil = premiumUntilValue is String
+            ? DateTime.tryParse(premiumUntilValue)
+            : null;
+        if (data['is_premium'] == true &&
+            premiumUntil != null &&
+            premiumUntil.isAfter(DateTime.now())) {
+          await SubscriptionScreen.savePremiumStatus(premiumUntil);
+        } else {
+          await SubscriptionScreen.clearPremiumStatus();
         }
         return user;
       }

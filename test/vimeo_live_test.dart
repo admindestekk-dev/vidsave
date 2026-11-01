@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vid_downloader_app/media_downloader.dart';
 import 'package:vid_downloader_app/universal_scraper.dart';

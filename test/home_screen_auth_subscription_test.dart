@@ -38,9 +38,9 @@ class _MemoryTokenStore implements AuthTokenStore {
 class _SettingsStore implements BackendSettingsStore {
   @override
   Future<BackendSettings> load() async => const BackendSettings(
-        baseUrl: 'https://api.vidsave.test',
-        apiKey: 'test-api-key',
-      );
+    baseUrl: 'https://api.vidsave.test',
+    apiKey: 'test-api-key',
+  );
 
   @override
   Future<void> save(BackendSettings settings) async {}
@@ -96,10 +96,7 @@ void main() {
         await tester.pumpWidget(
           _buildTestApp(
             child: Scaffold(
-              body: PremiumBanner(
-                authService: auth,
-                store: _SettingsStore(),
-              ),
+              body: PremiumBanner(authService: auth, store: _SettingsStore()),
             ),
           ),
         );
@@ -116,8 +113,8 @@ void main() {
 
         // Since user was already logged in, SubscriptionScreen should be opened directly!
         expect(find.byType(SubscriptionScreen), findsOneWidget);
-        expect(find.text('Aylık Sadece 9,99 TL - KDV Dahil'), findsOneWidget);
-        expect(find.text('9,99 TL / Ay - Abone Ol'), findsOneWidget);
+        expect(find.text('Mağaza fiyatı alınamadı'), findsOneWidget);
+        expect(find.text('Ürün yüklenemedi'), findsOneWidget);
         // Login modal must NOT be open
         expect(find.text('Pro Sürüme Geçmek İçin Giriş Yapın'), findsNothing);
       },
@@ -213,7 +210,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(SubscriptionScreen), findsOneWidget);
-        expect(find.text('Aylık Sadece 9,99 TL - KDV Dahil'), findsOneWidget);
+        expect(find.text('Mağaza fiyatı alınamadı'), findsOneWidget);
       },
     );
 
@@ -240,8 +237,9 @@ void main() {
                 'subscription': {
                   'amount': 9.99,
                   'currency': 'TRY',
+                  'premiumUntil': '2099-11-18T12:00:00Z',
                   'receiptMessage':
-                      'Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!',
+                      'Geliştirici test aboneliği etkinleştirildi.',
                 },
               }),
               200,
@@ -268,7 +266,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        final subscribeButton = find.text('9,99 TL / Ay - Abone Ol');
+        final subscribeButton = find.text('Ürün yüklenemedi');
         expect(subscribeButton, findsOneWidget);
         await tester.tap(subscribeButton);
         await tester.pump();

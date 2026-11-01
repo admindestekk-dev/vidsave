@@ -133,7 +133,7 @@ void main() {
   });
 
   testWidgets(
-      'Downloaded MP3s appear in the bottom navigation "Müzik" tab and can be played',
+      'Downloaded MP3s appear in DownloadsScreen via audio category card and can be played',
       (tester) async {
     final fakePlayer = _FakeMusicPlayer();
 
@@ -162,7 +162,8 @@ void main() {
 
     // 3. Şarkı kartına tıkla ve müzik çaların açıldığını doğrula
     await tester.tap(find.text('favori_sarki.mp3'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.byType(MusicPlayerScreen), findsOneWidget);
     expect(find.text('favori_sarki.mp3'), findsWidgets);
@@ -178,4 +179,3 @@ class _EmptyBackendSettingsStore implements BackendSettingsStore {
   @override
   Future<void> save(BackendSettings settings) async {}
 }
-

@@ -68,8 +68,9 @@ class MyApp extends StatelessWidget {
           systemNavigationBarColor: isDark
               ? ThemeService.darkBackgroundColor
               : ThemeService.lightBackgroundColor,
-          systemNavigationBarIconBrightness:
-              isDark ? Brightness.light : Brightness.dark,
+          systemNavigationBarIconBrightness: isDark
+              ? Brightness.light
+              : Brightness.dark,
         );
 
         return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -601,8 +602,10 @@ class _DownloadPageState extends State<_DownloadPage> {
       });
     } catch (error, stack) {
       debugPrint('Tile download error: $error\n$stack');
-      final errorMsg =
-          DownloadExceptionHandler.getFriendlyMessage(error, context);
+      final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
+        error,
+        context,
+      );
       if (!mounted) return;
       setState(() {
         _stateOf(platform)
@@ -1049,35 +1052,35 @@ class _BackendSettingsPageState extends State<_BackendSettingsPage> {
 
 class _MediaItemEntry {
   _MediaItemEntry.fromAsset(AssetEntity assetEntity)
-      : asset = assetEntity,
-        id = assetEntity.id,
-        title = null,
-        file = null,
-        fileSizeInBytes = null,
-        durationSeconds = assetEntity.duration,
-        dateTime = assetEntity.createDateTime.toLocal(),
-        isVideo = assetEntity.type == AssetType.video;
+    : asset = assetEntity,
+      id = assetEntity.id,
+      title = null,
+      file = null,
+      fileSizeInBytes = null,
+      durationSeconds = assetEntity.duration,
+      dateTime = assetEntity.createDateTime.toLocal(),
+      isVideo = assetEntity.type == AssetType.video;
 
   _MediaItemEntry.fromDownload(DownloadItemModel item, File f)
-      : id = item.id,
-        title = item.name,
-        file = f,
-        fileSizeInBytes = item.sizeInBytes,
-        durationSeconds = 0,
-        dateTime = item.downloadedAt.toLocal(),
-        asset = null,
-        isVideo = item.type == 'video';
+    : id = item.id,
+      title = item.name,
+      file = f,
+      fileSizeInBytes = item.sizeInBytes,
+      durationSeconds = 0,
+      dateTime = item.downloadedAt.toLocal(),
+      asset = null,
+      isVideo = item.type == 'video';
 
   _MediaItemEntry.fromFile(File targetFile, {required this.isVideo})
-      : file = targetFile,
-        id = targetFile.path,
-        title = targetFile.uri.pathSegments.last,
-        fileSizeInBytes = targetFile.existsSync() ? targetFile.lengthSync() : 0,
-        durationSeconds = 0,
-        dateTime = targetFile.existsSync()
-            ? targetFile.lastModifiedSync().toLocal()
-            : DateTime.now(),
-        asset = null;
+    : file = targetFile,
+      id = targetFile.path,
+      title = targetFile.uri.pathSegments.last,
+      fileSizeInBytes = targetFile.existsSync() ? targetFile.lengthSync() : 0,
+      durationSeconds = 0,
+      dateTime = targetFile.existsSync()
+          ? targetFile.lastModifiedSync().toLocal()
+          : DateTime.now(),
+      asset = null;
 
   final String id;
   final String? title;
@@ -1266,8 +1269,9 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
       if (_page == 0) {
         final downloadedItems = await StorageService.getItems();
         for (final item in downloadedItems) {
-          final isMatchingType =
-              isAudioType ? item.type == 'audio' : item.type == 'video';
+          final isMatchingType = isAudioType
+              ? item.type == 'audio'
+              : item.type == 'video';
           if (!isMatchingType) continue;
 
           final file = File(item.filePath);
@@ -1289,7 +1293,7 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
 
             for (final p in const [
               '/storage/emulated/0/Download',
-              '/storage/emulated/0/Music'
+              '/storage/emulated/0/Music',
             ]) {
               final d = Directory(p);
               if (!d.existsSync()) continue;
@@ -1298,8 +1302,9 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
                 for (final entity in entities) {
                   if (entity is! File) continue;
                   final name = entity.path.toLowerCase();
-                  final matchesExt =
-                      targetExtensions.any((ext) => name.endsWith(ext));
+                  final matchesExt = targetExtensions.any(
+                    (ext) => name.endsWith(ext),
+                  );
                   if (matchesExt && !_knownPathsAndIds.contains(entity.path)) {
                     _knownPathsAndIds.add(entity.path);
                     _entries.add(
@@ -1607,10 +1612,10 @@ class _MediaAssetTileState extends State<_MediaAssetTile> {
                           final title = snapshot.hasError
                               ? 'Ad okunamadı: ${snapshot.error}'
                               : snapshot.data ??
-                                  (snapshot.connectionState ==
-                                          ConnectionState.waiting
-                                      ? 'Medya adı yükleniyor…'
-                                      : 'Adsız medya');
+                                    (snapshot.connectionState ==
+                                            ConnectionState.waiting
+                                        ? 'Medya adı yükleniyor…'
+                                        : 'Adsız medya');
                           return Text(
                             title,
                             maxLines: 1,
@@ -2092,8 +2097,10 @@ class _PlatformSearchDownloadModalState
         }
       });
     } catch (error) {
-      final errorMsg =
-          DownloadExceptionHandler.getFriendlyMessage(error, context);
+      final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
+        error,
+        context,
+      );
       if (!mounted) return;
       setState(() {
         _downloading = false;
@@ -2193,8 +2200,10 @@ class _PlatformSearchDownloadModalState
         }
       });
     } catch (error) {
-      final errorMsg =
-          DownloadExceptionHandler.getFriendlyMessage(error, context);
+      final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
+        error,
+        context,
+      );
       if (!mounted) return;
       setState(() {
         _downloading = false;
@@ -2290,7 +2299,7 @@ class _PlatformSearchDownloadModalState
                   _searching || _downloading ? null : _handleSearch(),
               decoration: InputDecoration(
                 labelText: widget.platform.isAudio
-                    ? 'Müzik ara veya Video linki yapıştırın (YouTube, TikTok, IG vb.)'
+                    ? 'Müzik ara veya Video linki yapıştırın (TikTok, IG vb.)'
                     : 'Video ara veya bağlantı yapıştırın',
                 hintText: widget.platform.isAudio
                     ? 'Şarkı adı veya video linki yapıştırın'
@@ -2598,12 +2607,18 @@ class _PlatformSearchDownloadModalState
                                       SizedBox(
                                         width: 80,
                                         child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(4),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
                                           child: LinearProgressIndicator(
                                             value: _downloadProgress,
                                             minHeight: 6,
-                                            backgroundColor: primaryColor.withValues(alpha: 0.2),
-                                            valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                                            backgroundColor: primaryColor
+                                                .withValues(alpha: 0.2),
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                  primaryColor,
+                                                ),
                                           ),
                                         ),
                                       ),
@@ -2897,8 +2912,12 @@ class _PlatformSearchDownloadModalState
                                     child: LinearProgressIndicator(
                                       value: _downloadProgress,
                                       minHeight: 6,
-                                      backgroundColor: primaryColor.withValues(alpha: 0.2),
-                                      valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                                      backgroundColor: primaryColor.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        primaryColor,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -2931,11 +2950,12 @@ class _PlatformSearchDownloadModalState
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                               ),
-                              icon: const Icon(Icons.download_rounded, size: 16),
+                              icon: const Icon(
+                                Icons.download_rounded,
+                                size: 16,
+                              ),
                               label: Text(
-                                widget.platform.isAudio
-                                    ? 'MP3 İNDİR'
-                                    : 'İNDİR',
+                                widget.platform.isAudio ? 'MP3 İNDİR' : 'İNDİR',
                                 style: const TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w800,

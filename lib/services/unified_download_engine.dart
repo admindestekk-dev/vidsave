@@ -36,7 +36,8 @@ class UnifiedDownloadEngine {
     final isUrl =
         cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://');
 
-    final isCustomTestResolver = fallbackResolver != null &&
+    final isCustomTestResolver =
+        fallbackResolver != null &&
         fallbackResolver is! BackendMediaResolver &&
         fallbackResolver is! ClientMediaResolver;
 
@@ -144,7 +145,8 @@ class UnifiedDownloadEngine {
       // -----------------------------------------------------------------------
       // 1. AŞAMA: HIZLI İNDİRME PANELİ SUNUCU ALTYAPISI (ApiService Render Pro)
       // -----------------------------------------------------------------------
-      final isCustomTestResolver = fallbackResolver != null &&
+      final isCustomTestResolver =
+          fallbackResolver != null &&
           fallbackResolver is! BackendMediaResolver &&
           fallbackResolver is! ClientMediaResolver;
 
@@ -201,8 +203,7 @@ class UnifiedDownloadEngine {
                 : '${safeName}_$copyIndex';
             copyIndex++;
           }
-          final savePath =
-              '${appDir.path}${Platform.pathSeparator}$uniqueName';
+          final savePath = '${appDir.path}${Platform.pathSeparator}$uniqueName';
 
           final downloadedFile = await ApiService.instance.downloadFile(
             downloadUrl: analyzeResult.downloadUrl,
@@ -283,8 +284,9 @@ class UnifiedDownloadEngine {
 
           DownloadManager.instance.completeTask(taskId);
 
-          // Sistem galerisine/medya deposuna güvenle kaydet
-          unawaited(MediaDownloader.publishToMediaStore(downloadedFile));
+          // Keep the file available to other apps, including the phone's
+          // shared Downloads folder, as well as in VidSave's own library.
+          await MediaDownloader.publishToMediaStore(downloadedFile);
 
           // İndirme bitince sesli onay bildirimi fırlat
           await notifService.showCompleted(
@@ -307,7 +309,8 @@ class UnifiedDownloadEngine {
       final kind = isAudio ? DownloadKind.audio : DownloadKind.video;
       final effectiveUri = Uri.tryParse(targetUrl) ?? Uri.parse(rawUrl);
 
-      final resolver = (fallbackResolver != null &&
+      final resolver =
+          (fallbackResolver != null &&
               fallbackResolver is! BackendMediaResolver)
           ? fallbackResolver
           : ClientMediaResolver();
@@ -410,8 +413,6 @@ class UnifiedDownloadEngine {
       );
 
       DownloadManager.instance.completeTask(taskId);
-
-      unawaited(MediaDownloader.publishToMediaStore(downloadedFile));
 
       await notifService.showCompleted(
         id: notificationId,

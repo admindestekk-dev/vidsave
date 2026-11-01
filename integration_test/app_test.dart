@@ -344,10 +344,10 @@ void main() {
       );
       await tester.pumpAndSettle(const Duration(seconds: 1));
 
-      expect(find.text('Müzik ara veya Video linki yapıştırın (YouTube, TikTok, IG vb.)'), findsOneWidget);
+      expect(find.text('Müzik ara veya Video linki yapıştırın (TikTok, IG vb.)'), findsOneWidget);
       final musicSearchInput = find.widgetWithText(
         TextField,
-        'Müzik ara veya Video linki yapıştırın (YouTube, TikTok, IG vb.)',
+        'Müzik ara veya Video linki yapıştırın (TikTok, IG vb.)',
       );
       await tester.enterText(musicSearchInput, 'Barış Manço');
       await tester.pump();
