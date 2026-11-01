@@ -2,11 +2,14 @@ package com.example.vid_downloader_app
 
 import android.Manifest
 import android.content.ContentValues
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -18,6 +21,7 @@ import java.util.Locale
 class MainActivity : FlutterActivity() {
     companion object {
         private const val DOWNLOADS_CHANNEL = "vidsave/public_downloads"
+        private const val OVERLAY_CHANNEL = "vidsave/external_app_download_overlay"
         private const val WRITE_STORAGE_REQUEST = 4207
     }
 
@@ -60,6 +64,110 @@ class MainActivity : FlutterActivity() {
             }
 
             exportFile(sourcePath, fileName, result)
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            OVERLAY_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getStatus" -> result.success(
+                    mapOf(
+                        "canDrawOverlays" to ExternalAppOverlayPermissions.canDrawOverlays(this),
+                        "hasUsageAccess" to ExternalAppOverlayPermissions.hasUsageAccess(this),
+                        "enabled" to getSharedPreferences(
+                            ExternalAppDownloadOverlayService.PREFERENCES,
+                            MODE_PRIVATE,
+                        ).getBoolean(
+                            ExternalAppDownloadOverlayService.ENABLED_KEY,
+                            false,
+                        ),
+                    ),
+                )
+                "requestNextPermission" -> {
+                    when {
+                        !ExternalAppOverlayPermissions.canDrawOverlays(this) -> {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:$packageName"),
+                                ),
+                            )
+                        }
+                        !ExternalAppOverlayPermissions.hasUsageAccess(this) -> {
+                            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                        }
+                    }
+                    result.success(null)
+                }
+                "start" -> {
+                    if (!ExternalAppOverlayPermissions.canDrawOverlays(this) ||
+                        !ExternalAppOverlayPermissions.hasUsageAccess(this)
+                    ) {
+                        result.error(
+                            "permissions_required",
+                            "Ekran üstü görüntüleme ve kullanım erişimi izinleri gerekli.",
+                            null,
+                        )
+                    } else {
+                        getSharedPreferences(
+                            ExternalAppDownloadOverlayService.PREFERENCES,
+                            MODE_PRIVATE,
+                        ).edit().putBoolean(
+                            ExternalAppDownloadOverlayService.ENABLED_KEY,
+                            true,
+                        ).apply()
+                        startOverlayService()
+                        result.success(null)
+                    }
+                }
+                "stop" -> {
+                    getSharedPreferences(
+                        ExternalAppDownloadOverlayService.PREFERENCES,
+                        MODE_PRIVATE,
+                    ).edit().putBoolean(
+                        ExternalAppDownloadOverlayService.ENABLED_KEY,
+                        false,
+                    ).apply()
+                    stopService(
+                        Intent(this, ExternalAppDownloadOverlayService::class.java),
+                    )
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val enabled = getSharedPreferences(
+            ExternalAppDownloadOverlayService.PREFERENCES,
+            MODE_PRIVATE,
+        ).getBoolean(ExternalAppDownloadOverlayService.ENABLED_KEY, false)
+        val hasPermissions =
+            ExternalAppOverlayPermissions.canDrawOverlays(this) &&
+                ExternalAppOverlayPermissions.hasUsageAccess(this)
+        if (enabled && hasPermissions) {
+            startOverlayService()
+        } else if (enabled) {
+            getSharedPreferences(
+                ExternalAppDownloadOverlayService.PREFERENCES,
+                MODE_PRIVATE,
+            ).edit().putBoolean(
+                ExternalAppDownloadOverlayService.ENABLED_KEY,
+                false,
+            ).apply()
+            stopService(Intent(this, ExternalAppDownloadOverlayService::class.java))
+        }
+    }
+
+    private fun startOverlayService() {
+        val serviceIntent = Intent(this, ExternalAppDownloadOverlayService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
         }
     }
 

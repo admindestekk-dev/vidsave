@@ -54,6 +54,16 @@ enum NavigationActionPolicy {
   ALLOW,
 }
 
+bool isDownloadButtonAllowedUrl(String url) {
+  final uri = Uri.tryParse(url.trim());
+  if (uri == null ||
+      uri.host.isEmpty ||
+      (!uri.isScheme('http') && !uri.isScheme('https'))) {
+    return false;
+  }
+  return !isYouTubeUrl(url);
+}
+
 /// Harici şemaları (fb://, whatsapp://, intent:// vb.) havada yakalayan ve
 /// net::ERR_UNKNOWN_URL_SCHEME beyaz ekran hatasını önleyen güvenlik filtresi.
 NavigationActionPolicy shouldOverrideUrlLoading(String url) {
@@ -100,6 +110,8 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   bool _isLoading = true;
   String? _detectedVideoUrl;
   bool _isVideoActive = false;
+  bool _isDownloadButtonAllowedForPage = false;
+  bool _showDownloadButton = true;
   String _pageTitle = '';
   static const Color _neonOrange = Color(0xFFFF5436);
 
@@ -172,6 +184,9 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
             }
             if (validPage != null && validPage.isNotEmpty) {
               _urlBarController.text = validPage;
+              _isDownloadButtonAllowedForPage = isDownloadButtonAllowedUrl(
+                validPage,
+              );
             }
           });
           return;
@@ -465,6 +480,9 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   void initState() {
     super.initState();
     _urlBarController.text = widget.initialUrl;
+    _isDownloadButtonAllowedForPage = isDownloadButtonAllowedUrl(
+      widget.initialUrl,
+    );
   }
 
   @override
@@ -528,6 +546,35 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         );
       },
     );
+  }
+
+  Future<void> _confirmCloseDownloadButton() async {
+    final shouldClose = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('close_download_button_confirmation'),
+        title: const Text('VidSave İndirme Butonu Kapatılıyor'),
+        content: const Text(
+          'VidSave İndir butonunu bu tarayıcı sekmesi için kapatmak istiyor musunuz?',
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey('cancel_close_download_button'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('VAZGEÇ'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm_close_download_button'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('KAPAT'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldClose == true && mounted) {
+      setState(() => _showDownloadButton = false);
+    }
   }
 
   /// Geri tuşu aksiyonunu yönetir.
@@ -614,11 +661,13 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       },
       onLoadStart: (controller, url) {
         if (!mounted) return;
+        final pageUrl = url?.toString() ?? '';
         setState(() {
           _isLoading = true;
-          _urlBarController.text = url?.toString() ?? '';
+          _urlBarController.text = pageUrl;
           _detectedVideoUrl = null;
           _isVideoActive = false;
+          _isDownloadButtonAllowedForPage = isDownloadButtonAllowedUrl(pageUrl);
         });
       },
       onLoadStop: (controller, url) async {
@@ -699,75 +748,51 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
               ),
           ],
         ),
-        // Sayfa açıldığı andan itibaren görünen VidSave İndir butonu:
-        // Henüz bir video açılmamışsa (video algılanmamışsa) pasif görünür ve tıklanamaz.
-        // Herhangi bir video açıldığında aktifleşir, parlar ve indirmeye hazır olur.
-        floatingActionButton: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(32),
-            boxShadow: _isVideoActive
-                ? [
-                    BoxShadow(
-                      color: _neonOrange.withValues(alpha: 0.45),
-                      blurRadius: 18,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 4),
+        floatingActionButton:
+            _isDownloadButtonAllowedForPage && _showDownloadButton
+            ? Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Tooltip(
+                    message: 'VidSave İndir',
+                    child: FloatingActionButton.small(
+                      key: const ValueKey('browser_download_button'),
+                      heroTag: 'browser_download_button',
+                      onPressed: _isVideoActive ? _triggerDownload : null,
+                      backgroundColor: _isVideoActive
+                          ? _neonOrange
+                          : const Color(0xFF2C323B).withValues(alpha: 0.9),
+                      foregroundColor: _isVideoActive
+                          ? Colors.white
+                          : Colors.white54,
+                      child: const Icon(Icons.download_rounded),
                     ),
-                  ]
-                : null,
-          ),
-          child: FloatingActionButton.extended(
-            onPressed: _isVideoActive ? _triggerDownload : null,
-            elevation: _isVideoActive ? 6 : 0,
-            highlightElevation: _isVideoActive ? 10 : 0,
-            backgroundColor: _isVideoActive
-                ? _neonOrange
-                : const Color(0xFF2C323B).withValues(alpha: 0.85),
-            foregroundColor: _isVideoActive ? Colors.white : Colors.white38,
-            icon: Icon(
-              _isVideoActive ? Icons.bolt_rounded : Icons.videocam_outlined,
-              color: _isVideoActive ? Colors.white : Colors.white38,
-              size: 22,
-            ),
-            label: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'VidSave İndir',
-                  style: TextStyle(
-                    color: _isVideoActive ? Colors.white : Colors.white38,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
-                    letterSpacing: 0.5,
                   ),
-                ),
-                if (!_isVideoActive) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white10,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      'Video Bekleniyor',
-                      style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
+                  Positioned(
+                    top: -7,
+                    right: -7,
+                    child: Material(
+                      color: const Color(0xFF303943),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        key: const ValueKey('close_browser_download_button'),
+                        customBorder: const CircleBorder(),
+                        onTap: _confirmCloseDownloadButton,
+                        child: const SizedBox(
+                          width: 23,
+                          height: 23,
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                            size: 15,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ],
-              ],
-            ),
-          ),
-        ),
+              )
+            : null,
       ),
     );
   }

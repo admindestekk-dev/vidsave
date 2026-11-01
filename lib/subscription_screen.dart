@@ -96,6 +96,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _isAvailable = false;
   bool _loading = false;
   bool _isPremiumActive = false;
+  bool _offlineSandboxMode = false;
   String? _receiptMessage;
   ProductDetails? _monthlyProduct;
 
@@ -149,7 +150,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     try {
       final available = await _inAppPurchase.isAvailable();
       if (!available) {
-        if (mounted) setState(() => _isAvailable = false);
+        if (mounted) {
+          setState(() {
+            _isAvailable = false;
+            _offlineSandboxMode = kDebugMode;
+          });
+        }
         return;
       }
 
@@ -171,10 +177,19 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         setState(() {
           _isAvailable = true;
           _monthlyProduct = product;
+          _offlineSandboxMode =
+              kDebugMode && (response.error != null || product == null);
         });
       }
     } catch (e) {
       debugPrint('Error querying Google Play products: $e');
+      if (mounted) {
+        setState(() {
+          _isAvailable = false;
+          _monthlyProduct = null;
+          _offlineSandboxMode = kDebugMode;
+        });
+      }
     }
   }
 
@@ -382,6 +397,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Future<void> _handleSubscribe() async {
     if (_loading || _isPremiumActive) return;
 
+    if (_offlineSandboxMode && kDebugMode) {
+      await _satinAlmaBasarili();
+      return;
+    }
+
     // isPlayStoreLive == true (Gelecekteki resmi mağaza durumu):
     // Buton doğrudan resmi Google Play Store ödeme penceresini açar.
     if (_liveMode) {
@@ -419,6 +439,67 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     // The test endpoint is available only in debug builds.
     await _handleFallbackDirectSubscribe();
+  }
+
+  Future<void> _satinAlmaBasarili() async {
+    if (!kDebugMode || !_offlineSandboxMode || _loading || _isPremiumActive) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _receiptMessage = null;
+    });
+
+    try {
+      final premiumUntil = DateTime.now().add(const Duration(days: 30));
+      await SubscriptionScreen.savePremiumStatus(premiumUntil);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        SubscriptionScreen.prefKeySubscribedAt,
+        DateTime.now().toIso8601String(),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isTurkish(context)
+                ? 'Test Premium durumu kaydedilemedi: $error'
+                : 'Could not save test Premium status: $error',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    final isTurkish = _isTurkish(context);
+    final receipt = isTurkish
+        ? 'Çevrimdışı test: Premium 30 gün boyunca etkinleştirildi. Gerçek ödeme alınmadı.'
+        : 'Offline test: Premium enabled for 30 days. No real payment was charged.';
+    setState(() {
+      _loading = false;
+      _isPremiumActive = true;
+      _receiptMessage = receipt;
+    });
+
+    _confettiController.play();
+    widget.onSubscribed?.call();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(receipt),
+        backgroundColor: const Color(0xFF0E7C4B),
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _handleFallbackDirectSubscribe() async {
@@ -563,15 +644,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final lang = _getLanguageCode(context);
     final isTurkish = lang == 'tr';
 
-    final productPrice =
-        _monthlyProduct?.price ??
-        (_liveMode ? null : (isTurkish ? '9,99 TL' : '\$0.99'));
-    final priceTitle = productPrice == null
+    final productPrice = _offlineSandboxMode
+        ? '29.99 TL'
+        : _monthlyProduct?.price ??
+              (_liveMode ? null : (isTurkish ? '9,99 TL' : '\$0.99'));
+    final priceTitle = _offlineSandboxMode
+        ? '29.99 TL / Ay'
+        : productPrice == null
         ? (isTurkish ? 'Mağaza fiyatı alınamadı' : 'Store price unavailable')
         : isTurkish
         ? 'Aylık $productPrice'
         : '$productPrice / month';
-    final taxFootnote = !_liveMode
+    final taxFootnote = _offlineSandboxMode
+        ? (isTurkish
+              ? 'Çevrimdışı test modu: Gerçek ödeme alınmaz.'
+              : 'Offline test mode: No real payment is charged.')
+        : !_liveMode
         ? (isTurkish
               ? 'Test modu: Gerçek ödeme alınmaz.'
               : 'Test mode: No real payment is charged.')
@@ -580,6 +668,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         : 'Price and applicable taxes are set by the store.';
     final buttonText = _isPremiumActive
         ? (isTurkish ? 'Premium Aktif' : 'Premium Active')
+        : _offlineSandboxMode
+        ? 'Aboneliği Başlat (Test Sürümü)'
         : productPrice == null
         ? (isTurkish ? 'Ürün yüklenemedi' : 'Product unavailable')
         : isTurkish
@@ -588,7 +678,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final canSubscribe =
         !_loading &&
         !_isPremiumActive &&
-        (!_liveMode || (_isAvailable && _monthlyProduct != null));
+        (_offlineSandboxMode ||
+            !_liveMode ||
+            (_isAvailable && _monthlyProduct != null));
 
     return Scaffold(
       backgroundColor: _darkBackground,

@@ -411,7 +411,11 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
             musicPlayerFactory: widget.musicPlayerFactory,
             videoPlayerControllerFactory: widget.videoPlayerControllerFactory,
           ),
-          MoreScreen(store: _backendSettingsStore, resolver: _backendResolver),
+          MoreScreen(
+            store: _backendSettingsStore,
+            resolver: _backendResolver,
+            onPremiumActivated: () => _onDestinationSelected(_homeIndex),
+          ),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(

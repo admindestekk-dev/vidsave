@@ -39,10 +39,12 @@ class _FakeInAppPurchase extends Fake implements InAppPurchase {
   _FakeInAppPurchase({
     this.price = '9,99 TL',
     this.hasProduct = true,
+    this.throwOnQuery = false,
   });
 
   final String price;
   final bool hasProduct;
+  final bool throwOnQuery;
   final purchaseStreamController =
       StreamController<List<PurchaseDetails>>.broadcast();
   bool buyNonConsumableCalled = false;
@@ -59,6 +61,9 @@ class _FakeInAppPurchase extends Fake implements InAppPurchase {
   Future<ProductDetailsResponse> queryProductDetails(
     Set<String> identifiers,
   ) async {
+    if (throwOnQuery) {
+      throw StateError('Store unavailable');
+    }
     return ProductDetailsResponse(
       productDetails: hasProduct
           ? [
@@ -149,7 +154,7 @@ void main() {
     expect(find.text('9,99 TL / Ay - Abone Ol'), findsOneWidget);
   });
 
-  testWidgets('debug test mode shows price and activates without a store product', (
+  testWidgets('offline sandbox activates Premium without store or backend', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -158,24 +163,8 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final fakeIap = _FakeInAppPurchase(hasProduct: false);
-    var testSubscribeCalled = false;
     final client = MockClient((request) async {
-      expect(request.url.path, '/api/auth/subscribe-monthly');
-      testSubscribeCalled = true;
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'subscription': {
-            'amount': 9.99,
-            'currency': 'TRY',
-            'premiumUntil': '2099-11-18T12:00:00Z',
-            'receiptMessage':
-                'Test aboneliği etkinleştirildi: 9,99 TL/ay (gerçek ödeme alınmadı).',
-          },
-        }),
-        200,
-        headers: {'content-type': 'application/json'},
-      );
+      fail('Offline sandbox must not make network requests: ${request.url}');
     });
 
     await tester.pumpWidget(
@@ -190,19 +179,92 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Aylık 9,99 TL'), findsOneWidget);
-    expect(find.text('Test modu: Gerçek ödeme alınmaz.'), findsOneWidget);
-    final button = find.text('9,99 TL / Ay - Abone Ol');
+    expect(find.text('29.99 TL / Ay'), findsOneWidget);
+    expect(
+      find.text('Çevrimdışı test modu: Gerçek ödeme alınmaz.'),
+      findsOneWidget,
+    );
+    final button = find.text('Aboneliği Başlat (Test Sürümü)');
     expect(button, findsOneWidget);
     await tester.ensureVisible(button);
     await tester.tap(button);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(testSubscribeCalled, isTrue);
     expect(fakeIap.buyNonConsumableCalled, isFalse);
     expect(find.text('PREMIUM AKTİF'), findsOneWidget);
     expect(await SubscriptionScreen.readPremiumStatus(), isTrue);
+    final prefs = await SharedPreferences.getInstance();
+    expect(
+      DateTime.parse(prefs.getString(SubscriptionScreen.prefKeyPremiumUntil)!)
+          .isAfter(DateTime.now()),
+      isTrue,
+    );
+    await fakeIap.purchaseStreamController.close();
+  });
+
+  testWidgets('offline sandbox returns to the home route after activation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final fakeIap = _FakeInAppPurchase(hasProduct: false);
+    var premiumActivated = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => SubscriptionScreen(
+                      inAppPurchase: fakeIap,
+                      onSubscribed: () => premiumActivated = true,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Home Route'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Home Route'), findsOneWidget);
+    await tester.tap(find.text('Home Route'));
+    await tester.pumpAndSettle();
+    final button = find.text('Aboneliği Başlat (Test Sürümü)');
+    expect(button, findsOneWidget);
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Home Route'), findsOneWidget);
+    expect(find.byType(SubscriptionScreen), findsNothing);
+    expect(premiumActivated, isTrue);
+    expect(await SubscriptionScreen.readPremiumStatus(), isTrue);
+    await fakeIap.purchaseStreamController.close();
+  });
+
+  testWidgets('offline sandbox is enabled when store query throws', (
+    tester,
+  ) async {
+    final fakeIap = _FakeInAppPurchase(throwOnQuery: true);
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('tr'),
+        home: SubscriptionScreen(inAppPurchase: fakeIap),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('29.99 TL / Ay'), findsOneWidget);
+    expect(find.text('Aboneliği Başlat (Test Sürümü)'), findsOneWidget);
     await fakeIap.purchaseStreamController.close();
   });
 
@@ -225,7 +287,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('\$0.99 / month'), findsOneWidget);
-      expect(find.text('Test mode: No real payment is charged.'), findsOneWidget);
+      expect(
+        find.text('Test mode: No real payment is charged.'),
+        findsOneWidget,
+      );
       expect(find.text('Subscribe - \$0.99 / month'), findsOneWidget);
     },
   );

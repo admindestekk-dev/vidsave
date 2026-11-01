@@ -334,6 +334,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
               '• Medya Kitaplığı Erişimi (READ_MEDIA_VIDEO, READ_MEDIA_AUDIO, READ_EXTERNAL_STORAGE): Cihazınızdaki mevcut videoları ve müzikleri "Videolar" ve "Müzik" sekmelerinde listelemek için kullanılır.\n\n'
               '• İndirme Kaydetme İzni (WRITE_EXTERNAL_STORAGE - Android 9 ve altı): İndirilen medya dosyalarını cihazınızın genel "Download" klasörüne ve galerinize kaydedebilmek için gereklidir.\n\n'
               '• Bildirim İzni (POST_NOTIFICATIONS): İndirme işleminin ilerleme yüzdesini canlı bildirim çubuğunda göstermek ve tamamlandığında haber vermek için kullanılır.\n\n'
+              '• Diğer Uygulamalar Üzerinde Gösterme ve Kullanım Erişimi (Android, isteğe bağlı): Yalnızca seçilen sosyal uygulamanın önde olup olmadığını cihaz üzerinde belirleyerek indirme simgesini göstermek için kullanılır. Uygulama içeriği veya ziyaret edilen bağlantılar okunmaz ve kullanım geçmişi sunucularımıza gönderilmez.\n\n'
               'Cihazınızdaki hiçbir fotoğraf, video veya ses dosyası sunucularımıza yüklenmez veya taranmaz.',
         ),
         _buildPolicyCard(
@@ -443,6 +444,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
             '• Media Library (READ_MEDIA_VIDEO, READ_MEDIA_AUDIO, READ_EXTERNAL_STORAGE): Used to list your local videos and audio tracks in the "Videos" and "Music" tabs.\n\n'
             '• Storage Write (WRITE_EXTERNAL_STORAGE - Android 9 & older): Required to save downloaded files directly into your public Download folder and media gallery.\n\n'
             '• Notifications (POST_NOTIFICATIONS): Used to display real-time download progress percentages in the status bar and notify upon completion.\n\n'
+            '• Display over other apps & Usage access (optional on Android): Used only to detect on-device whether a selected social app is in the foreground and show the download shortcut. App content and visited URLs are not read, and usage history is not sent to our servers.\n\n'
             'None of your personal device photos, videos, or documents are scanned or uploaded to our servers.',
       ),
       _buildPolicyCard(

@@ -54,6 +54,29 @@ Ad delivery and fill rates in each country depend on the AdMob account, app
 configuration, and available inventory; they cannot be guaranteed by client
 code alone.
 
+## Premium offline sandbox
+
+In debug builds, if the Play Store is unavailable or the monthly product cannot
+be loaded, the Premium screen offers a clearly labeled local test option at
+`29.99 TL / Ay`. Activating it stores a 30-day Premium test entitlement on the
+device only and returns to the main download tab. It does not contact the
+backend or charge a payment method. This fallback is disabled in release builds;
+production purchases continue to require a valid store product and purchase
+verification.
+
+## Android external-app download shortcut
+
+The optional shortcut in **Daha Fazlası → Diğer uygulamalarda VidSave İndir**
+uses Android's special "Display over other apps" and "Usage access" settings.
+The foreground service checks only which package is currently in the foreground
+and displays the shortcut for Facebook, Instagram, TikTok, Vimeo, X/Twitter,
+Dailymotion, and Pinterest. It does not read page contents or URLs. Tapping the
+shortcut opens VidSave; users can copy a link in the social app first to use the
+existing clipboard prompt. A persistent notification is shown while the feature
+is enabled. This overlay is Android-only; iOS does not allow apps to draw over
+other apps. Review the current Google Play policies and declare the special-use
+foreground service and usage-access purpose accurately before publishing.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
