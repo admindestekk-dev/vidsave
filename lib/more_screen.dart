@@ -27,7 +27,6 @@ import 'l10n/l10n_extension.dart';
 
 /// "Ayarlar" sekmesi.
 ///
-/// Normal kullanıcı yalnızca dil, tema ve hakkında seçeneklerini görür.
 /// Başlığa arka arkaya 5 kez dokunulduğunda gizli geliştirici bölümü açılır ve
 /// backend bağlantı ayarları görünür hâle gelir.
 class MoreScreen extends StatefulWidget {
@@ -820,6 +819,24 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
               const SizedBox(height: 24),
               _buildSectionHeader(context, title: context.tr('other_section')),
               const SizedBox(height: 12),
+              if (kDebugMode) ...[
+                _buildModernMenuCard(
+                  context,
+                  icon: Icons.ads_click_rounded,
+                  iconColor: const Color(0xFF006673),
+                  iconBgColor: const Color(0xFFE0F2F1),
+                  title: 'AdMob test reklamları',
+                  subtitle: 'Banner, geçiş, açılış ve yerel reklam biçimlerini test edin',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AdmobTestScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
               _buildModernMenuCard(
                 context,
                 icon: Icons.star_rounded,
@@ -925,26 +942,6 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                   ],
                 ),
                 const SizedBox(height: 4),
-                ListTile(
-                  key: const Key('admob_test_tools'),
-                  leading: const Icon(Icons.ads_click_rounded, color: _accent),
-                  title: const Text('AdMob test reklamları'),
-                  subtitle: const Text(
-                    'Banner, geçiş, açılış ve yerel reklam biçimlerini test edin',
-                  ),
-                  trailing: const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 16,
-                  ),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const AdmobTestScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(),
                 // Gerçek backend ayar formu buraya gömülür.
                 BackendSettingsPanel(
                   store: widget.store,

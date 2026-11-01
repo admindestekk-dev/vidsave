@@ -47,6 +47,10 @@ void main() {
     // Bölüm başlığı
     expect(find.text('Diğerleri'), findsOneWidget);
 
+    // AdMob test ekranı, geliştirici menüsünü açmadan erişilebilir.
+    expect(find.text('AdMob test reklamları'), findsOneWidget);
+    expect(find.text('Geliştirici Bölümü'), findsNothing);
+
     // 4 Modern Kart
     expect(find.text('Bizi Değerlendirin'), findsOneWidget);
     expect(find.text('Uygulamayı Paylaş'), findsOneWidget);
