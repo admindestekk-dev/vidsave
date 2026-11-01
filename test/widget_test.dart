@@ -157,6 +157,8 @@ void main() {
     await tester.tap(downloadTab);
     await tester.pumpAndSettle();
     expect(find.text('İNDİR'), findsNWidgets(kDownloadPlatforms.length));
+    expect(find.widgetWithText(TextButton, 'Tarayıcı'), findsNothing);
+    expect(find.widgetWithText(TextButton, 'Toplu İndir'), findsNothing);
   });
 
   testWidgets('backend settings validate and persist entered credentials', (

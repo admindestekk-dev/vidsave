@@ -660,80 +660,18 @@ class _DownloadPageState extends State<_DownloadPage> {
             ],
             const QuickDownloadWindow(),
             const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.text('section_which_platform'),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF172B3A),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        l10n.text('section_tap_hint'),
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: Color(0xFF87949D),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => const InAppMediaBrowserScreen(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.language_rounded, size: 18),
-                      label: const Text('Tarayıcı'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFFF5436),
-                        textStyle: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    TextButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => BulkDownloadScreen(
-                              resolver: widget.resolver,
-                              downloader: widget.downloader,
-                            ),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.layers_rounded, size: 18),
-                      label: const Text('Toplu İndir'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Theme.of(context).primaryColor,
-                        textStyle: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            Text(
+              l10n.text('section_which_platform'),
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF172B3A),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              l10n.text('section_tap_hint'),
+              style: const TextStyle(fontSize: 12.5, color: Color(0xFF87949D)),
             ),
             const SizedBox(height: 14),
             _PlatformGrid(
