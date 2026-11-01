@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vid_downloader_app/screens/browser_screen.dart';
@@ -10,13 +11,15 @@ void main() {
     ) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: InAppMediaBrowserScreen(initialUrl: 'https://m.facebook.com'),
+          home: InAppMediaBrowserScreen(
+            initialUrl: 'https://m.facebook.com',
+            webViewBuilder: _testWebViewBuilder,
+          ),
         ),
       );
 
-      final state = tester.state(
-        find.byType(InAppMediaBrowserScreen),
-      ) as dynamic;
+      final state =
+          tester.state(find.byType(InAppMediaBrowserScreen)) as dynamic;
 
       // Initial state: no video active yet
       expect(state.detectedVideoUrl, isNull);
@@ -80,8 +83,35 @@ void main() {
       state.handleIncomingDetectorMessage('https://cdn.example.com/video4.mp4');
       await tester.pump();
 
-      expect(state.detectedVideoUrl, equals('https://cdn.example.com/video4.mp4'));
+      expect(
+        state.detectedVideoUrl,
+        equals('https://cdn.example.com/video4.mp4'),
+      );
+      expect(state.isVideoActive, isTrue);
+
+      // When the selected video leaves the viewport, clear the old target
+      // until the next visible video is detected.
+      state.handleIncomingDetectorMessage(jsonEncode({'type': 'video_reset'}));
+      await tester.pump();
+
+      expect(state.detectedVideoUrl, isNull);
+      expect(state.isVideoActive, isFalse);
+
+      state.handleIncomingDetectorMessage(
+        jsonEncode({
+          'type': 'video_active',
+          'mediaUrl': 'https://video.cdn.com/reel5.mp4',
+          'pageUrl': 'https://www.instagram.com/reel/Reel5/',
+          'title': 'Awesome Reel 5',
+          'isPlaying': true,
+        }),
+      );
+      await tester.pump();
+
+      expect(state.detectedVideoUrl, equals('https://video.cdn.com/reel5.mp4'));
       expect(state.isVideoActive, isTrue);
     });
   });
 }
+
+Widget _testWebViewBuilder(BuildContext context) => const SizedBox.shrink();

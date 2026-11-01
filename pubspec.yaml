@@ -60,6 +60,7 @@ dependencies:
   firebase_remote_config: ^7.0.1
   firebase_core: ^5.1.0
   local_auth: ^3.0.2
+  flutter_inappwebview: ^6.1.5
 dev_dependencies:
   flutter_test:
     sdk: flutter
