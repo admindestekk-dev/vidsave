@@ -23,7 +23,7 @@ import 'l10n/l10n_extension.dart';
 /// ile doğrulanır, 3 saniyelik konfeti patlatılır ve premium durum SharedPreferences'a kaydedilir.
 /// Debug builds may opt into the backend test endpoint. Release builds always
 /// use the platform store purchase flow.
-bool isPlayStoreLive = true;
+bool isPlayStoreLive = false;
 
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({
@@ -563,13 +563,19 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final lang = _getLanguageCode(context);
     final isTurkish = lang == 'tr';
 
-    final productPrice = _monthlyProduct?.price;
+    final productPrice =
+        _monthlyProduct?.price ??
+        (_liveMode ? null : (isTurkish ? '9,99 TL' : '\$0.99'));
     final priceTitle = productPrice == null
         ? (isTurkish ? 'Mağaza fiyatı alınamadı' : 'Store price unavailable')
         : isTurkish
         ? 'Aylık $productPrice'
         : '$productPrice / month';
-    final taxFootnote = isTurkish
+    final taxFootnote = !_liveMode
+        ? (isTurkish
+              ? 'Test modu: Gerçek ödeme alınmaz.'
+              : 'Test mode: No real payment is charged.')
+        : isTurkish
         ? 'Fiyat ve vergilendirme mağaza tarafından belirlenir.'
         : 'Price and applicable taxes are set by the store.';
     final buttonText = _isPremiumActive

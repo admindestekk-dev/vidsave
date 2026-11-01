@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vid_downloader_app/app_localizations.dart';
 import 'package:vid_downloader_app/auth_service.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
+import 'package:vid_downloader_app/subscription_screen.dart';
 import 'package:vid_downloader_app/welcome_screen.dart';
 
 class _MemoryTokenStore implements AuthTokenStore {
@@ -159,5 +160,58 @@ void main() {
     expect(find.text('VidSave home'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(WelcomeScreen.prefKeyHasSeenWelcome), isTrue);
+  });
+
+  test('failed backend Google login does not create a local session', () async {
+    final tokenStore = _MemoryTokenStore();
+    final auth = AuthService(
+      settingsStore: _SettingsStore(),
+      tokenStore: tokenStore,
+      httpClient: MockClient((_) async => http.Response('{"status":"error"}', 503)),
+    );
+
+    await expectLater(
+      auth.loginWithGoogle(email: 'googleuser@example.com'),
+      throwsA(isA<AuthException>()),
+    );
+
+    expect(await tokenStore.readToken(), isNull);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(SecureAuthTokenStore.prefKeyUserEmail), isNull);
+  });
+
+  test('Google login restores premium expiry returned by the backend', () async {
+    final tokenStore = _MemoryTokenStore();
+    final auth = AuthService(
+      settingsStore: _SettingsStore(),
+      tokenStore: tokenStore,
+      httpClient: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'status': 'ok',
+            'token': 'premium-session-token',
+            'is_premium': true,
+            'premium_until': '2099-11-18T12:00:00Z',
+            'user': {
+              'id': '4bc45f62-2199-4fde-9695-899cc34766ca',
+              'email': 'premiumuser@example.com',
+              'name': 'Premium User',
+              'avatarUrl': '',
+            },
+          }),
+          200,
+        ),
+      ),
+    );
+
+    await auth.loginWithGoogle(email: 'premiumuser@example.com');
+
+    expect(await SubscriptionScreen.readPremiumStatus(), isTrue);
+    expect(
+      (await SharedPreferences.getInstance()).getBool(
+        SubscriptionScreen.prefKeyIsPremium,
+      ),
+      isTrue,
+    );
   });
 }

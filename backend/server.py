@@ -2260,7 +2260,10 @@ def api_analyze() -> Response | tuple[Response, int]:
                     for f in audio_formats
                     if (f.get("vcodec") or "none") == "none"
                 ]
-                candidates = audio_only or audio_formats
+                # Never return a video-containing format for an audio request.
+                # If no audio-only stream exists, the server job below extracts
+                # and converts the audio track to MP3.
+                candidates = audio_only
                 if candidates:
                     candidates.sort(
                         key=lambda f: (f.get("abr") or 0, f.get("tbr") or 0),
@@ -2294,7 +2297,7 @@ def api_analyze() -> Response | tuple[Response, int]:
                         ext = valid[0].get("ext") or "mp4"
 
     # 2. Fallback regex scraper if yt-dlp returned no stream URL
-    if not clean_download_url:
+    if not clean_download_url and not is_audio:
         fallback = _fallback_regex_scrape(target_url, kind)
         if fallback and fallback.get("url"):
             clean_download_url = fallback["url"]
@@ -2667,18 +2670,25 @@ def api_auth_google() -> Response | tuple[Response, int]:
         cur.execute("SELECT premium_until, is_premium FROM user_subscriptions WHERE user_id = ?", (user_id,))
         sub_row = cur.fetchone()
         is_premium = False
+        premium_until = None
         if sub_row:
             prem_until_str, is_prem_flag = sub_row[0], sub_row[1]
-            if is_prem_flag:
-                if prem_until_str:
-                    try:
-                        p_dt = datetime.datetime.fromisoformat(str(prem_until_str).replace("Z", "+00:00"))
-                        if p_dt > datetime.datetime.now(datetime.timezone.utc):
-                            is_premium = True
-                    except Exception:
-                        is_premium = bool(is_prem_flag)
-                else:
-                    is_premium = bool(is_prem_flag)
+            if is_prem_flag and prem_until_str:
+                try:
+                    premium_date = datetime.datetime.fromisoformat(
+                        str(prem_until_str).replace("Z", "+00:00")
+                    )
+                    if premium_date.tzinfo is None:
+                        premium_date = premium_date.replace(
+                            tzinfo=datetime.timezone.utc
+                        )
+                    if premium_date > datetime.datetime.now(datetime.timezone.utc):
+                        is_premium = True
+                        premium_until = premium_date.astimezone(
+                            datetime.timezone.utc
+                        ).isoformat()
+                except ValueError:
+                    logging.warning("Invalid premium expiry for user %s", user_id)
 
         conn.commit()
     except sqlite3.Error:
@@ -2695,6 +2705,7 @@ def api_auth_google() -> Response | tuple[Response, int]:
         success=True,
         token=token,
         is_premium=is_premium,
+        premium_until=premium_until,
         user={
             "id": user_id,
             "email": email,
@@ -2802,16 +2813,24 @@ def api_subscribe_monthly() -> Response | tuple[Response, int]:
             (subscription_id, user_id, lang, amount, currency, 1, "active", invoice_id),
         )
         conn.commit()
-    except Exception as exc:
-        logging.warning("Subscription accounting recording error: %s", exc)
+    except sqlite3.Error:
+        logging.exception("Subscription accounting recording failed")
+        return jsonify(
+            status="error",
+            success=False,
+            error={
+                "code": "subscription.record_failed",
+                "message": "Abonelik kaydı oluşturulamadı. Lütfen tekrar deneyin.",
+            },
+        ), 500
     finally:
         if conn:
             conn.close()
 
     receipt_message = (
-        "Faturanız kesildi: 9,99 TL (KDV Dahil) tahsil edilmiştir. Premium mod aktif!"
+        "Test aboneliği etkinleştirildi: 9,99 TL/ay (gerçek ödeme alınmadı)."
         if is_tr
-        else "Invoice generated: $0.99 (All taxes included) charged. Premium active!"
+        else "Developer test subscription enabled: $0.99/month (no real payment was charged)."
     )
 
     return jsonify(

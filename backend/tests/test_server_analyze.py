@@ -84,6 +84,40 @@ class AnalyzeEndpointTests(unittest.TestCase):
         self.assertEqual(data["title"], "Chill Acoustic Song")
         self.assertEqual(data["type"], "mp3")
 
+    @patch("server._fallback_regex_scrape")
+    @patch("server.threading.Thread")
+    @patch("server._new_job")
+    @patch("server._run_json")
+    def test_mp3_analyze_never_falls_back_to_video_format(
+        self, mock_run_json, mock_new_job, mock_thread, mock_fallback
+    ):
+        mock_run_json.return_value = {
+            "title": "Video With Audio",
+            "formats": [
+                {
+                    "vcodec": "avc1",
+                    "acodec": "mp4a.40.2",
+                    "ext": "mp4",
+                    "url": "https://example.com/video_with_audio.mp4",
+                }
+            ],
+        }
+        mock_new_job.return_value.status = "error"
+        mock_fallback.return_value = {
+            "url": "https://example.com/video_fallback.mp4",
+            "ext": "mp4",
+        }
+
+        res = self.client.post(
+            "/api/analyze",
+            json={"url": "https://example.com/music/789", "type": "mp3"},
+        )
+
+        self.assertEqual(res.status_code, 422)
+        self.assertEqual(res.get_json()["status"], "error")
+        mock_fallback.assert_not_called()
+        mock_thread.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

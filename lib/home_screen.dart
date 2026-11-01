@@ -19,6 +19,7 @@ import 'services/api_service.dart';
 import 'services/unified_download_engine.dart';
 import 'app_localizations.dart';
 import 'l10n/l10n_extension.dart';
+import 'youtube_restriction.dart' as youtube_restriction;
 
 /// Ana sayfadaki 'Pro Sürümü Aktif Et' banner'ına veya 'AL' butonuna
 /// tıklandığında çalışan Google giriş şartlı abonelik geçiş fonksiyonu.
@@ -564,103 +565,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
 /// Verilen metnin YouTube platformuna ait olup olmadığını tespit eder.
 bool isYouTubeUrl(String text) {
-  final lower = text.trim().toLowerCase();
-  return lower.contains('youtube.com') || lower.contains('youtu.be');
+  return youtube_restriction.isYouTubeUrl(text);
 }
 
 /// Google Play Store Hizmet Şartları ve Telif Hakları Politikalarına %100 uyum
 /// sağlayan, koyu premium temalı (Color(0xff1e1e1e)) ve kurumsal dille hazırlanmış yasal uyarı dialogu.
 Future<void> showYouTubeRestrictionDialog(BuildContext context) {
-  return showDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    builder: (dialogContext) => AlertDialog(
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      elevation: 12,
-      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF5436).withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.gavel_rounded,
-              color: Color(0xFFFF5436),
-              size: 26,
-            ),
-          ),
-          const SizedBox(width: 14),
-          const Expanded(
-            child: Text(
-              'Yasal Uyarı',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 8),
-          const Text(
-            'Google Play Store Hizmet Şartları ve telif hakları politikaları gereği, YouTube platformuna ait videoların indirilmesi yasal olarak kısıtlanmıştır. VidSave; Instagram, TikTok ve Facebook platformlarında kesintisiz hizmet sunmaktadır.',
-            style: TextStyle(
-              color: Color(0xFFE2E8F0),
-              fontSize: 14,
-              height: 1.5,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 44,
-            child: ElevatedButton(
-              key: const Key('youtube_restriction_dialog_ok_button'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF5436),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text(
-                'ANLADIM',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
+  return youtube_restriction.showYouTubeRestrictionDialog(context);
 }
 
 /// YouTube yasal kontrol kalkanı: Metin YouTube bağlantısı içeriyorsa
 /// indirmeyi sunucuya gitmeden havada keser ve yasal AlertDialog fırlatır.
 /// YouTube linki tespit edilirse `true` döner; aksi halde `false` döner.
 bool checkAndShowYouTubeRestriction(BuildContext context, String text) {
-  if (isYouTubeUrl(text)) {
-    showYouTubeRestrictionDialog(context);
-    return true;
-  }
-  return false;
+  return youtube_restriction.checkAndShowYouTubeRestriction(context, text);
 }
 
 /// VidSave Otomatik Algılama - Sunucu Tabanlı Hızlı İndirme Penceresi

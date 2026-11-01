@@ -36,9 +36,13 @@ class _MemoryTokenStore implements AuthTokenStore {
 }
 
 class _FakeInAppPurchase extends Fake implements InAppPurchase {
-  _FakeInAppPurchase({this.price = '9,99 TL'});
+  _FakeInAppPurchase({
+    this.price = '9,99 TL',
+    this.hasProduct = true,
+  });
 
   final String price;
+  final bool hasProduct;
   final purchaseStreamController =
       StreamController<List<PurchaseDetails>>.broadcast();
   bool buyNonConsumableCalled = false;
@@ -56,17 +60,19 @@ class _FakeInAppPurchase extends Fake implements InAppPurchase {
     Set<String> identifiers,
   ) async {
     return ProductDetailsResponse(
-      productDetails: [
-        ProductDetails(
-          id: SubscriptionScreen.productId,
-          title: 'VidSave Premium Monthly',
-          description: 'Monthly unlimited access',
-          price: price,
-          rawPrice: 9.99,
-          currencyCode: 'TRY',
-        ),
-      ],
-      notFoundIDs: const [],
+      productDetails: hasProduct
+          ? [
+              ProductDetails(
+                id: SubscriptionScreen.productId,
+                title: 'VidSave Premium Monthly',
+                description: 'Monthly unlimited access',
+                price: price,
+                rawPrice: 9.99,
+                currencyCode: 'TRY',
+              ),
+            ]
+          : const [],
+      notFoundIDs: hasProduct ? const [] : [SubscriptionScreen.productId],
     );
   }
 
@@ -139,11 +145,65 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Aylık 9,99 TL'), findsOneWidget);
-    expect(
-      find.text('Fiyat ve vergilendirme mağaza tarafından belirlenir.'),
-      findsOneWidget,
-    );
+    expect(find.text('Test modu: Gerçek ödeme alınmaz.'), findsOneWidget);
     expect(find.text('9,99 TL / Ay - Abone Ol'), findsOneWidget);
+  });
+
+  testWidgets('debug test mode shows price and activates without a store product', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final fakeIap = _FakeInAppPurchase(hasProduct: false);
+    var testSubscribeCalled = false;
+    final client = MockClient((request) async {
+      expect(request.url.path, '/api/auth/subscribe-monthly');
+      testSubscribeCalled = true;
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'subscription': {
+            'amount': 9.99,
+            'currency': 'TRY',
+            'premiumUntil': '2099-11-18T12:00:00Z',
+            'receiptMessage':
+                'Test aboneliği etkinleştirildi: 9,99 TL/ay (gerçek ödeme alınmadı).',
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('tr'),
+        home: SubscriptionScreen(
+          inAppPurchase: fakeIap,
+          httpClient: client,
+          authService: _testAuthService(client),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Aylık 9,99 TL'), findsOneWidget);
+    expect(find.text('Test modu: Gerçek ödeme alınmaz.'), findsOneWidget);
+    final button = find.text('9,99 TL / Ay - Abone Ol');
+    expect(button, findsOneWidget);
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(testSubscribeCalled, isTrue);
+    expect(fakeIap.buyNonConsumableCalled, isFalse);
+    expect(find.text('PREMIUM AKTİF'), findsOneWidget);
+    expect(await SubscriptionScreen.readPremiumStatus(), isTrue);
+    await fakeIap.purchaseStreamController.close();
   });
 
   testWidgets(
@@ -165,10 +225,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('\$0.99 / month'), findsOneWidget);
-      expect(
-        find.text('Price and applicable taxes are set by the store.'),
-        findsOneWidget,
-      );
+      expect(find.text('Test mode: No real payment is charged.'), findsOneWidget);
       expect(find.text('Subscribe - \$0.99 / month'), findsOneWidget);
     },
   );

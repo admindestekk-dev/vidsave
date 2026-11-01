@@ -12,6 +12,7 @@ import '../media_downloader.dart';
 import '../storage_service.dart';
 import 'api_service.dart';
 import 'download_manager.dart';
+import '../youtube_restriction.dart';
 
 /// VidSave Evrensel Birleşik İndirme Motoru (Unified Download Engine)
 ///
@@ -32,6 +33,7 @@ class UnifiedDownloadEngine {
     DownloadKind kind, {
     MediaResolver? fallbackResolver,
   }) async {
+    ensureNotYouTubeUrl(urlOrQuery);
     final cleanUrl = evrenselTemizUrl(urlOrQuery);
     final isUrl =
         cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://');
@@ -115,6 +117,7 @@ class UnifiedDownloadEngine {
     MediaResolver? fallbackResolver,
     MediaDownloader? fallbackDownloader,
   }) async {
+    ensureNotYouTubeUrl(rawUrl);
     final cleanUrl = evrenselTemizUrl(rawUrl);
     final targetUrl = cleanUrl.isNotEmpty ? cleanUrl : rawUrl.trim();
     final isAudio =

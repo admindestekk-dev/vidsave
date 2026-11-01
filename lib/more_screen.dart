@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'auth_service.dart';
+import 'admob_service.dart';
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
 import 'admob_test_screen.dart';
@@ -48,12 +49,20 @@ class _MoreScreenState extends State<MoreScreen> {
 
   AuthService get _authService => widget.authService ?? AuthService.instance;
   late Future<bool> _hasStoredSession = _authService.hasStoredSession;
+  late Future<bool> _privacyOptionsRequired;
 
   /// Kaç kez başlığa dokunulduğunu sayar.
   int _clickCount = 0;
 
   /// Gizli geliştirici bölümünün açık olup olmadığı.
   bool _isDeveloperModeActive = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _privacyOptionsRequired =
+        AdmobService.instance.isPrivacyOptionsRequired();
+  }
 
   void _handleTitleTap() {
     if (_isDeveloperModeActive) return;
@@ -446,6 +455,62 @@ class _MoreScreenState extends State<MoreScreen> {
                 },
               ),
               const Divider(),
+
+              FutureBuilder<bool>(
+                future: _privacyOptionsRequired,
+                builder: (context, snapshot) {
+                  if (snapshot.data != true) return const SizedBox.shrink();
+                  final isTurkish =
+                      LocaleService.currentLanguageCode.toLowerCase() == 'tr';
+                  return Column(
+                    children: [
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(
+                          Icons.privacy_tip_outlined,
+                          color: _accent,
+                        ),
+                        title: Text(
+                          isTurkish
+                              ? 'Reklam gizlilik tercihleri'
+                              : 'Ad privacy options',
+                        ),
+                        subtitle: Text(
+                          isTurkish
+                              ? 'Bölgenizde gerekli reklam izinlerini yönetin'
+                              : 'Manage required ad consent for your region',
+                        ),
+                        trailing: const Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                        ),
+                        onTap: () async {
+                          try {
+                            await AdmobService.instance
+                                .showPrivacyOptionsForm();
+                            if (context.mounted) {
+                              setState(() {
+                                _privacyOptionsRequired = AdmobService.instance
+                                    .isPrivacyOptionsRequired();
+                              });
+                            }
+                          } catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Gizlilik tercihleri açılamadı: $error',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                      const Divider(),
+                    ],
+                  );
+                },
+              ),
 
               ValueListenableBuilder<ThemeMode>(
                 valueListenable: ThemeService.themeModeNotifier,

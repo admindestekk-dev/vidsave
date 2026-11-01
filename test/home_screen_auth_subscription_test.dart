@@ -96,7 +96,11 @@ void main() {
         await tester.pumpWidget(
           _buildTestApp(
             child: Scaffold(
-              body: PremiumBanner(authService: auth, store: _SettingsStore()),
+              body: PremiumBanner(
+                authService: auth,
+                store: _SettingsStore(),
+                isPlayStoreLive: true,
+              ),
             ),
           ),
         );
@@ -171,6 +175,7 @@ void main() {
                 authService: auth,
                 store: _SettingsStore(),
                 httpClient: mockClient,
+                isPlayStoreLive: true,
               ),
             ),
           ),
@@ -266,7 +271,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        final subscribeButton = find.text('Ürün yüklenemedi');
+        final subscribeButton = find.text('9,99 TL / Ay - Abone Ol');
         expect(subscribeButton, findsOneWidget);
         await tester.tap(subscribeButton);
         await tester.pump();

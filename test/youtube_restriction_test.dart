@@ -1,9 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vid_downloader_app/media_downloader.dart';
 import 'package:vid_downloader_app/screens/home_screen.dart';
+import 'package:vid_downloader_app/services/unified_download_engine.dart';
+import 'package:vid_downloader_app/youtube_restriction.dart'
+    show youtubeRestrictionMessage;
 
 void main() {
   group('YouTube Legal Restriction Shield Tests', () {
+    test(
+      'unified engine rejects YouTube preview and download requests',
+      () async {
+        final engine = UnifiedDownloadEngine.instance;
+        const youtubeUrl = 'https://www.youtube.com/watch?v=abc123';
+
+        await expectLater(
+          engine.preview(youtubeUrl, DownloadKind.video),
+          throwsA(isA<MediaResolverException>()),
+        );
+        await expectLater(
+          engine.download(rawUrl: youtubeUrl, type: 'mp3'),
+          throwsA(isA<MediaResolverException>()),
+        );
+      },
+    );
+
     test('isYouTubeUrl detects all standard and short YouTube URLs', () {
       expect(
         isYouTubeUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
@@ -14,6 +35,8 @@ void main() {
       expect(isYouTubeUrl('youtube.com/shorts/abc123xyz'), isTrue);
       expect(isYouTubeUrl('YOUTUBE.COM/watch?v=test'), isTrue);
       expect(isYouTubeUrl('https://youtu.be/abc?si=123'), isTrue);
+      expect(isYouTubeUrl('https://music.youtube.com/watch?v=abc'), isTrue);
+      expect(isYouTubeUrl('https://r1.googlevideo.com/videoplayback'), isTrue);
     });
 
     test('isYouTubeUrl returns false for non-YouTube platforms', () {
@@ -28,6 +51,11 @@ void main() {
       );
       expect(isYouTubeUrl('https://vimeo.com/123456'), isFalse);
       expect(isYouTubeUrl('https://twitter.com/i/status/123'), isFalse);
+      expect(
+        isYouTubeUrl('https://youtube.com.evil.example/watch?v=123'),
+        isFalse,
+      );
+      expect(isYouTubeUrl('https://notyoutube.com/watch?v=123'), isFalse);
     });
 
     testWidgets(
@@ -44,7 +72,9 @@ void main() {
         );
 
         // Tap the download/search button inside the QuickDownloadWindow
-        final searchOrDownloadBtn = find.byKey(const Key('download_search_button'));
+        final searchOrDownloadBtn = find.byKey(
+          const Key('download_search_button'),
+        );
         expect(searchOrDownloadBtn, findsOneWidget);
 
         await tester.tap(searchOrDownloadBtn);
@@ -56,15 +86,7 @@ void main() {
         // Verify the legal gavel/scales icon is displayed
         expect(find.byIcon(Icons.gavel_rounded), findsOneWidget);
 
-        // Verify the exact corporate Google Play compliance text
-        expect(
-          find.text(
-            'Google Play Store Hizmet Şartları ve telif hakları politikaları gereği, '
-            'YouTube platformuna ait videoların indirilmesi yasal olarak kısıtlanmıştır. '
-            'VidSave; Instagram, TikTok ve Facebook platformlarında kesintisiz hizmet sunmaktadır.',
-          ),
-          findsOneWidget,
-        );
+        expect(find.text(youtubeRestrictionMessage), findsOneWidget);
 
         // Verify the orange 'ANLADIM' button is displayed
         final okButton = find.text('ANLADIM');

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'admob_service.dart';
@@ -8,6 +9,7 @@ import 'download_exception_handler.dart';
 import 'media_downloader.dart';
 import 'services/unified_download_engine.dart';
 import 'l10n/l10n_extension.dart';
+import 'youtube_restriction.dart';
 
 /// VidSave Otomatik Algılama - Hızlı İndirme Dialogu (Quick Download Dialog)
 ///
@@ -35,7 +37,8 @@ class QuickDownloadDialog extends StatefulWidget {
     double? startTime,
     double? endTime,
     String? audioEffect,
-  })? onDownloadMp3WithOptions;
+  })?
+  onDownloadMp3WithOptions;
 
   /// Cihaz içi lokal motor resolver'ı
   final MediaResolver? resolver;
@@ -62,11 +65,8 @@ class QuickDownloadDialog extends StatefulWidget {
     required BuildContext context,
     required String videoTitle,
     VoidCallback? onDownloadVideo,
-    void Function({
-      double? startTime,
-      double? endTime,
-      String? audioEffect,
-    })? onDownloadMp3,
+    void Function({double? startTime, double? endTime, String? audioEffect})?
+    onDownloadMp3,
     MediaResolver? resolver,
     MediaDownloader? downloader,
     void Function(File file, DownloadKind kind)? onDownloadCompleted,
@@ -123,8 +123,8 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
     super.initState();
     _maxDuration =
         (widget.maxDurationSeconds != null && widget.maxDurationSeconds! > 10)
-            ? widget.maxDurationSeconds!
-            : 300.0; // Varsayılan 5 dakika
+        ? widget.maxDurationSeconds!
+        : 300.0; // Varsayılan 5 dakika
     _currentRangeValues = RangeValues(0.0, _maxDuration);
   }
 
@@ -136,6 +136,8 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
   /// Canlı indirme akışını (Video veya MP3) tetikler
   Future<void> _startDownload(DownloadKind kind) async {
+    if (checkAndShowYouTubeRestriction(context, widget.videoTitle)) return;
+
     // 1. Premium Kontrolü: Kullanıcı isPremium == true ise hiçbir şey sorma, reklamı tamamen bypass et
     final isPremium = await AdmobService.instance.checkIsPremium();
     if (isPremium) {
@@ -166,9 +168,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
       context: context,
       barrierDismissible: true,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: const Color(0xFF1E2630),
         title: Row(
           children: [
@@ -262,7 +262,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
         ? widget.onDownloadVideo != null
         : widget.onDownloadMp3WithOptions != null;
 
-    if (widget.resolver == null && widget.downloader == null && hasLegacyCallback) {
+    if (widget.resolver == null &&
+        widget.downloader == null &&
+        hasLegacyCallback) {
       if (kind == DownloadKind.video) {
         Navigator.of(context).pop();
         widget.onDownloadVideo?.call();
@@ -298,7 +300,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
         audioEffect: _selectedEffect,
         onProgress: (received, total, progress, speed, status) {
           if (!mounted) return;
-          final pct = (progress != null) ? (progress * 100).clamp(0.0, 100.0) : 0.0;
+          final pct = (progress != null)
+              ? (progress * 100).clamp(0.0, 100.0)
+              : 0.0;
           setState(() {
             _downloadProgress = pct;
             _downloadSpeed = speed;
@@ -403,12 +407,14 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                       width: 58,
                       height: 58,
                       decoration: BoxDecoration(
-                        color: QuickDownloadDialog.accentColor
-                            .withValues(alpha: 0.16),
+                        color: QuickDownloadDialog.accentColor.withValues(
+                          alpha: 0.16,
+                        ),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: QuickDownloadDialog.accentColor
-                              .withValues(alpha: 0.35),
+                          color: QuickDownloadDialog.accentColor.withValues(
+                            alpha: 0.35,
+                          ),
                           width: 1.5,
                         ),
                       ),
@@ -477,11 +483,20 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           _buildEffectChip(
-                              context.tr('normal'), 'normal', Icons.music_note_rounded),
+                            context.tr('normal'),
+                            'normal',
+                            Icons.music_note_rounded,
+                          ),
                           _buildEffectChip(
-                              context.tr('nightcore'), 'nightcore', Icons.bolt_rounded),
+                            context.tr('nightcore'),
+                            'nightcore',
+                            Icons.bolt_rounded,
+                          ),
                           _buildEffectChip(
-                              context.tr('bass_boost'), 'bassboost', Icons.speaker_rounded),
+                            context.tr('bass_boost'),
+                            'bassboost',
+                            Icons.speaker_rounded,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -491,7 +506,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                       // =======================================================
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.04),
                           borderRadius: BorderRadius.circular(14),
@@ -543,16 +560,18 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                                   Text(
                                     'Başlangıç: ${_formatSeconds(_currentRangeValues.start)}',
                                     style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.7),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.7,
+                                      ),
                                       fontSize: 11.5,
                                     ),
                                   ),
                                   Text(
                                     'Bitiş: ${_formatSeconds(_currentRangeValues.end)}',
                                     style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.7),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.7,
+                                      ),
                                       fontSize: 11.5,
                                     ),
                                   ),
@@ -592,13 +611,16 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 16),
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: QuickDownloadDialog.accentColor
-                                .withValues(alpha: 0.3),
+                            color: QuickDownloadDialog.accentColor.withValues(
+                              alpha: 0.3,
+                            ),
                             width: 1.2,
                           ),
                         ),
@@ -623,8 +645,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                             const SizedBox(height: 12),
                             // Çubuğun hemen altında sol tarafta yüzde, sağ tarafta anlık hız
                             Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Expanded(
                                   child: Text(
@@ -641,7 +662,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                                 const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: QuickDownloadDialog.accentColor
                                         .withValues(alpha: 0.15),
@@ -710,8 +733,8 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                             _enableTrimming
                                 ? context.tr('chorus_trimming')
                                 : (_selectedEffect != 'normal'
-                                    ? '${context.tr('download_audio_btn')} ($_selectedEffect)'
-                                    : context.tr('download_audio_btn')),
+                                      ? '${context.tr('download_audio_btn')} ($_selectedEffect)'
+                                      : context.tr('download_audio_btn')),
                             style: const TextStyle(
                               color: QuickDownloadDialog.accentColor,
                               fontSize: 14.5,

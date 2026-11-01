@@ -534,6 +534,8 @@ class _DownloadPageState extends State<_DownloadPage> {
         parsed.host.isNotEmpty &&
         (parsed.isScheme('http') || parsed.isScheme('https'));
 
+    if (checkAndShowYouTubeRestriction(context, text)) return;
+
     // Platform doğrulama kontrolü: Her platform yalnızca kendi linkini indirebilir
     if (looksLikeUrl && !platform.matchesUrl(text)) {
       setState(() {
@@ -1949,6 +1951,10 @@ class _PlatformSearchDownloadModalState
         parsed.host.isNotEmpty &&
         (parsed.isScheme('http') || parsed.isScheme('https'));
 
+    if (isUrl && checkAndShowYouTubeRestriction(context, text)) {
+      return;
+    }
+
     _focusNode.unfocus();
     setState(() {
       _searching = true;
@@ -2042,6 +2048,8 @@ class _PlatformSearchDownloadModalState
   }
 
   Future<void> _startDownloadMusicItem(SearchResultItem item) async {
+    if (checkAndShowYouTubeRestriction(context, item.url)) return;
+
     // Ödüllü reklam filtresi: isPremium == true ise bypass eder, false ise reklam izletir
     await AdmobService.instance.showRewardedAdOrBypass(
       onRewardEarned: () async {
@@ -2052,6 +2060,7 @@ class _PlatformSearchDownloadModalState
 
   Future<void> _executeDownloadMusicItem(SearchResultItem item) async {
     final cleanUrl = evrenselTemizUrl(item.url);
+    if (checkAndShowYouTubeRestriction(context, cleanUrl)) return;
 
     setState(() {
       _downloading = true;
@@ -2123,6 +2132,10 @@ class _PlatformSearchDownloadModalState
         parsed != null &&
         parsed.host.isNotEmpty &&
         (parsed.isScheme('http') || parsed.isScheme('https'));
+
+    if (isUrl && checkAndShowYouTubeRestriction(context, text)) {
+      return;
+    }
 
     // Platform doğrulama kontrolü: Her platform yalnızca kendi linkini indirebilir
     if (isUrl && !widget.platform.matchesUrl(text)) {

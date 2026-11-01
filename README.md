@@ -31,6 +31,29 @@ Set `VIDSAVE_MAX_DOWNLOAD_BYTES` on the backend to change the default maximum
 stream size (4 GiB). A key stored on a user's device is not secret from that
 device's owner; use per-user or short-lived credentials for distributed apps.
 
+## AdMob international consent testing
+
+The app currently uses Google's official sample AdMob app IDs and test ad-unit
+IDs. These request test ads in every region; they do not serve paid production
+ads. UMP consent is updated before ad requests, and a privacy-options entry
+point is shown in settings when Google's UMP configuration requires one.
+
+To simulate a regulated region on a test device, obtain its hashed ID from the
+Google Mobile Ads/UMP debug logs and run a debug build:
+
+```powershell
+flutter run --dart-define=VIDSAVE_UMP_TEST_DEVICE_ID=<hashed-device-id> --dart-define=VIDSAVE_UMP_DEBUG_GEOGRAPHY=eea
+```
+
+`VIDSAVE_UMP_DEBUG_GEOGRAPHY` accepts `eea`, `regulated-us`, or `other`. UMP
+geography simulation applies only to the listed test device and debug builds.
+For production, create the app and ad units in AdMob, replace the sample app
+IDs in the Android manifest and iOS `Info.plist`, configure the appropriate
+consent messages in AdMob Privacy & messaging, and use the real ad-unit IDs.
+Ad delivery and fill rates in each country depend on the AdMob account, app
+configuration, and available inventory; they cannot be guaranteed by client
+code alone.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.

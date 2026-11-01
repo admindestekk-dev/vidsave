@@ -1,3 +1,4 @@
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vid_downloader_app/admob_service.dart';
@@ -31,6 +32,25 @@ void main() {
         'appOpen': 'ca-app-pub-3940256099942544/5575463023',
       });
     });
+
+    test(
+      'UMP debug geography supports EEA, regulated US, and other regions',
+      () {
+        expect(
+          AdmobService.debugGeographyFor('eea'),
+          DebugGeography.debugGeographyEea,
+        );
+        expect(
+          AdmobService.debugGeographyFor('regulated-us'),
+          DebugGeography.debugGeographyRegulatedUsState,
+        );
+        expect(
+          AdmobService.debugGeographyFor('other'),
+          DebugGeography.debugGeographyOther,
+        );
+        expect(AdmobService.debugGeographyFor('unknown'), isNull);
+      },
+    );
 
     test(
       'checkIsPremium returns false by default for free/guest users',

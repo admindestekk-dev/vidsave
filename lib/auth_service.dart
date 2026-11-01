@@ -107,14 +107,10 @@ class AuthService {
     GoogleSignIn? client,
   ]) async {
     if (_googleSignInInitialized && client == null) return;
-    try {
-      final target = client ?? GoogleSignIn.instance;
-      await target.initialize(serverClientId: googleServerClientId);
-      if (client == null) {
-        _googleSignInInitialized = true;
-      }
-    } catch (_) {
-      // Test ortamlarında veya tekrarlayan çağrılarda sessizce geç
+    final target = client ?? GoogleSignIn.instance;
+    await target.initialize(serverClientId: googleServerClientId);
+    if (client == null) {
+      _googleSignInInitialized = true;
     }
   }
 
@@ -167,72 +163,73 @@ class AuthService {
       tokenId = auth.idToken;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    if (effectiveEmail.isNotEmpty) {
-      await prefs.setString(
-        SecureAuthTokenStore.prefKeyUserEmail,
-        effectiveEmail,
-      );
-    }
-    if (effectiveName.isNotEmpty) {
-      await prefs.setString(
-        SecureAuthTokenStore.prefKeyUserName,
-        effectiveName,
-      );
-    }
-    if (effectiveAvatar.isNotEmpty) {
-      await prefs.setString(
-        SecureAuthTokenStore.prefKeyUserAvatarUrl,
-        effectiveAvatar,
-      );
-    }
-
-    try {
-      final response = await _send(
-        'google',
-        body: {
-          'email': effectiveEmail,
-          'name': effectiveName,
-          'avatarUrl': effectiveAvatar,
-          if (tokenId != null && tokenId.isNotEmpty) 'idToken': tokenId,
-        },
-      );
-
-      final data = _decodeResponse(response);
-      final token = data['token'];
-      final userJson = data['user'];
-      if (token is String && userJson is Map<String, dynamic>) {
-        final user = AuthUser.fromJson(userJson);
-        await _tokenStore.saveToken(token);
-        await _tokenStore.saveUserId(user.id);
-        final premiumUntilValue = data['premiumUntil'] ?? data['premium_until'];
-        final premiumUntil = premiumUntilValue is String
-            ? DateTime.tryParse(premiumUntilValue)
-            : null;
-        if (data['is_premium'] == true &&
-            premiumUntil != null &&
-            premiumUntil.isAfter(DateTime.now())) {
-          await SubscriptionScreen.savePremiumStatus(premiumUntil);
-        } else {
-          await SubscriptionScreen.clearPremiumStatus();
-        }
-        return user;
-      }
-    } catch (_) {
-      // In standalone client-side mode (no Python backend running), authenticate locally
-    }
-
-    final localUserId = 'user_${DateTime.now().millisecondsSinceEpoch}';
-    final fallbackToken = 'token_local_$localUserId';
-    await _tokenStore.saveToken(fallbackToken);
-    await _tokenStore.saveUserId(localUserId);
-
-    return AuthUser(
-      id: localUserId,
-      email: effectiveEmail,
-      name: effectiveName,
-      avatarUrl: effectiveAvatar,
+    final response = await _send(
+      'google',
+      body: {
+        'email': effectiveEmail,
+        'name': effectiveName,
+        'avatarUrl': effectiveAvatar,
+        if (tokenId != null && tokenId.isNotEmpty) 'idToken': tokenId,
+      },
     );
+
+    final data = _decodeResponse(response);
+    final token = data['token'];
+    final userJson = data['user'];
+    if (token is! String ||
+        token.isEmpty ||
+        userJson is! Map<String, dynamic>) {
+      throw const AuthException(
+        'response.invalid',
+        'Google girişi için sunucudan geçersiz yanıt alındı.',
+      );
+    }
+
+    final user = AuthUser.fromJson(userJson);
+    await _tokenStore.saveToken(token);
+    await _tokenStore.saveUserId(user.id);
+
+    final premiumUntilValue = data['premiumUntil'] ?? data['premium_until'];
+    final premiumUntil = premiumUntilValue is String
+        ? DateTime.tryParse(premiumUntilValue)
+        : null;
+    if (data['is_premium'] == true &&
+        premiumUntil != null &&
+        premiumUntil.isAfter(DateTime.now())) {
+      await SubscriptionScreen.savePremiumStatus(premiumUntil);
+    } else {
+      await SubscriptionScreen.clearPremiumStatus();
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await _saveProfileValue(
+      prefs,
+      SecureAuthTokenStore.prefKeyUserEmail,
+      user.email,
+    );
+    await _saveProfileValue(
+      prefs,
+      SecureAuthTokenStore.prefKeyUserName,
+      user.name,
+    );
+    await _saveProfileValue(
+      prefs,
+      SecureAuthTokenStore.prefKeyUserAvatarUrl,
+      user.avatarUrl,
+    );
+    return user;
+  }
+
+  Future<void> _saveProfileValue(
+    SharedPreferences prefs,
+    String key,
+    String value,
+  ) async {
+    if (value.isEmpty) {
+      await prefs.remove(key);
+    } else {
+      await prefs.setString(key, value);
+    }
   }
 
   Future<AuthUser> _authenticate(

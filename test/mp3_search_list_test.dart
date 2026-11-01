@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vid_downloader_app/admob_service.dart';
@@ -8,9 +9,11 @@ import 'package:vid_downloader_app/media_downloader.dart';
 
 class _FakeMusicResolver implements MediaResolver {
   final resolveCalls = <String>[];
+  int previewCalls = 0;
 
   @override
   Future<MediaPreview> preview(Uri source, DownloadKind kind) async {
+    previewCalls++;
     return const MediaPreview(
       title: 'Örnek Başlık',
       qualities: [VideoQuality(height: 0, label: 'En İyi')],
@@ -41,7 +44,7 @@ class _FakeMusicResolver implements MediaResolver {
         baslik: '$query - Ateşten Gömlek',
         kanal: 'Kolera & Sagopa',
         sure: '4:20',
-        url: 'https://youtube.com/watch?v=sago1',
+        url: 'https://soundcloud.com/sagopa/ateslerden-gomlek',
       ),
       SearchResultItem(
         id: '2',
@@ -76,7 +79,9 @@ void main() {
     AdmobService.instance.disableAdsForTesting = true;
   });
 
-  testWidgets('MP3 search lists multiple songs and downloads on click', (tester) async {
+  testWidgets('MP3 search lists multiple songs and downloads on click', (
+    tester,
+  ) async {
     final resolver = _FakeMusicResolver();
     final downloader = _FakeMusicDownloader();
 
@@ -137,7 +142,9 @@ void main() {
     expect(resolver.resolveCalls.isNotEmpty, isTrue);
   });
 
-  testWidgets('MP3 modal allows pasting YouTube URL, fetching preview and downloading MP3', (tester) async {
+  testWidgets('MP3 modal blocks YouTube URLs before fetching a preview', (
+    tester,
+  ) async {
     final resolver = _FakeMusicResolver();
     final downloader = _FakeMusicDownloader();
 
@@ -172,26 +179,70 @@ void main() {
 
     // Enter YouTube URL into TextField
     final input = find.byType(TextField);
-    await tester.enterText(input, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    await tester.enterText(
+      input,
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    );
     await tester.pump();
 
     // Tap ARA button to fetch preview
     await tester.tap(find.text('ARA'));
     await tester.pumpAndSettle();
 
-    // Verify preview title and MP3 quality options are shown
-    expect(find.text('Örnek Başlık'), findsOneWidget);
-    expect(find.text('MP3 SES DÖNÜŞTÜRME SEÇENEKLERİ'), findsOneWidget);
-    expect(find.text('MP3 Ses Dosyası (320 kbps - En Yüksek Kalite)'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('youtube_restriction_dialog')),
+      findsOneWidget,
+    );
+    expect(resolver.resolveCalls, isEmpty);
+    expect(resolver.previewCalls, 0);
+  });
 
-    // Tap the MP3 download button beside 320 kbps (height: 0)
-    final downloadButton = find.byKey(const ValueKey('quality_0'));
-    expect(downloadButton, findsOneWidget);
-    await tester.ensureVisible(downloadButton);
-    await tester.tap(downloadButton);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+  testWidgets('MP3 search results block YouTube item downloads', (
+    tester,
+  ) async {
+    final resolver = _FakeMusicResolver();
+    final downloader = _FakeMusicDownloader();
 
-    expect(resolver.resolveCalls.any((call) => call.contains('audio')), isTrue);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (ctx) => Center(
+              child: ElevatedButton(
+                onPressed: () {
+                  showModalBottomSheet<void>(
+                    context: ctx,
+                    isScrollControlled: true,
+                    builder: (_) => PlatformSearchDownloadModal(
+                      platform: kDownloadPlatforms.firstWhere((p) => p.isAudio),
+                      resolver: resolver,
+                      downloader: downloader,
+                    ),
+                  );
+                },
+                child: const Text('Open Modal'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open Modal'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Sagopa Kajmer');
+    await tester.tap(find.text('ARA'));
+    await tester.pumpAndSettle();
+
+    final youtubeItem = find.text('Sagopa Kajmer - Galiba');
+    await tester.ensureVisible(youtubeItem);
+    await tester.tap(youtubeItem);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('youtube_restriction_dialog')),
+      findsOneWidget,
+    );
+    expect(resolver.resolveCalls, isEmpty);
   });
 }

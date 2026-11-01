@@ -34,6 +34,20 @@ class AdmobService {
     },
   };
 
+  static const String umpTestDeviceId = String.fromEnvironment(
+    'VIDSAVE_UMP_TEST_DEVICE_ID',
+  );
+  static const String umpDebugGeography = String.fromEnvironment(
+    'VIDSAVE_UMP_DEBUG_GEOGRAPHY',
+  );
+
+  static DebugGeography? debugGeographyFor(String value) => switch (value) {
+    'eea' => DebugGeography.debugGeographyEea,
+    'regulated-us' => DebugGeography.debugGeographyRegulatedUsState,
+    'other' => DebugGeography.debugGeographyOther,
+    _ => null,
+  };
+
   static String testAdUnitId(String format) {
     if (kIsWeb) return '';
     final platform = Platform.isIOS ? 'ios' : 'android';
@@ -51,25 +65,53 @@ class AdmobService {
   RewardedAd? _rewardedAd;
   bool _isLoading = false;
   bool _isInitialized = false;
+  Future<void>? _initialization;
+  Future<void>? _consentUpdate;
   bool _consentGathered = false;
+  bool _canRequestAds = false;
   final List<VoidCallback> _pendingLoadedCallbacks = [];
   final List<VoidCallback> _pendingFailedCallbacks = [];
 
+  bool get isInitialized => _isInitialized;
+  bool get canRequestAds => _canRequestAds;
+
   /// AdMob SDK başlatma metodu (main.dart veya ilk ihtiyaçta çağrılır)
   Future<void> initialize() async {
+    if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS) || isRunningInTest) {
+      return;
+    }
+    final existingInitialization = _initialization;
+    if (existingInitialization != null) {
+      await existingInitialization;
+      return;
+    }
     if (_isInitialized) return;
+
+    final initialization = _initializeSdk();
+    _initialization = initialization;
+    await initialization;
+  }
+
+  Future<void> _initializeSdk() async {
     try {
       // Apply request configuration before SDK initialization and before the
       // first ad request.
       await MobileAds.instance.updateRequestConfiguration(
-        RequestConfiguration(testDeviceIds: <String>[]),
+        RequestConfiguration(
+          testDeviceIds: kDebugMode && umpTestDeviceId.isNotEmpty
+              ? <String>[umpTestDeviceId]
+              : const <String>[],
+        ),
       );
       await MobileAds.instance.initialize();
       _isInitialized = true;
-      unawaited(gatherConsentIfRequired());
-      loadRewardedAd();
+      await gatherConsentIfRequired();
+      if (_canRequestAds) loadRewardedAd();
     } catch (e) {
+      _isInitialized = false;
       debugPrint('AdmobService: MobileAds initialize error: $e');
+    } finally {
+      _initialization = null;
     }
   }
 
@@ -79,55 +121,151 @@ class AdmobService {
   /// onay formunu (Consent Form) ekrana getirir. Onay alındıktan sonra
   /// reklam motorunun başlatılmasını ve ödüllü reklamın güvenle yüklenmesini sağlar.
   Future<void> gatherConsentIfRequired() async {
-    if (_consentGathered || isRunningInTest || kIsWeb) return;
+    if (_consentGathered) return;
+    final pendingUpdate = _consentUpdate;
+    if (pendingUpdate != null) {
+      await pendingUpdate;
+      return;
+    }
+    if (isRunningInTest || kIsWeb) {
+      _consentGathered = true;
+      _canRequestAds = true;
+      return;
+    }
 
     final completer = Completer<void>();
-    final params = ConsentRequestParameters();
+    _consentUpdate = completer.future;
+    final debugGeography = debugGeographyFor(umpDebugGeography);
+    final debugSettings =
+        kDebugMode && umpTestDeviceId.isNotEmpty && debugGeography != null
+        ? ConsentDebugSettings(
+            testIdentifiers: <String>[umpTestDeviceId],
+            debugGeography: debugGeography,
+          )
+        : null;
+    final params = ConsentRequestParameters(
+      consentDebugSettings: debugSettings,
+    );
 
     try {
       ConsentInformation.instance.requestConsentInfoUpdate(
         params,
-        () async {
-          ConsentForm.loadAndShowConsentFormIfRequired((formError) {
-            if (formError != null) {
+        () {
+          unawaited(() async {
+            try {
+              await ConsentForm.loadAndShowConsentFormIfRequired((formError) {
+                if (formError != null) {
+                  debugPrint(
+                    'AdmobService: UMP Form gösterim uyarısı: ${formError.message}',
+                  );
+                }
+              });
+              await _refreshConsentStatus();
+            } catch (error, stackTrace) {
               debugPrint(
-                'AdmobService: UMP Form gösterim uyarısı: ${formError.message}',
+                'AdmobService: UMP form işlemi başarısız: $error\n$stackTrace',
               );
+              await _refreshConsentStatus();
+            } finally {
+              _consentGathered = true;
+              if (!completer.isCompleted) completer.complete();
+              _consentUpdate = null;
             }
-            _consentGathered = true;
-            // Rıza verildikten sonra reklamı taze rıza parametreleriyle yükle
-            loadRewardedAd();
-            if (!completer.isCompleted) completer.complete();
-          });
+          }());
         },
         (FormError error) {
           debugPrint(
             'AdmobService: UMP Consent Info güncelleme hatası: ${error.message}',
           );
-          _consentGathered = true;
-          loadRewardedAd();
-          if (!completer.isCompleted) completer.complete();
+          unawaited(() async {
+            try {
+              await _refreshConsentStatus();
+            } finally {
+              _consentGathered = true;
+              if (!completer.isCompleted) completer.complete();
+              _consentUpdate = null;
+            }
+          }());
         },
       );
-    } catch (e) {
-      debugPrint('AdmobService: UMP SDK çalıştırma hatası: $e');
+    } catch (e, stackTrace) {
+      debugPrint('AdmobService: UMP SDK çalıştırma hatası: $e\n$stackTrace');
+      await _refreshConsentStatus();
       _consentGathered = true;
+      _consentUpdate = null;
       if (!completer.isCompleted) completer.complete();
     }
 
-    // Arayüzün kilitlenmemesi için maksimum 4 saniye timeout tanınır
-    return completer.future.timeout(
-      const Duration(seconds: 4),
-      onTimeout: () {
-        debugPrint(
-          'AdmobService: UMP zaman aşımına uğradı, işleme devam ediliyor.',
-        );
-      },
-    );
+    await completer.future;
+  }
+
+  Future<void> _refreshConsentStatus() async {
+    try {
+      _canRequestAds = await ConsentInformation.instance.canRequestAds();
+    } catch (error, stackTrace) {
+      _canRequestAds = false;
+      debugPrint(
+        'AdmobService: UMP consent durumu okunamadı: $error\n$stackTrace',
+      );
+    }
+
+    try {
+      final requirement = await ConsentInformation.instance
+          .getPrivacyOptionsRequirementStatus();
+      privacyOptionsRequired.value =
+          requirement == PrivacyOptionsRequirementStatus.required;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'AdmobService: UMP gizlilik seçeneği durumu okunamadı: $error\n$stackTrace',
+      );
+    }
+  }
+
+  final ValueNotifier<bool> privacyOptionsRequired = ValueNotifier<bool>(false);
+
+  Future<void> showPrivacyOptionsForm() async {
+    await initialize();
+    if (!privacyOptionsRequired.value) return;
+
+    final completer = Completer<void>();
+    try {
+      await ConsentForm.showPrivacyOptionsForm((formError) {
+        if (formError != null) {
+          debugPrint(
+            'AdmobService: Gizlilik tercihleri formu açılamadı: ${formError.message}',
+          );
+        }
+        unawaited(() async {
+          await _refreshConsentStatus();
+          if (_canRequestAds) loadRewardedAd();
+          if (!completer.isCompleted) completer.complete();
+        }());
+      });
+    } catch (error, stackTrace) {
+      debugPrint(
+        'AdmobService: Gizlilik tercihleri açılamadı: $error\n$stackTrace',
+      );
+      if (!completer.isCompleted) completer.completeError(error, stackTrace);
+    }
+    await completer.future;
+  }
+
+  Future<bool> isPrivacyOptionsRequired() async {
+    if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS) || isRunningInTest) {
+      return false;
+    }
+    await initialize();
+    if (!_consentGathered) await gatherConsentIfRequired();
+    await _refreshConsentStatus();
+    return privacyOptionsRequired.value;
   }
 
   /// Ödüllü reklamı önceden belleğe yükler (Pre-load)
   void loadRewardedAd({VoidCallback? onLoaded, VoidCallback? onFailed}) {
+    if (!_isInitialized || !_canRequestAds) {
+      onFailed?.call();
+      return;
+    }
     if (_rewardedAd != null) {
       onLoaded?.call();
       return;
@@ -233,6 +371,12 @@ class AdmobService {
       debugPrint(
         'AdmobService: Premium aktif. AdMob bypass edildi, indirme başlatılıyor.',
       );
+      await onRewardEarned();
+      return;
+    }
+
+    await initialize();
+    if (!_isInitialized) {
       await onRewardEarned();
       return;
     }

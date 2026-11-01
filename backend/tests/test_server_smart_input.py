@@ -244,7 +244,8 @@ class SubscriptionMonthlyTests(unittest.TestCase):
         self.assertEqual(sub["amount"], 9.99)
         self.assertEqual(sub["currency"], "TRY")
         self.assertEqual(sub["lang"], "tr")
-        self.assertIn("9,99 TL (KDV Dahil)", sub["receiptMessage"])
+        self.assertIn("9,99 TL/ay", sub["receiptMessage"])
+        self.assertIn("gerçek ödeme alınmadı", sub["receiptMessage"])
 
     def test_english_subscription_accounting_is_0_99_usd(self):
         res = self.client.post("/api/auth/subscribe-monthly", json={"lang": "en", "userId": "22222222-2222-4222-8222-222222222222"})
@@ -255,7 +256,26 @@ class SubscriptionMonthlyTests(unittest.TestCase):
         self.assertEqual(sub["amount"], 0.99)
         self.assertEqual(sub["currency"], "USD")
         self.assertEqual(sub["lang"], "en")
-        self.assertIn("$0.99 (All taxes included)", sub["receiptMessage"])
+        self.assertIn("$0.99/month", sub["receiptMessage"])
+        self.assertIn("no real payment was charged", sub["receiptMessage"])
+
+    @patch("server.sqlite3.connect", side_effect=sqlite3.OperationalError("disk full"))
+    @patch(
+        "server._auth_user_id",
+        return_value=("11111111-1111-4111-8111-111111111111", None),
+    )
+    def test_accounting_failure_does_not_activate_test_premium(
+        self, _mock_auth_user_id, _mock_connect
+    ):
+        response = self.client.post(
+            "/api/auth/subscribe-monthly",
+            json={"lang": "tr", "userId": "11111111-1111-4111-8111-111111111111"},
+        )
+
+        self.assertEqual(response.status_code, 500)
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error"]["code"], "subscription.record_failed")
 
 
     def test_verify_purchase_extends_premium_until_by_30_days(self):

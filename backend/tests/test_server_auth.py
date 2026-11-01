@@ -214,6 +214,7 @@ if __name__ == "__main__":
         self.assertEqual(data2["user"]["id"], data1["user"]["id"])
         self.assertEqual(data2["user"]["name"], "Google User Updated")
         self.assertEqual(data2["user"]["avatarUrl"], "https://lh3.googleusercontent.com/photo2.jpg")
+        self.assertIsNone(data2["premium_until"])
 
         # 3. Check me endpoint works with returned token
         me = self.client.get(
@@ -271,4 +272,6 @@ if __name__ == "__main__":
             json={"email": "testuser@gmail.com"},
         )
         self.assertEqual(res_login_again.status_code, 200)
-        self.assertTrue(res_login_again.get_json()["is_premium"])
+        login_again_data = res_login_again.get_json()
+        self.assertTrue(login_again_data["is_premium"])
+        self.assertTrue(login_again_data["premium_until"])

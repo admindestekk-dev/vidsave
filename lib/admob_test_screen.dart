@@ -22,9 +22,18 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
   String? _nativeError;
   String? _interstitialError;
   String? _appOpenError;
+  bool _isInitializing = true;
   bool _isLoadingInterstitial = false;
   bool _isLoadingAppOpen = false;
   bool _isShowingFullScreenAd = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeAndLoadAds();
+    });
+  }
 
   @override
   void dispose() {
@@ -35,8 +44,55 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
     super.dispose();
   }
 
+  Future<void> _initializeAndLoadAds() async {
+    try {
+      await AdmobService.instance.initialize();
+      if (!mounted) return;
+      if (!AdmobService.instance.isInitialized) {
+        setState(() {
+          _isInitializing = false;
+          _bannerError = 'AdMob SDK başlatılamadı. Tekrar deneyin.';
+          _nativeError = _bannerError;
+          _interstitialError = _bannerError;
+          _appOpenError = _bannerError;
+        });
+        return;
+      }
+      if (!AdmobService.instance.canRequestAds) {
+        setState(() {
+          _isInitializing = false;
+          _bannerError =
+              'Gizlilik izni alınmadığı için bu bölgede reklam isteği gönderilemiyor.';
+        });
+        return;
+      }
+
+      setState(() => _isInitializing = false);
+      await Future.wait([
+        _loadBanner(),
+        _loadNative(),
+        _loadInterstitial(),
+        _loadAppOpen(),
+      ]);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isInitializing = false;
+        _bannerError = 'AdMob başlatılamadı: $error';
+      });
+    }
+  }
+
   Future<void> _loadBanner() async {
-    if (_bannerAd != null) return;
+    if (_bannerAd != null || _isInitializing) return;
+    await AdmobService.instance.initialize();
+    if (!AdmobService.instance.isInitialized) {
+      if (mounted) {
+        setState(() => _bannerError = 'AdMob SDK başlatılamadı.');
+      }
+      return;
+    }
+    if (!mounted) return;
     final ad = BannerAd(
       adUnitId: AdmobService.testAdUnitId('banner'),
       request: const AdRequest(),
@@ -62,7 +118,16 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
   }
 
   Future<void> _loadNative() async {
-    if (_nativeAd != null) return;
+    if (_nativeAd != null || _isInitializing) return;
+    final theme = Theme.of(context);
+    await AdmobService.instance.initialize();
+    if (!AdmobService.instance.isInitialized) {
+      if (mounted) {
+        setState(() => _nativeError = 'AdMob SDK başlatılamadı.');
+      }
+      return;
+    }
+    if (!mounted) return;
     final ad = NativeAd(
       adUnitId: AdmobService.testAdUnitId('native'),
       request: const AdRequest(),
@@ -84,7 +149,7 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
       ),
       nativeTemplateStyle: NativeTemplateStyle(
         templateType: TemplateType.medium,
-        mainBackgroundColor: Theme.of(context).colorScheme.surface,
+        mainBackgroundColor: theme.colorScheme.surface,
         cornerRadius: 16,
         callToActionTextStyle: NativeTemplateTextStyle(
           textColor: Colors.white,
@@ -92,11 +157,11 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
           size: 14,
         ),
         primaryTextStyle: NativeTemplateTextStyle(
-          textColor: Theme.of(context).colorScheme.onSurface,
+          textColor: theme.colorScheme.onSurface,
           size: 16,
         ),
         secondaryTextStyle: NativeTemplateTextStyle(
-          textColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          textColor: theme.colorScheme.onSurfaceVariant,
           size: 13,
         ),
       ),
@@ -105,7 +170,17 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
   }
 
   Future<void> _loadInterstitial() async {
-    if (_interstitialAd != null || _isLoadingInterstitial) return;
+    if (_interstitialAd != null || _isLoadingInterstitial || _isInitializing) {
+      return;
+    }
+    await AdmobService.instance.initialize();
+    if (!AdmobService.instance.isInitialized) {
+      if (mounted) {
+        setState(() => _interstitialError = 'AdMob SDK başlatılamadı.');
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _isLoadingInterstitial = true;
       _interstitialError = null;
@@ -137,7 +212,15 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
   }
 
   Future<void> _loadAppOpen() async {
-    if (_appOpenAd != null || _isLoadingAppOpen) return;
+    if (_appOpenAd != null || _isLoadingAppOpen || _isInitializing) return;
+    await AdmobService.instance.initialize();
+    if (!AdmobService.instance.isInitialized) {
+      if (mounted) {
+        setState(() => _appOpenError = 'AdMob SDK başlatılamadı.');
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _isLoadingAppOpen = true;
       _appOpenError = null;
@@ -244,9 +327,12 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Bu alan yalnızca Google’ın resmi test reklam birimlerini '
-                      'kullanır. Reklamlar otomatik açılmaz; her formatı aşağıdan '
-                      'manuel yükleyip görüntüleyebilirsiniz.',
+                      'Bu alan Google’ın resmi test reklam birimlerini kullanır. '
+                      'Sayfa açılırken banner, yerel, geçiş ve açılış reklamları '
+                      'yüklenir; tam ekran reklamlar yalnızca test düğmesine '
+                      'dokununca gösterilir. EEA/ABD izin ekranını test etmek '
+                      'için VIDSAVE_UMP_TEST_DEVICE_ID ve '
+                      'VIDSAVE_UMP_DEBUG_GEOGRAPHY derleme ayarlarını kullanın.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
@@ -263,7 +349,11 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
                     ? 'Sayfa içinde sabit boyutlu test reklamı.'
                     : 'Test banner reklamı yüklendi.'),
             onPressed: _bannerAd == null ? _loadBanner : null,
-            buttonLabel: _bannerAd == null ? 'Banner yükle' : 'Yüklendi',
+            buttonLabel: _isInitializing
+                ? 'SDK hazırlanıyor…'
+                : _bannerAd == null
+                ? 'Banner yükle'
+                : 'Yüklendi',
           ),
           if (_bannerAd != null) ...[
             const SizedBox(height: 12),
@@ -287,12 +377,12 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
                     : 'Yalnızca aşağıdaki düğmeye dokununca açılır.'),
             onPressed: _interstitialAd != null
                 ? _showInterstitial
-                : _isLoadingInterstitial
+                : _isLoadingInterstitial || _isInitializing
                 ? null
                 : _loadInterstitial,
             buttonLabel: _interstitialAd != null
                 ? 'Test reklamını göster'
-                : _isLoadingInterstitial
+                : _isLoadingInterstitial || _isInitializing
                 ? 'Yükleniyor…'
                 : 'Geçiş reklamı yükle',
           ),
@@ -309,12 +399,12 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
                           'yalnızca test düğmesiyle açılır.'),
             onPressed: _appOpenAd != null
                 ? _showAppOpen
-                : _isLoadingAppOpen
+                : _isLoadingAppOpen || _isInitializing
                 ? null
                 : _loadAppOpen,
             buttonLabel: _appOpenAd != null
                 ? 'Test reklamını göster'
-                : _isLoadingAppOpen
+                : _isLoadingAppOpen || _isInitializing
                 ? 'Yükleniyor…'
                 : 'Açılış reklamını yükle',
           ),
@@ -326,8 +416,14 @@ class _AdmobTestScreenState extends State<AdmobTestScreen> {
                 (_nativeAd == null
                     ? 'Uygulama tasarımına uyumlu test reklamı.'
                     : 'Test yerel reklamı yüklendi.'),
-            onPressed: _nativeAd == null ? _loadNative : null,
-            buttonLabel: _nativeAd == null ? 'Yerel reklam yükle' : 'Yüklendi',
+            onPressed: _nativeAd == null && !_isInitializing
+                ? _loadNative
+                : null,
+            buttonLabel: _isInitializing
+                ? 'SDK hazırlanıyor…'
+                : _nativeAd == null
+                ? 'Yerel reklam yükle'
+                : 'Yüklendi',
           ),
           if (_nativeAd != null) ...[
             const SizedBox(height: 12),

@@ -6,6 +6,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart' as inapp;
 
 import '../quick_download_dialog.dart';
 import '../services/unified_download_engine.dart';
+import '../youtube_restriction.dart';
 
 const List<String> _adBlockUrlFilters = [
   r'.*googleads.*',
@@ -489,6 +490,10 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   void _triggerDownload() {
     final targetUrl = _detectedVideoUrl ?? _urlBarController.text.trim();
     if (targetUrl.isEmpty) return;
+    if (checkAndShowYouTubeRestriction(context, _urlBarController.text) ||
+        checkAndShowYouTubeRestriction(context, targetUrl)) {
+      return;
+    }
 
     QuickDownloadDialog.show(
       context: context,
