@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vid_downloader_app/backend_media_resolver.dart';
@@ -40,7 +41,7 @@ void main() {
           ),
         ),
       ),
-    );
+      );
 
     await tester.pumpAndSettle();
 
@@ -92,4 +93,52 @@ void main() {
 
     expect(find.text('1. Introduction & Commitment'), findsOneWidget);
   });
+
+  testWidgets('requests external-app permission on entry instead of a switch', (
+    WidgetTester tester,
+  ) async {
+    const channel = MethodChannel('vidsave/external_app_download_overlay');
+    final methods = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      methods.add(call.method);
+      if (call.method == 'getStatus') {
+        return {
+          'canDrawOverlays': true,
+          'hasUsageAccess': true,
+          'enabled': false,
+        };
+      }
+      return null;
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+
+    final store = _FakeSettingsStore();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MoreScreen(
+          store: store,
+          resolver: BackendMediaResolver(settingsStore: store),
+          promptExternalOverlayOnStartup: true,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('İZİN VER'), findsOneWidget);
+    expect(find.byType(SwitchListTile), findsNothing);
+
+    await tester.tap(find.text('İZİN VER'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(methods, contains('start'));
+  }, variant: const TargetPlatformVariant({TargetPlatform.android}));
 }

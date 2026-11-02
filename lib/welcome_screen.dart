@@ -95,7 +95,10 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     }
 
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (context) => const VidSaveHomePage()),
+      MaterialPageRoute<void>(
+        builder: (context) =>
+            const VidSaveHomePage(promptExternalOverlayOnStartup: true),
+      ),
     );
   }
 

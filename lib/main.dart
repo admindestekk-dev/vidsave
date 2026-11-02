@@ -106,7 +106,9 @@ class MyApp extends StatelessWidget {
                 home: AuthGate(
                   authService: authService,
                   isFirstTime: isFirstTime,
-                  authenticatedBuilder: (_) => const VidSaveHomePage(),
+                  authenticatedBuilder: (_) => const VidSaveHomePage(
+                    promptExternalOverlayOnStartup: true,
+                  ),
                   guestBuilder: (_) => const WelcomeScreen(),
                 ),
               );
@@ -128,6 +130,7 @@ class VidSaveHomePage extends StatefulWidget {
     this.backendSettingsStore,
     this.musicPlayerFactory,
     this.musicSourceResolver,
+    this.promptExternalOverlayOnStartup = false,
     this.showPremiumBanner = true,
   });
 
@@ -135,6 +138,7 @@ class VidSaveHomePage extends StatefulWidget {
   final VideoPlayerControllerFactory? videoPlayerControllerFactory;
   final AudioPlayerFactory? musicPlayerFactory;
   final AudioSourceResolver? musicSourceResolver;
+  final bool promptExternalOverlayOnStartup;
   final MediaResolver? mediaResolver;
   final MediaDownloader? mediaDownloader;
   final BackendSettingsStore? backendSettingsStore;
@@ -421,6 +425,8 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           MoreScreen(
             store: _backendSettingsStore,
             resolver: _backendResolver,
+            promptExternalOverlayOnStartup:
+                widget.promptExternalOverlayOnStartup,
             onPremiumActivated: () => _onDestinationSelected(_homeIndex),
           ),
         ],

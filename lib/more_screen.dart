@@ -35,12 +35,14 @@ class MoreScreen extends StatefulWidget {
     required this.store,
     required this.resolver,
     this.authService,
+    this.promptExternalOverlayOnStartup = false,
     this.onPremiumActivated,
   });
 
   final BackendSettingsStore store;
   final BackendMediaResolver resolver;
   final AuthService? authService;
+  final bool promptExternalOverlayOnStartup;
   final VoidCallback? onPremiumActivated;
 
   @override
@@ -55,6 +57,8 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
   late Future<bool> _privacyOptionsRequired;
   ExternalAppDownloadOverlayStatus? _externalOverlayStatus;
   bool _isUpdatingExternalOverlay = false;
+  bool _isAwaitingExternalOverlayPermission = false;
+  ExternalAppDownloadOverlayStatus? _externalOverlayStatusBeforePermission;
 
   /// Kaç kez başlığa dokunulduğunu sayar.
   int _clickCount = 0;
@@ -68,6 +72,11 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _privacyOptionsRequired = AdmobService.instance.isPrivacyOptionsRequired();
     _refreshExternalOverlayStatus();
+    if (widget.promptExternalOverlayOnStartup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _promptExternalOverlayPermission();
+      });
+    }
   }
 
   @override
@@ -79,7 +88,11 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _refreshExternalOverlayStatus();
+      if (_isAwaitingExternalOverlayPermission) {
+        _checkExternalOverlayPermissionAfterSettings();
+      } else {
+        _refreshExternalOverlayStatus();
+      }
     }
   }
 
@@ -103,7 +116,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _setExternalOverlayEnabled(bool enabled) async {
+  Future<void> _promptExternalOverlayPermission() async {
     if (defaultTargetPlatform != TargetPlatform.android ||
         _isUpdatingExternalOverlay) {
       return;
@@ -111,61 +124,105 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
 
     setState(() => _isUpdatingExternalOverlay = true);
     try {
-      if (!enabled) {
-        await ExternalAppDownloadOverlay.stop();
-      } else {
-        final accepted = await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Uygulamalar üzerinde VidSave'),
-            content: const Text(
-              'VidSave, seçtiğiniz sosyal uygulamalar öndeyken küçük bir indirme '
-              'ikonu göstermek için ekran üstü görüntüleme ve kullanım erişimi '
-              'izinlerini kullanır. Hangi uygulamanın açık olduğu cihazda '
-              'belirlenir; ziyaret ettiğiniz sayfalar veya videolar okunmaz. '
-              'İkona dokununca VidSave açılır. Bağlantıyı platformdan kopyalarsanız '
-              'VidSave indirme penceresini gösterebilir.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('VAZGEÇ'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('DEVAM ET'),
-              ),
-            ],
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Diğer uygulamalarda VidSave İndir'),
+          content: const Text(
+            'Desteklenen uygulamalarda VidSave indirme düğmesini göstermek '
+            'istiyor musunuz? Bu izin isteği uygulamayı her açtığınızda '
+            'sorulur. Android Ayarları yalnızca henüz verilmemiş izinler için '
+            'açılır.',
           ),
-        );
-        if (accepted != true || !mounted) return;
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('ŞİMDİ DEĞİL'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('İZİN VER'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
 
-        var status = await ExternalAppDownloadOverlay.getStatus();
-        if (!status.hasRequiredPermissions) {
-          await ExternalAppDownloadOverlay.requestNextPermission();
-          status = await ExternalAppDownloadOverlay.getStatus();
-          if (!status.hasRequiredPermissions) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'İki izni de Android Ayarları’ndan etkinleştirin, '
-                    'ardından bu seçeneği tekrar açın.',
-                  ),
-                ),
-              );
-            }
-            return;
-          }
-        }
-        await ExternalAppDownloadOverlay.start();
+      if (accepted == false) {
+        final status = await ExternalAppDownloadOverlay.getStatus();
+        if (status.enabled) await ExternalAppDownloadOverlay.stop();
+        await _refreshExternalOverlayStatus();
+        return;
       }
 
-      await _refreshExternalOverlayStatus();
+      if (accepted == true) {
+        await _continueExternalOverlaySetup();
+      }
     } on PlatformException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ayar değiştirilemedi: ${error.message}')),
+          SnackBar(content: Text('İzin isteği açılamadı: ${error.message}')),
+        );
+      }
+    } on MissingPluginException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Overlay servisi kullanılamıyor: ${error.message}'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUpdatingExternalOverlay = false);
+    }
+  }
+
+  Future<void> _continueExternalOverlaySetup() async {
+    final status = await ExternalAppDownloadOverlay.getStatus();
+    if (status.hasRequiredPermissions) {
+      await ExternalAppDownloadOverlay.start();
+      await _refreshExternalOverlayStatus();
+      return;
+    }
+
+    _externalOverlayStatusBeforePermission = status;
+    _isAwaitingExternalOverlayPermission = true;
+    await ExternalAppDownloadOverlay.requestNextPermission();
+  }
+
+  Future<void> _checkExternalOverlayPermissionAfterSettings() async {
+    final previousStatus = _externalOverlayStatusBeforePermission;
+    _isAwaitingExternalOverlayPermission = false;
+    _externalOverlayStatusBeforePermission = null;
+    if (previousStatus == null || _isUpdatingExternalOverlay) return;
+
+    setState(() => _isUpdatingExternalOverlay = true);
+    try {
+      final status = await ExternalAppDownloadOverlay.getStatus();
+      if (mounted) setState(() => _externalOverlayStatus = status);
+
+      final permissionGranted =
+          (status.canDrawOverlays && !previousStatus.canDrawOverlays) ||
+          (status.hasUsageAccess && !previousStatus.hasUsageAccess);
+      if (!permissionGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'İzin verilmedi. VidSave İndir özelliğini kullanmak için '
+                'gerekli Android izinlerini etkinleştirin.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      await _continueExternalOverlaySetup();
+    } on PlatformException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('İzin durumu alınamadı: ${error.message}')),
         );
       }
     } on MissingPluginException catch (error) {
@@ -419,23 +476,32 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
               const SizedBox(height: 10),
 
               if (defaultTargetPlatform == TargetPlatform.android)
-                SwitchListTile(
-                  key: const ValueKey('external_app_download_overlay_switch'),
+                ListTile(
+                  key: const ValueKey('external_app_download_overlay_status'),
                   contentPadding: EdgeInsets.zero,
-                  secondary: const Icon(
+                  leading: const Icon(
                     Icons.picture_in_picture_alt_rounded,
                     color: _accent,
                   ),
                   title: const Text('Diğer uygulamalarda VidSave İndir'),
                   subtitle: Text(
-                    _externalOverlayStatus?.enabled == true
-                        ? 'Desteklenen sosyal uygulamalarda gösteriliyor'
-                        : 'Facebook, Instagram, TikTok ve diğerlerinde göster',
+                    _externalOverlayStatus == null
+                        ? 'İzin isteği her uygulama açılışında sorulur'
+                        : _externalOverlayStatus!.enabled
+                        ? 'Etkin — izin isteği her uygulama açılışında sorulur'
+                        : 'Kapalı — izin isteği her uygulama açılışında sorulur',
                   ),
-                  value: _externalOverlayStatus?.enabled ?? false,
-                  onChanged: _isUpdatingExternalOverlay
-                      ? null
-                      : _setExternalOverlayEnabled,
+                  trailing: _isUpdatingExternalOverlay
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          _externalOverlayStatus?.enabled == true
+                              ? Icons.check_circle_outline
+                              : Icons.info_outline,
+                        ),
                 ),
 
               // PREMIUM ABONELİK KARTI

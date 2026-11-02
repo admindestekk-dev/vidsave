@@ -1,11 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as inapp;
 
+import '../downloads_screen.dart';
+import '../media_downloader.dart';
 import '../quick_download_dialog.dart';
-import '../services/unified_download_engine.dart';
+import '../universal_scraper.dart';
 import '../youtube_restriction.dart';
 
 const List<String> _adBlockUrlFilters = [
@@ -515,33 +518,30 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
 
     QuickDownloadDialog.show(
       context: context,
-      videoTitle: _pageTitle.isNotEmpty ? _pageTitle : targetUrl,
-      onDownloadVideo: () {
-        UnifiedDownloadEngine.instance.download(
-          rawUrl: targetUrl,
-          type: 'video',
-          preferredTitle: _pageTitle,
-        );
+      videoTitle: targetUrl,
+      onDownloadCompleted: (file, kind) {
+        if (!mounted) return;
+        final isAudio = kind == DownloadKind.audio;
+        final fileName = file.path.split(Platform.pathSeparator).last;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Video indirme kuyruğuna alındı! 🚀'),
+          SnackBar(
+            content: Text('Başarıyla indirildi: $fileName'),
+            backgroundColor: const Color(0xFF20B8C5),
             behavior: SnackBarBehavior.floating,
-          ),
-        );
-      },
-      onDownloadMp3: ({startTime, endTime, audioEffect}) {
-        UnifiedDownloadEngine.instance.download(
-          rawUrl: targetUrl,
-          type: 'mp3',
-          preferredTitle: _pageTitle,
-          startTime: startTime,
-          endTime: endTime,
-          audioEffect: audioEffect,
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('MP3 indirme kuyruğuna alındı! 🎵'),
-            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'GÖRÜNTÜLE',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => DownloadsScreen(
+                      initialFilter: isAudio ? 'audio' : 'video',
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         );
       },
@@ -623,10 +623,13 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     return inapp.InAppWebView(
       initialUrlRequest: inapp.URLRequest(url: inapp.WebUri(widget.initialUrl)),
       initialSettings: inapp.InAppWebViewSettings(
+        userAgent: kUniversalMobileUserAgent,
         javaScriptEnabled: true,
         javaScriptCanOpenWindowsAutomatically: false,
         supportMultipleWindows: true,
         useShouldOverrideUrlLoading: true,
+        allowsInlineMediaPlayback: true,
+        mediaPlaybackRequiresUserGesture: false,
         contentBlockers: supportsContentBlockers
             ? initialContentBlockers
             : const [],
