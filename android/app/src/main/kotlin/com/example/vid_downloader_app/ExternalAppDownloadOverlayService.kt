@@ -46,6 +46,7 @@ class ExternalAppDownloadOverlayService : Service() {
     companion object {
         const val PREFERENCES = "external_app_download_overlay"
         const val ENABLED_KEY = "enabled"
+        const val EXTRA_PENDING_URL = "pending_external_download_url"
 
         private const val NOTIFICATION_CHANNEL = "vidsave_external_overlay"
         private const val NOTIFICATION_ID = 8431
@@ -294,11 +295,27 @@ class ExternalAppDownloadOverlayService : Service() {
     private fun openVidSave() {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
             ?: return
+
+        // Panodaki güncel bağlantıyı kontrol et
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        val clipData = clipboard?.primaryClip
+        var detectedUrl: String? = null
+        if (clipData != null && clipData.itemCount > 0) {
+            val text = clipData.getItemAt(0)?.text?.toString()?.trim()
+            if (!text.isNullOrEmpty() && (text.startsWith("http://") || text.startsWith("https://"))) {
+                detectedUrl = text
+            }
+        }
+
         launchIntent.addFlags(
             Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP,
         )
+        if (!detectedUrl.isNullOrEmpty()) {
+            launchIntent.putExtra(EXTRA_PENDING_URL, detectedUrl)
+        }
+
         startActivity(launchIntent)
     }
 

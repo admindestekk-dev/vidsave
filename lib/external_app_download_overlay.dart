@@ -55,4 +55,10 @@ class ExternalAppDownloadOverlay {
   static Future<void> stop() async {
     await _channel.invokeMethod<void>('stop');
   }
+
+  /// Dış uygulamadaki VidSave overlay indirme butonuna basıldığında
+  /// iletilen bekleyen indirme bağlantısını döner (varsa).
+  static Future<String?> getPendingDownloadUrl() async {
+    return _channel.invokeMethod<String>('getPendingDownloadUrl');
+  }
 }

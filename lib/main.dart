@@ -13,6 +13,7 @@ import 'backend_settings.dart';
 import 'bulk_download_screen.dart';
 import 'client_media_resolver.dart';
 import 'clipboard_auto_download_service.dart';
+import 'external_app_download_overlay.dart';
 import 'download_exception_handler.dart';
 import 'download_item_model.dart';
 import 'download_notification_service.dart';
@@ -192,11 +193,26 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     }
   }
 
-  /// Pano içeriğini kontrol edip desteklenen video linki tespit edilirse QuickDownloadDialog açar.
+  /// Pano içeriğini ve dış overlay indirme butonundan gelen linki kontrol edip
+  /// desteklenen video linki tespit edilirse QuickDownloadDialog açar.
   Future<void> _checkClipboard() async {
     try {
-      final url =
-          await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
+      // 1. Dış overlay butonundan gelen doğrudan bir bağlantı var mı?
+      String? url;
+      if (Platform.isAndroid) {
+        try {
+          final pendingUrl =
+              await ExternalAppDownloadOverlay.getPendingDownloadUrl();
+          if (pendingUrl != null && pendingUrl.trim().isNotEmpty) {
+            url = ClipboardAutoDownloadService.extractUrl(pendingUrl.trim()) ??
+                pendingUrl.trim();
+          }
+        } catch (_) {}
+      }
+
+      // 2. Yoksa panodaki kopyalanmış desteklenen URL'yi kontrol et
+      url ??= await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
+
       if (url != null && mounted) {
         _showClipboardPrompt(url);
       }
@@ -211,6 +227,8 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   }
 
   /// Kullanıcıya ekran ortasında açılan 'VidSave Algıladı' Quick Download Dialog penceresi.
+  /// Dahili tarayıcıdaki ayar gibi (InAppMediaBrowserScreen._triggerDownload) doğrudan
+  /// QuickDownloadDialog içinde canlı ilerleme çubuğuyla indirme yapar.
   void _showClipboardPrompt(String url) {
     QuickDownloadDialog.show(
       context: context,
@@ -243,98 +261,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           ),
         );
       },
-      onDownloadVideo: () {
-        _triggerDirectDownload(url, kind: DownloadKind.video);
-      },
-      onDownloadMp3: ({startTime, endTime, audioEffect}) {
-        _triggerDirectDownload(
-          url,
-          kind: DownloadKind.audio,
-          startTime: startTime,
-          endTime: endTime,
-          audioEffect: audioEffect,
-        );
-      },
     );
-  }
-
-  /// Onaylanan linki doğrudan indirme akışına (video veya MP3) yönlendirir.
-  Future<void> _triggerDirectDownload(
-    String url, {
-    DownloadKind kind = DownloadKind.video,
-    double? startTime,
-    double? endTime,
-    String? audioEffect,
-  }) async {
-    final cleanUrl = evrenselTemizUrl(url);
-    await AdmobService.instance.showRewardedAdOrBypass(
-      onRewardEarned: () async {
-        if (!mounted) return;
-        await _executeDirectDownload(
-          cleanUrl,
-          kind: kind,
-          startTime: startTime,
-          endTime: endTime,
-          audioEffect: audioEffect,
-        );
-      },
-    );
-  }
-
-  Future<void> _executeDirectDownload(
-    String url, {
-    DownloadKind kind = DownloadKind.video,
-    double? startTime,
-    double? endTime,
-    String? audioEffect,
-  }) async {
-    // İndir sekmesine geçiş yap
-    _onDestinationSelected(2);
-
-    final cleanUrl = evrenselTemizUrl(url);
-    final isAudio = kind == DownloadKind.audio;
-    final notifTitle = isAudio
-        ? 'Otomatik MP3 İndirme'
-        : 'Otomatik Video İndirme';
-
-    try {
-      final file = await UnifiedDownloadEngine.instance.download(
-        rawUrl: cleanUrl,
-        type: isAudio ? 'mp3' : 'video',
-        preferredTitle: notifTitle,
-        startTime: startTime,
-        endTime: endTime,
-        audioEffect: audioEffect,
-        fallbackResolver: _mediaResolver,
-        fallbackDownloader: _mediaDownloader,
-      );
-
-      final fileName = file.path.split(Platform.pathSeparator).last;
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Başarıyla indirildi: $fileName'),
-          backgroundColor: const Color(0xFF20B8C5),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'GÖRÜNTÜLE',
-            textColor: Colors.white,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => const DownloadsScreen(),
-                ),
-              );
-            },
-          ),
-        ),
-      );
-    } catch (e, stack) {
-      debugPrint('Direct download error: $e\n$stack');
-      if (!mounted) return;
-      DownloadExceptionHandler.showErrorSnackBar(context, e);
-    }
   }
 
   Future<void> _requestMediaPermission() async {

@@ -44,4 +44,17 @@ void main() {
 
     expect(methods, ['requestNextPermission', 'start', 'stop']);
   });
+
+  test('reads pending download url from overlay action', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          if (call.method == 'getPendingDownloadUrl') {
+            return 'https://www.instagram.com/reel/Cx12345/';
+          }
+          return null;
+        });
+
+    final url = await ExternalAppDownloadOverlay.getPendingDownloadUrl();
+    expect(url, 'https://www.instagram.com/reel/Cx12345/');
+  });
 }

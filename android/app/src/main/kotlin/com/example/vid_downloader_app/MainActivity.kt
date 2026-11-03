@@ -27,6 +27,7 @@ class MainActivity : FlutterActivity() {
 
     private var pendingLegacyExport: Pair<String, String>? = null
     private var pendingLegacyResult: MethodChannel.Result? = null
+    private var pendingOverlayDownloadUrl: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -134,8 +135,24 @@ class MainActivity : FlutterActivity() {
                     )
                     result.success(null)
                 }
+                "getPendingDownloadUrl" -> {
+                    val url = pendingOverlayDownloadUrl
+                        ?: intent?.getStringExtra(ExternalAppDownloadOverlayService.EXTRA_PENDING_URL)
+                    pendingOverlayDownloadUrl = null
+                    intent?.removeExtra(ExternalAppDownloadOverlayService.EXTRA_PENDING_URL)
+                    result.success(url)
+                }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val url = intent.getStringExtra(ExternalAppDownloadOverlayService.EXTRA_PENDING_URL)
+        if (!url.isNullOrBlank()) {
+            pendingOverlayDownloadUrl = url
         }
     }
 
