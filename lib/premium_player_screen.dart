@@ -53,6 +53,7 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   bool _isLoading = true;
   bool _isRenaming = false;
   bool _isHandlingOrientation = false;
+  bool _isPlaybackCommandPending = false;
   String? _selectedQuality;
   Object? _error;
 
@@ -80,7 +81,7 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
     _waveAnimation = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
-    )..repeat();
+    );
     unawaited(_initialize());
   }
 
@@ -127,7 +128,9 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
         createMusicPlayerController();
     _audioPlayer = player;
     _audioStateSubscription = player.onPlayerStateChanged.listen((state) {
-      if (mounted) setState(() => _audioState = state);
+      if (!mounted) return;
+      setState(() => _audioState = state);
+      _updateWaveAnimation(state);
     });
     _audioPositionSubscription = player.onPositionChanged.listen((position) {
       if (mounted) setState(() => _audioPosition = position);
@@ -138,6 +141,21 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
     await player.setReleaseMode(ReleaseMode.stop);
     await player.setSource(DeviceFileSource(_file.path));
     await player.resume();
+    _updateWaveAnimation(PlayerState.playing);
+  }
+
+  void _updateWaveAnimation(PlayerState state) {
+    if (!_isAudio ||
+        (!_waveAnimation.isAnimating && state != PlayerState.playing)) {
+      return;
+    }
+    if (state == PlayerState.playing) {
+      if (!_waveAnimation.isAnimating) _waveAnimation.repeat();
+    } else {
+      _waveAnimation
+        ..stop()
+        ..value = 0;
+    }
   }
 
   Future<void> _initializeVideo() async {
@@ -203,26 +221,36 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   }
 
   Future<void> _togglePlayback() async {
-    if (_isAudio) {
-      final player = _audioPlayer;
-      if (player == null) return;
-      if (_audioState == PlayerState.playing) {
-        await player.pause();
-      } else {
-        if (_audioState == PlayerState.completed) {
-          await player.seek(Duration.zero);
+    if (_isPlaybackCommandPending) return;
+    _isPlaybackCommandPending = true;
+    try {
+      if (_isAudio) {
+        final player = _audioPlayer;
+        if (player == null) return;
+        if (_audioState == PlayerState.playing) {
+          await player.pause();
+          if (mounted) setState(() => _audioState = PlayerState.paused);
+          _updateWaveAnimation(PlayerState.paused);
+        } else {
+          if (_audioState == PlayerState.completed) {
+            await player.seek(Duration.zero);
+          }
+          await player.resume();
+          if (mounted) setState(() => _audioState = PlayerState.playing);
+          _updateWaveAnimation(PlayerState.playing);
         }
-        await player.resume();
+        return;
       }
-      return;
-    }
 
-    final controller = _videoController;
-    if (controller == null) return;
-    if (controller.value.isPlaying) {
-      await controller.pause();
-    } else {
-      await controller.play();
+      final controller = _videoController;
+      if (controller == null) return;
+      if (controller.value.isPlaying) {
+        await controller.pause();
+      } else {
+        await controller.play();
+      }
+    } finally {
+      _isPlaybackCommandPending = false;
     }
   }
 
@@ -230,6 +258,18 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
     final player = _audioPlayer;
     if (player == null) return;
     await player.seek(position);
+  }
+
+  Future<void> _seekAudioBy(int seconds) async {
+    if (_audioDuration <= Duration.zero) return;
+    final target = _audioPosition + Duration(seconds: seconds);
+    final boundedTarget = target < Duration.zero
+        ? Duration.zero
+        : target > _audioDuration
+        ? _audioDuration
+        : target;
+    setState(() => _audioPosition = boundedTarget);
+    await _seekAudio(boundedTarget);
   }
 
   Future<void> _showQualityPicker() async {
@@ -639,18 +679,45 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
             ),
           ),
           const SizedBox(height: 12),
-          IconButton.filled(
-            key: const Key('premium_player_play_pause'),
-            onPressed: _togglePlayback,
-            style: IconButton.styleFrom(
-              backgroundColor: _accent,
-              foregroundColor: Colors.white,
-              fixedSize: const Size(68, 68),
-            ),
-            iconSize: 34,
-            icon: Icon(
-              _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                key: const Key('premium_player_seek_backward'),
+                tooltip: '10 saniye geri',
+                onPressed: _audioDuration <= Duration.zero
+                    ? null
+                    : () => _seekAudioBy(-10),
+                icon: const Icon(Icons.replay_10_rounded),
+                color: Colors.white,
+                iconSize: 32,
+              ),
+              const SizedBox(width: 20),
+              IconButton.filled(
+                key: const Key('premium_player_play_pause'),
+                onPressed: _togglePlayback,
+                style: IconButton.styleFrom(
+                  backgroundColor: _accent,
+                  foregroundColor: Colors.white,
+                  fixedSize: const Size(68, 68),
+                ),
+                iconSize: 34,
+                icon: Icon(
+                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                ),
+              ),
+              const SizedBox(width: 20),
+              IconButton(
+                key: const Key('premium_player_seek_forward'),
+                tooltip: '10 saniye ileri',
+                onPressed: _audioDuration <= Duration.zero
+                    ? null
+                    : () => _seekAudioBy(10),
+                icon: const Icon(Icons.forward_10_rounded),
+                color: Colors.white,
+                iconSize: 32,
+              ),
+            ],
           ),
           const SizedBox(height: 20),
           _buildActionBar(),

@@ -183,6 +183,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   Duration _duration = Duration.zero;
   double _dragValue = 0;
   bool _isDragging = false;
+  bool _isPlaybackCommandPending = false;
   bool _isLoading = true;
   Object? _error;
 
@@ -291,15 +292,22 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
 
   Future<void> _togglePlayPause() async {
     final player = _player;
-    if (player == null) return;
-    if (_playerState == PlayerState.playing) {
-      await player.pause();
-      return;
+    if (player == null || _isPlaybackCommandPending) return;
+    _isPlaybackCommandPending = true;
+    try {
+      if (_playerState == PlayerState.playing) {
+        await player.pause();
+        if (mounted) setState(() => _playerState = PlayerState.paused);
+        return;
+      }
+      if (_playerState == PlayerState.completed) {
+        await player.seek(Duration.zero);
+      }
+      await player.resume();
+      if (mounted) setState(() => _playerState = PlayerState.playing);
+    } finally {
+      _isPlaybackCommandPending = false;
     }
-    if (_playerState == PlayerState.completed) {
-      await player.seek(Duration.zero);
-    }
-    await player.resume();
   }
 
   Future<void> _seekTo(double seconds) async {

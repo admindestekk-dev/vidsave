@@ -277,6 +277,36 @@ void main() {
     } catch (_) {}
   });
 
+  testWidgets('MusicPlayerScreen seeks and updates the pause state', (
+    WidgetTester tester,
+  ) async {
+    final tempDir = Directory.systemTemp.createTempSync('widget_music_seek');
+    final audioFile = File('${tempDir.path}/track.mp3')
+      ..writeAsStringSync('dummy');
+    final player = _FakeMusicPlayer();
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MusicPlayerScreen(
+          file: audioFile,
+          title: 'track.mp3',
+          playerFactory: (_) => player,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('10 saniye ileri'));
+    await tester.pump();
+    expect(player.lastSeek, const Duration(seconds: 10));
+
+    await tester.tap(find.byTooltip('Duraklat'));
+    await tester.pump();
+    expect(player.isPlaying, isFalse);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+  });
+
   testWidgets('WelcomeScreen renders guest bypass button and proceeds to app', (
     tester,
   ) async {
@@ -326,6 +356,7 @@ class _FakeMusicPlayer implements MusicPlayerController {
   Source? source;
   bool isPlaying = false;
   int resumeCount = 0;
+  Duration? lastSeek;
 
   @override
   Stream<PlayerState> get onPlayerStateChanged => _stateController.stream;
@@ -362,6 +393,7 @@ class _FakeMusicPlayer implements MusicPlayerController {
 
   @override
   Future<void> seek(Duration position) async {
+    lastSeek = position;
     _positionController.add(position);
   }
 

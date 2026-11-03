@@ -179,26 +179,47 @@ class _PlaybackControls extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             Center(
-              child: Material(
-                color: Colors.black.withValues(alpha: 0.48),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  onPressed: () {
-                    if (value.isPlaying) {
-                      controller.pause();
-                    } else {
-                      controller.play();
-                    }
-                  },
-                  tooltip: value.isPlaying ? 'Duraklat' : 'Oynat',
-                  color: Colors.white,
-                  iconSize: 42,
-                  padding: const EdgeInsets.all(18),
-                  icon: Icon(
-                    value.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                  ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.48),
+                  borderRadius: BorderRadius.circular(48),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      onPressed: () => _seekBy(controller, value.position, -10),
+                      tooltip: '10 saniye geri',
+                      color: Colors.white,
+                      iconSize: 30,
+                      icon: const Icon(Icons.replay_10_rounded),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        if (value.isPlaying) {
+                          controller.pause();
+                        } else {
+                          controller.play();
+                        }
+                      },
+                      tooltip: value.isPlaying ? 'Duraklat' : 'Oynat',
+                      color: Colors.white,
+                      iconSize: 42,
+                      padding: const EdgeInsets.all(18),
+                      icon: Icon(
+                        value.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _seekBy(controller, value.position, 10),
+                      tooltip: '10 saniye ileri',
+                      color: Colors.white,
+                      iconSize: 30,
+                      icon: const Icon(Icons.forward_10_rounded),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -246,6 +267,20 @@ class _PlaybackControls extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Future<void> _seekBy(
+    VideoPlayerController controller,
+    Duration currentPosition,
+    int seconds,
+  ) async {
+    final target = currentPosition + Duration(seconds: seconds);
+    final duration = controller.value.duration;
+    await controller.seekTo(
+      target < Duration.zero
+          ? Duration.zero
+          : (target > duration ? duration : target),
     );
   }
 }

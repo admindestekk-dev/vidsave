@@ -10,6 +10,44 @@ import 'package:vid_downloader_app/premium_player_screen.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('audio playback supports seeking and pauses cleanly', (
+    tester,
+  ) async {
+    final directory = Directory.systemTemp.createTempSync('premium_audio_');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final audioFile = File(
+      '${directory.path}${Platform.pathSeparator}track.mp3',
+    )..writeAsBytesSync([1, 2, 3]);
+    final player = _FakeMusicPlayer();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PremiumPlayerScreen(
+          file: audioFile,
+          audioPlayerFactory: (_) => player,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await player.seek(const Duration(seconds: 15));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('premium_player_seek_backward')));
+    await tester.pump();
+    expect(player.lastSeek, const Duration(seconds: 5));
+
+    await tester.tap(find.byKey(const Key('premium_player_seek_forward')));
+    await tester.pump();
+    expect(player.lastSeek, const Duration(seconds: 15));
+
+    await tester.tap(find.byKey(const Key('premium_player_play_pause')));
+    await tester.pump();
+    expect(player.isPlaying, isFalse);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('audio player renames local file and selects quality', (
     tester,
   ) async {
@@ -84,6 +122,8 @@ class _FakeMusicPlayer implements MusicPlayerController {
   final StreamController<Duration> _duration =
       StreamController<Duration>.broadcast();
   final StreamController<void> _complete = StreamController<void>.broadcast();
+  Duration? lastSeek;
+  bool isPlaying = false;
 
   @override
   Stream<PlayerState> get onPlayerStateChanged => _state.stream;
@@ -102,11 +142,23 @@ class _FakeMusicPlayer implements MusicPlayerController {
   }
 
   @override
-  Future<void> resume() async => _state.add(PlayerState.playing);
+  Future<void> resume() async {
+    isPlaying = true;
+    _state.add(PlayerState.playing);
+  }
+
   @override
-  Future<void> pause() async => _state.add(PlayerState.paused);
+  Future<void> pause() async {
+    isPlaying = false;
+    _state.add(PlayerState.paused);
+  }
+
   @override
-  Future<void> seek(Duration position) async => _position.add(position);
+  Future<void> seek(Duration position) async {
+    lastSeek = position;
+    _position.add(position);
+  }
+
   @override
   Future<Duration?> getCurrentPosition() async => Duration.zero;
   @override
