@@ -8,6 +8,7 @@ import '../backend_media_resolver.dart';
 import '../client_media_resolver.dart';
 import '../download_item_model.dart';
 import '../download_notification_service.dart';
+import '../ffmpeg_service.dart';
 import '../media_downloader.dart';
 import '../storage_service.dart';
 import 'api_service.dart';
@@ -208,7 +209,8 @@ class UnifiedDownloadEngine {
           }
           final savePath = '${appDir.path}${Platform.pathSeparator}$uniqueName';
 
-          final downloadedFile = await ApiService.instance.downloadFile(
+          var finalFileName = uniqueName;
+          var downloadedFile = await ApiService.instance.downloadFile(
             downloadUrl: analyzeResult.downloadUrl,
             savePath: savePath,
             headers: analyzeResult.headers,
@@ -266,6 +268,45 @@ class UnifiedDownloadEngine {
             },
           );
 
+          final needsAudioConversion =
+              isAudio &&
+              (analyzeResult.ext.toLowerCase() != 'mp3' ||
+                  !uniqueName.toLowerCase().endsWith('.mp3') ||
+                  (startTime != null && startTime > 0) ||
+                  (endTime != null && endTime > 0) ||
+                  (audioEffect != null && audioEffect != 'normal'));
+          if (needsAudioConversion) {
+            final fileBaseName = uniqueName.replaceFirst(
+              RegExp(r'\.[^.]+$'),
+              '',
+            );
+            final mp3BaseName = fileBaseName.isEmpty
+                ? 'vidsave_media'
+                : fileBaseName;
+            final mp3Path = '${appDir.path}${Platform.pathSeparator}';
+            final mp3FileName = '$mp3BaseName.mp3';
+            finalFileName = mp3FileName;
+            var mp3CopyIndex = 1;
+            while (File('$mp3Path$finalFileName').existsSync()) {
+              finalFileName = '${mp3BaseName}_$mp3CopyIndex.mp3';
+              mp3CopyIndex++;
+            }
+
+            final convertedFile = await LocalFFmpegService.instance
+                .convertToMp3(
+                  inputFile: downloadedFile,
+                  outputFile: File('$mp3Path$finalFileName'),
+                  startTime: startTime,
+                  endTime: endTime,
+                  audioEffect: audioEffect,
+                );
+            if (downloadedFile.path != convertedFile.path &&
+                await downloadedFile.exists()) {
+              await downloadedFile.delete();
+            }
+            downloadedFile = convertedFile;
+          }
+
           // Veritabanına kaydet
           int fileSize = 0;
           try {
@@ -275,7 +316,7 @@ class UnifiedDownloadEngine {
           await StorageService.addItem(
             DownloadItemModel(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
-              name: uniqueName,
+              name: finalFileName,
               type: normalizedType == 'mp3' ? 'audio' : 'video',
               sizeInBytes: fileSize,
               filePath: downloadedFile.path,
@@ -295,7 +336,7 @@ class UnifiedDownloadEngine {
           await notifService.showCompleted(
             id: notificationId,
             title: activeTitle,
-            fileName: uniqueName,
+            fileName: finalFileName,
           );
 
           return downloadedFile;

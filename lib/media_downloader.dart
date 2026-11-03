@@ -904,10 +904,11 @@ class MediaDownloader {
 
       await _publishToMediaStore(converted);
       return converted;
-    } catch (e) {
-      // Fallback: If FFmpeg fails on desktop/test, return input file
-      await _publishToMediaStore(inputFile);
-      return inputFile;
+    } catch (_) {
+      if (await outputFile.exists()) {
+        await outputFile.delete();
+      }
+      rethrow;
     }
   }
 
