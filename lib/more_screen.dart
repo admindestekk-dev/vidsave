@@ -11,6 +11,7 @@ import 'admob_service.dart';
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
 import 'admob_test_screen.dart';
+import 'external_app_download_overlay.dart';
 import 'locale_service.dart';
 import 'media_downloader.dart';
 import 'privacy_policy_screen.dart';
@@ -60,18 +61,85 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
 
   /// Gizli geliştirici bölümünün açık olup olmadığı.
   bool _isDeveloperModeActive = false;
+  ExternalAppDownloadOverlayStatus? _externalOverlayStatus;
+  bool _externalOverlayLoading = false;
+  bool _enableOverlayAfterPermissions = false;
+  String? _externalOverlayError;
+
+  bool get _supportsExternalAppOverlay =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _privacyOptionsRequired = AdmobService.instance.isPrivacyOptionsRequired();
+    if (_supportsExternalAppOverlay) {
+      _refreshExternalOverlayStatus();
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _supportsExternalAppOverlay) {
+      _refreshExternalOverlayStatus();
+    }
+  }
+
+  Future<void> _refreshExternalOverlayStatus() async {
+    try {
+      var status = await ExternalAppDownloadOverlay.getStatus();
+      if (_enableOverlayAfterPermissions &&
+          status.hasRequiredPermissions &&
+          !status.enabled) {
+        _enableOverlayAfterPermissions = false;
+        await ExternalAppDownloadOverlay.start();
+        status = await ExternalAppDownloadOverlay.getStatus();
+      }
+      if (!mounted) return;
+      setState(() {
+        _externalOverlayStatus = status;
+        _externalOverlayError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _externalOverlayError = 'Düğme durumu alınamadı: $error');
+    }
+  }
+
+  Future<void> _toggleExternalOverlay(bool enabled) async {
+    if (_externalOverlayLoading) return;
+    setState(() {
+      _externalOverlayLoading = true;
+      _externalOverlayError = null;
+    });
+
+    try {
+      final status = await ExternalAppDownloadOverlay.getStatus();
+      if (!enabled) {
+        _enableOverlayAfterPermissions = false;
+        await ExternalAppDownloadOverlay.stop();
+      } else if (!status.hasRequiredPermissions) {
+        _enableOverlayAfterPermissions = true;
+        await ExternalAppDownloadOverlay.requestNextPermission();
+      } else {
+        await ExternalAppDownloadOverlay.start();
+      }
+      await _refreshExternalOverlayStatus();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _externalOverlayError = 'Dış uygulama düğmesi ayarlanamadı: $error';
+      });
+    } finally {
+      if (mounted) setState(() => _externalOverlayLoading = false);
+    }
   }
 
   void _handleTitleTap() {
@@ -692,6 +760,10 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
               const SizedBox(height: 24),
               _buildSectionHeader(context, title: context.tr('other_section')),
               const SizedBox(height: 12),
+              if (_supportsExternalAppOverlay) ...[
+                _buildExternalOverlayCard(context),
+                const SizedBox(height: 10),
+              ],
               if (kDebugMode) ...[
                 _buildModernMenuCard(
                   context,
@@ -1051,6 +1123,65 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildExternalOverlayCard(BuildContext context) {
+    final status = _externalOverlayStatus;
+    final permissionText = status == null
+        ? 'İzin durumu kontrol ediliyor…'
+        : !status.canDrawOverlays
+        ? 'Kullanmak için “Diğer uygulamaların üzerinde göster” izni gerekir.'
+        : !status.hasUsageAccess
+        ? 'Hangi uygulamada olduğunuzu anlamak için “Kullanım erişimi” izni gerekir.'
+        : 'VidSave düğmesi diğer uygulamaların üzerinde görünür.';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEDF2F7), width: 1.2),
+      ),
+      child: Column(
+        children: [
+          SwitchListTile(
+            key: const ValueKey('external_app_download_overlay_switch'),
+            value: status?.enabled ?? false,
+            onChanged: _externalOverlayLoading || status == null
+                ? null
+                : _toggleExternalOverlay,
+            secondary: const Icon(Icons.picture_in_picture_alt_rounded),
+            title: const Text(
+              'Diğer uygulamalarda İNDİR',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(permissionText),
+          ),
+          if (_externalOverlayLoading)
+            const LinearProgressIndicator(minHeight: 2),
+          if (_externalOverlayError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _externalOverlayError!,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _refreshExternalOverlayStatus,
+                    child: const Text('Tekrar Dene'),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 

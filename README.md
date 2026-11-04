@@ -66,20 +66,17 @@ require a valid store product and purchase verification.
 
 ## Android external-app download shortcut
 
-The optional shortcut in **Daha Fazlası → Diğer uygulamalarda VidSave İndir**
-uses Android's special "Display over other apps" and "Usage access" settings.
-The foreground service checks only which package is currently in the foreground
-and displays the shortcut for Facebook, Instagram, TikTok, Vimeo, X/Twitter,
-Dailymotion, and Pinterest. It does not read page contents or URLs. Tapping the
-shortcut opens VidSave; users can copy a link in the social app first to use the
-existing clipboard prompt. A persistent notification is shown while the feature
-is enabled. A fingerprint of the last detected clipboard link is remembered on
-the device so the same stale link is not prompted again after switching apps or
-restarting VidSave; the link itself is not stored, and a different copied link
-is still detected normally. This overlay is Android-only; iOS does not allow
-apps to draw over other apps. Review the current Google Play policies and
-declare the special-use foreground service and usage-access purpose accurately
-before publishing.
+The optional shortcut in **Daha Fazlası → Diğer uygulamalarda İNDİR** uses
+Android's special "Display over other apps" and "Usage access" settings. Once
+enabled, it appears over other apps (but not VidSave, YouTube, or core Android
+system screens). The foreground service checks only which package is currently
+in the foreground; it does not read page contents or extract media from another app.
+Tapping **İNDİR** opens VidSave's download dialog immediately. A copied link is
+filled in when available; otherwise, paste the post or media link into the
+dialog. A persistent notification is shown while the feature is enabled. This
+overlay is Android-only; iOS does not allow apps to draw over other apps.
+Review the current Google Play policies and declare the special-use foreground
+service and usage-access purpose accurately before publishing.
 
 ## Getting Started
 

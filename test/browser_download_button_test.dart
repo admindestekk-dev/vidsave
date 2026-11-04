@@ -103,6 +103,25 @@ void main() {
         find.byKey(const ValueKey('browser_download_button')),
         findsOneWidget,
       );
+      expect(find.text('İNDİR'), findsOneWidget);
+    });
+
+    testWidgets('keeps the button active before media is detected', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: InAppMediaBrowserScreen(
+            initialUrl: 'https://example.com/article',
+            webViewBuilder: _testWebViewBuilder,
+          ),
+        ),
+      );
+
+      final downloadButton = tester.widget<FloatingActionButton>(
+        find.byKey(const ValueKey('browser_download_button')),
+      );
+      expect(downloadButton.onPressed, isNotNull);
     });
   });
 }

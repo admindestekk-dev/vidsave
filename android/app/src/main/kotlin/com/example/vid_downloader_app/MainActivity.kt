@@ -142,6 +142,29 @@ class MainActivity : FlutterActivity() {
                     intent?.removeExtra(ExternalAppDownloadOverlayService.EXTRA_PENDING_URL)
                     result.success(url)
                 }
+                "getPendingDownloadRequest" -> {
+                    val url = pendingOverlayDownloadUrl
+                        ?: intent?.getStringExtra(
+                            ExternalAppDownloadOverlayService.EXTRA_PENDING_URL,
+                        )
+                    val shouldOpen = intent?.getBooleanExtra(
+                        ExternalAppDownloadOverlayService.EXTRA_OPEN_DOWNLOAD,
+                        false,
+                    ) == true
+                    pendingOverlayDownloadUrl = null
+                    intent?.removeExtra(
+                        ExternalAppDownloadOverlayService.EXTRA_PENDING_URL,
+                    )
+                    intent?.removeExtra(
+                        ExternalAppDownloadOverlayService.EXTRA_OPEN_DOWNLOAD,
+                    )
+                    result.success(
+                        mapOf(
+                            "openDownload" to (shouldOpen || url != null),
+                            "url" to url,
+                        ),
+                    )
+                }
                 else -> result.notImplemented()
             }
         }
@@ -151,9 +174,7 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val url = intent.getStringExtra(ExternalAppDownloadOverlayService.EXTRA_PENDING_URL)
-        if (!url.isNullOrBlank()) {
-            pendingOverlayDownloadUrl = url
-        }
+        pendingOverlayDownloadUrl = url?.takeIf { it.isNotBlank() }
     }
 
     override fun onResume() {

@@ -9,6 +9,7 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -47,21 +48,29 @@ class ExternalAppDownloadOverlayService : Service() {
         const val PREFERENCES = "external_app_download_overlay"
         const val ENABLED_KEY = "enabled"
         const val EXTRA_PENDING_URL = "pending_external_download_url"
+        const val EXTRA_OPEN_DOWNLOAD = "open_external_download"
 
         private const val NOTIFICATION_CHANNEL = "vidsave_external_overlay"
         private const val NOTIFICATION_ID = 8431
         private const val POLL_INTERVAL_MS = 900L
 
-        private val SOCIAL_APP_PACKAGES = setOf(
-            "com.facebook.katana",
-            "com.facebook.lite",
-            "com.instagram.android",
-            "com.zhiliaoapp.musically",
-            "com.ss.android.ugc.trill",
-            "com.vimeo.android.videoapp",
-            "com.twitter.android",
-            "com.dailymotion.dailymotion",
-            "com.pinterest",
+        private val NON_CONTENT_PACKAGES = setOf(
+            "android",
+            "com.android.systemui",
+            "com.android.settings",
+            "com.android.permissioncontroller",
+            "com.google.android.permissioncontroller",
+            "com.google.android.packageinstaller",
+            "com.android.launcher",
+            "com.android.launcher3",
+            "com.google.android.apps.nexuslauncher",
+            "com.sec.android.app.launcher",
+            "com.miui.home",
+            "com.oppo.launcher",
+            "com.oneplus.launcher",
+            "com.google.android.youtube",
+            "com.google.android.youtube.tv",
+            "com.google.android.apps.youtube.music",
         )
     }
 
@@ -70,6 +79,12 @@ class ExternalAppDownloadOverlayService : Service() {
     private var overlayView: View? = null
     private var showingConfirmation = false
     private var foregroundPackage: String? = null
+    private val homePackageName: String? by lazy {
+        packageManager.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            PackageManager.MATCH_DEFAULT_ONLY,
+        )?.activityInfo?.packageName
+    }
 
     private val pollForegroundApp = object : Runnable {
         override fun run() {
@@ -89,7 +104,9 @@ class ExternalAppDownloadOverlayService : Service() {
 
             updateForegroundPackage()
             val shouldShow = foregroundPackage?.let {
-                it in SOCIAL_APP_PACKAGES
+                it != packageName &&
+                    it != homePackageName &&
+                    it !in NON_CONTENT_PACKAGES
             } == true
             if (shouldShow && overlayView == null) {
                 showDownloadButton()
@@ -165,18 +182,18 @@ class ExternalAppDownloadOverlayService : Service() {
         root.contentDescription = "VidSave İndir"
 
         val button = TextView(this).apply {
-            text = "↓"
-            textSize = 28f
+            text = "İNDİR"
+            textSize = 13f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
-            background = roundedBackground(Color.rgb(255, 84, 54), 28f * density)
-            contentDescription = "VidSave İndir"
+            background = roundedBackground(Color.rgb(255, 84, 54), 24f * density)
+            contentDescription = "İNDİR"
             setOnClickListener { openVidSave() }
         }
         root.addView(
             button,
-            FrameLayout.LayoutParams((54 * density).toInt(), (54 * density).toInt()),
+            FrameLayout.LayoutParams((76 * density).toInt(), (48 * density).toInt()),
         )
 
         val close = TextView(this).apply {
@@ -194,7 +211,7 @@ class ExternalAppDownloadOverlayService : Service() {
             Gravity.TOP or Gravity.END,
         )
         root.addView(close, closeParams)
-        addOverlay(root, (62 * density).toInt(), (62 * density).toInt())
+        addOverlay(root, (84 * density).toInt(), (56 * density).toInt())
     }
 
     private fun showCloseConfirmation() {
@@ -315,6 +332,7 @@ class ExternalAppDownloadOverlayService : Service() {
         if (!detectedUrl.isNullOrEmpty()) {
             launchIntent.putExtra(EXTRA_PENDING_URL, detectedUrl)
         }
+        launchIntent.putExtra(EXTRA_OPEN_DOWNLOAD, true)
 
         startActivity(launchIntent)
     }
@@ -329,10 +347,10 @@ class ExternalAppDownloadOverlayService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL,
-            "VidSave uygulama üstü indirme düğmesi",
+            "VidSave uygulama üstü İNDİR düğmesi",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Seçilen sosyal uygulamalarda VidSave düğmesini etkin tutar."
+            description = "Diğer uygulamalarda VidSave İNDİR düğmesini etkin tutar."
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
@@ -346,8 +364,8 @@ class ExternalAppDownloadOverlayService : Service() {
         }
         return builder
             .setSmallIcon(R.drawable.ic_notification_download)
-            .setContentTitle("VidSave düğmesi etkin")
-            .setContentText("Desteklenen sosyal uygulamalarda görünecek.")
+            .setContentTitle("VidSave İNDİR düğmesi etkin")
+            .setContentText("Diğer uygulamaların üzerinde görünecek.")
             .setOngoing(true)
             .build()
     }

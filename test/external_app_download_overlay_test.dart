@@ -57,4 +57,18 @@ void main() {
     final url = await ExternalAppDownloadOverlay.getPendingDownloadUrl();
     expect(url, 'https://www.instagram.com/reel/Cx12345/');
   });
+
+  test('reads download action even when there is no copied link', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'getPendingDownloadRequest');
+          return {'openDownload': true, 'url': null};
+        });
+
+    final request =
+        await ExternalAppDownloadOverlay.getPendingDownloadRequest();
+
+    expect(request?.openDownload, isTrue);
+    expect(request?.url, isNull);
+  });
 }

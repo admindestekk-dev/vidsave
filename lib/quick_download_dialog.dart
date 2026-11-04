@@ -25,6 +25,7 @@ import 'youtube_restriction.dart';
 class QuickDownloadDialog extends StatefulWidget {
   /// Dinamik olarak gösterilecek video/medya başlığı veya URL'si
   final String videoTitle;
+  final bool allowUrlInput;
 
   /// Toplam süre (saniye cinsinden, varsa RangeSlider için referans)
   final double? maxDurationSeconds;
@@ -52,6 +53,7 @@ class QuickDownloadDialog extends StatefulWidget {
   const QuickDownloadDialog({
     super.key,
     required this.videoTitle,
+    this.allowUrlInput = false,
     this.onDownloadVideo,
     this.onDownloadMp3WithOptions,
     this.maxDurationSeconds,
@@ -64,6 +66,7 @@ class QuickDownloadDialog extends StatefulWidget {
   static Future<void> show({
     required BuildContext context,
     required String videoTitle,
+    bool allowUrlInput = false,
     VoidCallback? onDownloadVideo,
     void Function({double? startTime, double? endTime, String? audioEffect})?
     onDownloadMp3,
@@ -78,6 +81,7 @@ class QuickDownloadDialog extends StatefulWidget {
       barrierColor: Colors.black.withValues(alpha: 0.65),
       builder: (ctx) => QuickDownloadDialog(
         videoTitle: videoTitle,
+        allowUrlInput: allowUrlInput,
         maxDurationSeconds: maxDurationSeconds,
         resolver: resolver,
         downloader: downloader,
@@ -103,6 +107,9 @@ class QuickDownloadDialog extends StatefulWidget {
 }
 
 class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
+  late final TextEditingController _urlController;
+  String? _urlInputError;
+
   // 1. Dinamik Değişkenler
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
@@ -121,11 +128,18 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
   @override
   void initState() {
     super.initState();
+    _urlController = TextEditingController(text: widget.videoTitle);
     _maxDuration =
         (widget.maxDurationSeconds != null && widget.maxDurationSeconds! > 10)
         ? widget.maxDurationSeconds!
         : 300.0; // Varsayılan 5 dakika
     _currentRangeValues = RangeValues(0.0, _maxDuration);
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
   }
 
   String _formatSeconds(double sec) {
@@ -136,7 +150,16 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
   /// Canlı indirme akışını (Video veya MP3) tetikler
   Future<void> _startDownload(DownloadKind kind) async {
-    if (checkAndShowYouTubeRestriction(context, widget.videoTitle)) return;
+    final downloadUrl = widget.allowUrlInput
+        ? _urlController.text.trim()
+        : widget.videoTitle;
+    if (downloadUrl.isEmpty) {
+      setState(() {
+        _urlInputError = 'Önce video veya gönderi bağlantısını yapıştırın.';
+      });
+      return;
+    }
+    if (checkAndShowYouTubeRestriction(context, downloadUrl)) return;
 
     // 1. Premium Kontrolü: Kullanıcı isPremium == true ise hiçbir şey sorma, reklamı tamamen bypass et
     final isPremium = await AdmobService.instance.checkIsPremium();
@@ -293,7 +316,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
     try {
       final file = await UnifiedDownloadEngine.instance.download(
-        rawUrl: widget.videoTitle,
+        rawUrl: widget.allowUrlInput
+            ? _urlController.text.trim()
+            : widget.videoTitle,
         type: isAudio ? 'mp3' : 'video',
         startTime: _enableTrimming ? _currentRangeValues.start : null,
         endTime: _enableTrimming ? _currentRangeValues.end : null,
@@ -442,7 +467,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
                     // Dinamik Video Başlığı
                     Text(
-                      widget.videoTitle,
+                      widget.allowUrlInput
+                          ? 'Bağlantıyı düzenleyin veya video linki yapıştırın'
+                          : widget.videoTitle,
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -453,6 +480,41 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                         fontWeight: FontWeight.w400,
                       ),
                     ),
+                    if (widget.allowUrlInput) ...[
+                      const SizedBox(height: 14),
+                      TextField(
+                        key: const ValueKey('quick_dialog_url_field'),
+                        controller: _urlController,
+                        keyboardType: TextInputType.url,
+                        textInputAction: TextInputAction.done,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Instagram, TikTok veya video bağlantısı',
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          errorText: _urlInputError,
+                          prefixIcon: const Icon(
+                            Icons.link_rounded,
+                            color: QuickDownloadDialog.accentColor,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.06),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        onChanged: (_) {
+                          if (_urlInputError != null) {
+                            setState(() => _urlInputError = null);
+                          }
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 18),
 
                     // Ses Seçenekleri & Nakarat Ayarları (İndirme başlamadıysa göster)

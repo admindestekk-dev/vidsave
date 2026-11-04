@@ -24,6 +24,20 @@ class ExternalAppDownloadOverlayStatus {
   }
 }
 
+class ExternalAppDownloadRequest {
+  const ExternalAppDownloadRequest({required this.openDownload, this.url});
+
+  final bool openDownload;
+  final String? url;
+
+  factory ExternalAppDownloadRequest.fromMap(Map<Object?, Object?> value) {
+    return ExternalAppDownloadRequest(
+      openDownload: value['openDownload'] == true,
+      url: value['url'] as String?,
+    );
+  }
+}
+
 class ExternalAppDownloadOverlay {
   ExternalAppDownloadOverlay._();
 
@@ -60,5 +74,13 @@ class ExternalAppDownloadOverlay {
   /// iletilen bekleyen indirme bağlantısını döner (varsa).
   static Future<String?> getPendingDownloadUrl() async {
     return _channel.invokeMethod<String>('getPendingDownloadUrl');
+  }
+
+  static Future<ExternalAppDownloadRequest?> getPendingDownloadRequest() async {
+    final result = await _channel.invokeMapMethod<Object?, Object?>(
+      'getPendingDownloadRequest',
+    );
+    if (result == null) return null;
+    return ExternalAppDownloadRequest.fromMap(result);
   }
 }

@@ -757,18 +757,17 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
                 clipBehavior: Clip.none,
                 children: [
                   Tooltip(
-                    message: 'VidSave İndir',
-                    child: FloatingActionButton.small(
+                    message: _isVideoActive
+                        ? 'VidSave İndir'
+                        : 'Sayfadaki videoyu veya sesi bul ve indir',
+                    child: FloatingActionButton.extended(
                       key: const ValueKey('browser_download_button'),
                       heroTag: 'browser_download_button',
-                      onPressed: _isVideoActive ? _triggerDownload : null,
-                      backgroundColor: _isVideoActive
-                          ? _neonOrange
-                          : const Color(0xFF2C323B).withValues(alpha: 0.9),
-                      foregroundColor: _isVideoActive
-                          ? Colors.white
-                          : Colors.white54,
-                      child: const Icon(Icons.download_rounded),
+                      onPressed: _triggerDownload,
+                      backgroundColor: _neonOrange,
+                      foregroundColor: Colors.white,
+                      icon: const Icon(Icons.download_rounded),
+                      label: const Text('İNDİR'),
                     ),
                   ),
                   Positioned(

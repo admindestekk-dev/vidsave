@@ -152,6 +152,8 @@ class VidSaveHomePage extends StatefulWidget {
 class _VidSaveHomePageState extends State<VidSaveHomePage>
     with WidgetsBindingObserver {
   int _selectedIndex = 2;
+  bool _isCheckingClipboard = false;
+  bool _isClipboardPromptShowing = false;
   final GlobalKey<InAppMediaBrowserScreenState> _browserKey =
       GlobalKey<InAppMediaBrowserScreenState>();
   late final MediaLibrary _library =
@@ -196,25 +198,33 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   /// Pano içeriğini ve dış overlay indirme butonundan gelen linki kontrol edip
   /// desteklenen video linki tespit edilirse QuickDownloadDialog açar.
   Future<void> _checkClipboard() async {
+    if (_isCheckingClipboard) return;
+    _isCheckingClipboard = true;
     try {
       // 1. Dış overlay butonundan gelen doğrudan bir bağlantı var mı?
       String? url;
+      var openDownloadFromOverlay = false;
       if (Platform.isAndroid) {
         try {
-          final pendingUrl =
-              await ExternalAppDownloadOverlay.getPendingDownloadUrl();
+          final pendingRequest =
+              await ExternalAppDownloadOverlay.getPendingDownloadRequest();
+          openDownloadFromOverlay = pendingRequest?.openDownload ?? false;
+          final pendingUrl = pendingRequest?.url;
           if (pendingUrl != null && pendingUrl.trim().isNotEmpty) {
-            url = ClipboardAutoDownloadService.extractUrl(pendingUrl.trim()) ??
+            url =
+                ClipboardAutoDownloadService.extractUrl(pendingUrl.trim()) ??
                 pendingUrl.trim();
           }
-        } catch (_) {}
+        } catch (error) {
+          debugPrint('Dış uygulama indirme isteği alınamadı: $error');
+        }
       }
 
       // 2. Yoksa panodaki kopyalanmış desteklenen URL'yi kontrol et
       url ??= await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
 
-      if (url != null && mounted) {
-        _showClipboardPrompt(url);
+      if ((url != null || openDownloadFromOverlay) && mounted) {
+        await _showClipboardPrompt(url, allowUrlInput: openDownloadFromOverlay);
       }
     } catch (error) {
       if (!mounted) return;
@@ -223,45 +233,57 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           content: Text('Bağlantı algılama durumu kaydedilemedi: $error'),
         ),
       );
+    } finally {
+      _isCheckingClipboard = false;
     }
   }
 
   /// Kullanıcıya ekran ortasında açılan 'VidSave Algıladı' Quick Download Dialog penceresi.
   /// Dahili tarayıcıdaki ayar gibi (InAppMediaBrowserScreen._triggerDownload) doğrudan
   /// QuickDownloadDialog içinde canlı ilerleme çubuğuyla indirme yapar.
-  void _showClipboardPrompt(String url) {
-    QuickDownloadDialog.show(
-      context: context,
-      videoTitle: url,
-      resolver: _mediaResolver,
-      downloader: _mediaDownloader,
-      onDownloadCompleted: (file, kind) {
-        if (!mounted) return;
-        final isAudio = kind == DownloadKind.audio;
-        final fileName = file.path.split(Platform.pathSeparator).last;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Başarıyla indirildi: $fileName'),
-            backgroundColor: const Color(0xFF20B8C5),
-            behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'GÖRÜNTÜLE',
-              textColor: Colors.white,
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => DownloadsScreen(
-                      initialFilter: isAudio ? 'audio' : 'video',
+  Future<void> _showClipboardPrompt(
+    String? url, {
+    bool allowUrlInput = false,
+  }) async {
+    if (_isClipboardPromptShowing) return;
+    _isClipboardPromptShowing = true;
+    try {
+      await QuickDownloadDialog.show(
+        context: context,
+        videoTitle: url ?? '',
+        allowUrlInput: allowUrlInput,
+        resolver: _mediaResolver,
+        downloader: _mediaDownloader,
+        onDownloadCompleted: (file, kind) {
+          if (!mounted) return;
+          final isAudio = kind == DownloadKind.audio;
+          final fileName = file.path.split(Platform.pathSeparator).last;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Başarıyla indirildi: $fileName'),
+              backgroundColor: const Color(0xFF20B8C5),
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'GÖRÜNTÜLE',
+                textColor: Colors.white,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => DownloadsScreen(
+                        initialFilter: isAudio ? 'audio' : 'video',
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
+    } finally {
+      _isClipboardPromptShowing = false;
+    }
   }
 
   Future<void> _requestMediaPermission() async {
