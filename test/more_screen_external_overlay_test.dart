@@ -58,7 +58,7 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  testWidgets('automatically requests remaining permission and enables', (
+  testWidgets('enables immediately on the first permission grant', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -84,20 +84,17 @@ void main() {
         1,
       );
 
+      // Kullanıcı ilk izni (canDrawOverlays) onaylayıp uygulamaya geri döndüğünde
+      // ikinci bir izin istemeden doğrudan etkinleşmelidir.
       canDrawOverlays = true;
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
+
       expect(
         methods.where((method) => method == 'requestNextPermission').length,
-        2,
+        1,
       );
-
-      hasUsageAccess = true;
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pumpAndSettle();
-
       expect(methods, contains('start'));
       expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);
     } finally {

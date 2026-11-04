@@ -29,6 +29,7 @@ import java.util.Locale
 class ExternalShareDownloadService : Service() {
     companion object {
         const val EXTRA_SHARED_URL = "shared_media_url"
+        const val EXTRA_MEDIA_TYPE = "shared_media_type"
         const val PREFERENCES = "external_share_download"
         const val PENDING_INTERSTITIAL_KEY = "pending_completion_interstitial"
         private const val CHANNEL_ID = "vidsave_share_download"
@@ -39,7 +40,8 @@ class ExternalShareDownloadService : Service() {
         private const val PUBLIC_DOWNLOADS_CHANNEL = "vidsave/public_downloads"
     }
 
-    private val pendingUrls = ArrayDeque<String>()
+    private data class QueuedDownload(val url: String, val type: String)
+    private val pendingUrls = ArrayDeque<QueuedDownload>()
     private var engine: FlutterEngine? = null
     private var methodChannel: MethodChannel? = null
     private var completedDownloads = 0
@@ -57,8 +59,9 @@ class ExternalShareDownloadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val sharedUrl = intent?.getStringExtra(EXTRA_SHARED_URL)
+        val mediaType = intent?.getStringExtra(EXTRA_MEDIA_TYPE) ?: "video"
         if (!sharedUrl.isNullOrBlank()) {
-            pendingUrls.addLast(sharedUrl)
+            pendingUrls.addLast(QueuedDownload(sharedUrl, mediaType))
         } else if (pendingUrls.isEmpty() && engine == null) {
             lastError = "Paylaşılan metinde geçerli bir video bağlantısı bulunamadı."
         }
@@ -98,9 +101,13 @@ class ExternalShareDownloadService : Service() {
         ).also { channel ->
             channel.setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "takeNextUrl" -> result.success(
-                        if (pendingUrls.isEmpty()) null else pendingUrls.removeFirst(),
-                    )
+                    "takeNextUrl" -> {
+                        val next = if (pendingUrls.isEmpty()) null else pendingUrls.removeFirst()
+                        result.success(
+                            if (next == null) null
+                            else mapOf("url" to next.url, "type" to next.type)
+                        )
+                    }
                     "updateProgress" -> {
                         val progress = call.argument<Int>("progress")
                         val speed = call.argument<String>("speed").orEmpty()
@@ -144,7 +151,7 @@ class ExternalShareDownloadService : Service() {
     private fun updateProgress(progress: Int?, speed: String) {
         val percent = progress?.coerceIn(0, 100)
         val message = if (percent == null) {
-            "Video indiriliyor…"
+            "İndiriliyor…"
         } else {
             "%$percent indiriliyor${if (speed.isBlank()) "" else " • $speed"}"
         }
@@ -152,6 +159,16 @@ class ExternalShareDownloadService : Service() {
             FOREGROUND_NOTIFICATION_ID,
             buildProgressNotification(percent, message),
         )
+
+        // Eğer harici overlay butonu servisi aktifse ona da canlı ilerlemeyi yansıt
+        try {
+            val overlayIntent = Intent(this, ExternalAppDownloadOverlayService::class.java).apply {
+                action = ExternalAppDownloadOverlayService.ACTION_DOWNLOAD_PROGRESS
+                putExtra(ExternalAppDownloadOverlayService.EXTRA_PROGRESS, percent ?: 0)
+                putExtra(ExternalAppDownloadOverlayService.EXTRA_SPEED, speed)
+            }
+            startService(overlayIntent)
+        } catch (_: Exception) {}
     }
 
     private fun finishDownloads(success: Boolean) {
@@ -165,7 +182,7 @@ class ExternalShareDownloadService : Service() {
         val title = if (success) "İndirme tamamlandı" else "İndirme başarısız"
         val detail = when {
             success && !lastFileName.isNullOrBlank() -> lastFileName!!
-            success -> "$completedDownloads video indirildi"
+            success -> "$completedDownloads medya indirildi"
             !lastError.isNullOrBlank() -> lastError!!
             failedDownloads > 0 -> "$failedDownloads bağlantı indirilemedi"
             else -> "Bağlantıyı kontrol edip tekrar deneyin."
@@ -174,6 +191,17 @@ class ExternalShareDownloadService : Service() {
             COMPLETE_NOTIFICATION_ID,
             buildCompletionNotification(title, detail),
         )
+
+        // Harici overlay butonuna indirme sonucunu bildir
+        try {
+            val overlayIntent = Intent(this, ExternalAppDownloadOverlayService::class.java).apply {
+                action = ExternalAppDownloadOverlayService.ACTION_DOWNLOAD_FINISHED
+                putExtra(ExternalAppDownloadOverlayService.EXTRA_SUCCESS, success)
+                putExtra(ExternalAppDownloadOverlayService.EXTRA_MESSAGE, if (success) "İndirildi: ${lastFileName ?: "Tamamlandı"}" else (lastError ?: "İndirme başarısız"))
+            }
+            startService(overlayIntent)
+        } catch (_: Exception) {}
+
         @Suppress("DEPRECATION")
         stopForeground(true)
         stopSelf()

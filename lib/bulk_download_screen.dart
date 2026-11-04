@@ -9,6 +9,7 @@ import 'bulk_download_service.dart';
 import 'download_exception_handler.dart';
 import 'downloads_screen.dart';
 import 'media_downloader.dart';
+import 'admob_banner_widget.dart';
 import 'admob_service.dart';
 import 'batch_download_screen.dart';
 import 'services/unified_download_engine.dart';
@@ -201,6 +202,8 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
       _overallStatusText =
           'Toplu İndirme Tamamlandı! ($successCount/$_totalCount Başarılı)';
     });
+
+    unawaited(AdmobService.instance.showInterstitialAd());
   }
 
   @override
@@ -499,6 +502,12 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
               ],
             ],
           ),
+        ),
+      ),
+      bottomNavigationBar: const SafeArea(
+        top: false,
+        child: AdmobBannerWidget(
+          margin: EdgeInsets.only(top: 4, bottom: 6),
         ),
       ),
     );

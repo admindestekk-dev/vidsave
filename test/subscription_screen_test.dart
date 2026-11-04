@@ -571,4 +571,35 @@ void main() {
     expect(await SubscriptionScreen.readPremiumStatus(), isFalse);
     expect(find.text('PREMIUM AKTİF'), findsNothing);
   });
+
+  testWidgets(
+    'offline_test_subscribe_button activates Premium directly for testers',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('tr'),
+          home: const SubscriptionScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final testButton = find.byKey(
+        const Key('offline_test_subscribe_button'),
+      );
+      expect(testButton, findsOneWidget);
+      await tester.ensureVisible(testButton);
+      await tester.tap(testButton);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(SubscriptionScreen.prefKeyIsPremium), isTrue);
+      expect(await SubscriptionScreen.readPremiumStatus(), isTrue);
+    },
+  );
 }

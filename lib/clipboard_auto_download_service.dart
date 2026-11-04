@@ -91,6 +91,15 @@ class ClipboardAutoDownloadService {
   static String _fingerprint(String url) =>
       sha256.convert(utf8.encode(url)).toString();
 
+  /// Testlerde veya yeni indirme başladığında son işlenen URL önbelleğini sıfırlar.
+  static Future<void> clearLastHandled() async {
+    _lastHandledUrl = null;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.remove(_lastHandledUrlKey);
+    } catch (_) {}
+  }
+
   /// Testlerde uygulama belleğinin yeniden başlatılmasını taklit etmek için kullanılır.
   static void resetLastHandled() {
     _lastHandledUrl = null;

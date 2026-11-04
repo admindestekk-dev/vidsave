@@ -29,6 +29,7 @@ class MainActivity : FlutterActivity() {
     private var pendingLegacyExport: Pair<String, String>? = null
     private var pendingLegacyResult: MethodChannel.Result? = null
     private var pendingOverlayDownloadUrl: String? = null
+    private var pendingOverlayOpenDownload: Boolean = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -115,28 +116,21 @@ class MainActivity : FlutterActivity() {
                     ),
                 )
                 "requestNextPermission" -> {
-                    when {
-                        !ExternalAppOverlayPermissions.canDrawOverlays(this) -> {
-                            startActivity(
-                                Intent(
-                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                    Uri.parse("package:$packageName"),
-                                ),
-                            )
-                        }
-                        !ExternalAppOverlayPermissions.hasUsageAccess(this) -> {
-                            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                        }
+                    if (!ExternalAppOverlayPermissions.canDrawOverlays(this)) {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:$packageName"),
+                            ),
+                        )
                     }
                     result.success(null)
                 }
                 "start" -> {
-                    if (!ExternalAppOverlayPermissions.canDrawOverlays(this) ||
-                        !ExternalAppOverlayPermissions.hasUsageAccess(this)
-                    ) {
+                    if (!ExternalAppOverlayPermissions.canDrawOverlays(this)) {
                         result.error(
                             "permissions_required",
-                            "Ekran üstü görüntüleme ve kullanım erişimi izinleri gerekli.",
+                            "Ekran üstü görüntüleme izni gerekli.",
                             null,
                         )
                     } else {
@@ -172,10 +166,7 @@ class MainActivity : FlutterActivity() {
                         ExternalAppDownloadOverlayService.ENABLED_KEY,
                         false,
                     )
-                    if (!enabled ||
-                        !ExternalAppOverlayPermissions.canDrawOverlays(this) ||
-                        !ExternalAppOverlayPermissions.hasUsageAccess(this)
-                    ) {
+                    if (!enabled || !ExternalAppOverlayPermissions.canDrawOverlays(this)) {
                         result.error(
                             "overlay_unavailable",
                             "Dış uygulama indirme düğmesi etkin değil.",
@@ -278,11 +269,13 @@ class MainActivity : FlutterActivity() {
                         ?: intent?.getStringExtra(
                             ExternalAppDownloadOverlayService.EXTRA_PENDING_URL,
                         )
-                    val shouldOpen = intent?.getBooleanExtra(
-                        ExternalAppDownloadOverlayService.EXTRA_OPEN_DOWNLOAD,
-                        false,
-                    ) == true
+                    val shouldOpen = pendingOverlayOpenDownload
+                        || (intent?.getBooleanExtra(
+                            ExternalAppDownloadOverlayService.EXTRA_OPEN_DOWNLOAD,
+                            false,
+                        ) == true)
                     pendingOverlayDownloadUrl = null
+                    pendingOverlayOpenDownload = false
                     intent?.removeExtra(
                         ExternalAppDownloadOverlayService.EXTRA_PENDING_URL,
                     )
@@ -306,17 +299,19 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         val url = intent.getStringExtra(ExternalAppDownloadOverlayService.EXTRA_PENDING_URL)
         pendingOverlayDownloadUrl = url?.takeIf { it.isNotBlank() }
+        if (intent.getBooleanExtra(ExternalAppDownloadOverlayService.EXTRA_OPEN_DOWNLOAD, false)) {
+            pendingOverlayOpenDownload = true
+        }
     }
 
     override fun onResume() {
         super.onResume()
+        ExternalAppDownloadOverlayService.isAppInForeground = true
         val enabled = getSharedPreferences(
             ExternalAppDownloadOverlayService.PREFERENCES,
             MODE_PRIVATE,
         ).getBoolean(ExternalAppDownloadOverlayService.ENABLED_KEY, false)
-        val hasPermissions =
-            ExternalAppOverlayPermissions.canDrawOverlays(this) &&
-                ExternalAppOverlayPermissions.hasUsageAccess(this)
+        val hasPermissions = ExternalAppOverlayPermissions.canDrawOverlays(this)
         if (enabled && hasPermissions) {
             startOverlayService()
         } else if (enabled) {
@@ -329,6 +324,11 @@ class MainActivity : FlutterActivity() {
             ).apply()
             stopService(Intent(this, ExternalAppDownloadOverlayService::class.java))
         }
+    }
+
+    override fun onPause() {
+        ExternalAppDownloadOverlayService.isAppInForeground = false
+        super.onPause()
     }
 
     private fun startOverlayService(action: String? = null) {

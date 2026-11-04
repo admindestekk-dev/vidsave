@@ -1,6 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vid_downloader_app/admob_banner_widget.dart';
+import 'package:vid_downloader_app/admob_native_ad_widget.dart';
 import 'package:vid_downloader_app/admob_service.dart';
 import 'package:vid_downloader_app/subscription_screen.dart';
 
@@ -104,5 +107,41 @@ void main() {
         expect(downloadCallbackCalled, isTrue);
       },
     );
+
+    test('showInterstitialAd and showAppOpenAd bypass in test environment safely', () async {
+      final interstitialShown = await AdmobService.instance.showInterstitialAd();
+      expect(interstitialShown, isFalse);
+
+      final appOpenShown = await AdmobService.instance.showAppOpenAdIfAvailable();
+      expect(appOpenShown, isFalse);
+    });
+
+    testWidgets('AdmobBannerWidget renders SizedBox.shrink in test environment', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AdmobBannerWidget(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AdmobBannerWidget), findsOneWidget);
+      expect(find.byType(AdWidget), findsNothing);
+    });
+
+    testWidgets('AdmobNativeAdWidget renders SizedBox.shrink in test environment', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AdmobNativeAdWidget(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AdmobNativeAdWidget), findsOneWidget);
+      expect(find.byType(AdWidget), findsNothing);
+    });
   });
 }

@@ -6,8 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as inapp;
 
 import '../downloads_screen.dart';
+import '../download_exception_handler.dart';
 import '../media_downloader.dart';
-import '../quick_download_dialog.dart';
+import '../services/unified_download_engine.dart';
 import '../universal_scraper.dart';
 import '../youtube_restriction.dart';
 
@@ -116,6 +117,9 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   bool _isDownloadButtonAllowedForPage = false;
   bool _showDownloadButton = true;
   String _pageTitle = '';
+  bool _isInlineDownloading = false;
+  double _inlineDownloadProgress = 0.0;
+  String _inlineDownloadSpeed = '';
   static const Color _neonOrange = Color(0xFFFF5436);
 
   @visibleForTesting
@@ -581,40 +585,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         key: ValueKey('browser_download_${kind.name}_option'),
         onPressed: () {
           Navigator.of(context).pop();
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            QuickDownloadDialog.show(
-              context: this.context,
-              videoTitle: url,
-              initialDownloadKind: kind,
-              onDownloadCompleted: (file, downloadKind) {
-                if (!mounted) return;
-                final isAudio = downloadKind == DownloadKind.audio;
-                final fileName = file.path.split(Platform.pathSeparator).last;
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  SnackBar(
-                    content: Text('Başarıyla indirildi: $fileName'),
-                    backgroundColor: const Color(0xFF20B8C5),
-                    behavior: SnackBarBehavior.floating,
-                    action: SnackBarAction(
-                      label: 'GÖRÜNTÜLE',
-                      textColor: Colors.white,
-                      onPressed: () {
-                        Navigator.push(
-                          this.context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => DownloadsScreen(
-                              initialFilter: isAudio ? 'audio' : 'video',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              },
-            );
-          });
+          _startInlineDownload(url: url, kind: kind);
         },
         icon: Icon(icon),
         label: Text(title),
@@ -626,6 +597,72 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _startInlineDownload({
+    required String url,
+    required DownloadKind kind,
+  }) async {
+    if (!mounted) return;
+    setState(() {
+      _isInlineDownloading = true;
+      _inlineDownloadProgress = 0.0;
+      _inlineDownloadSpeed = 'Başlatılıyor…';
+    });
+
+    final isAudio = kind == DownloadKind.audio;
+    try {
+      final file = await UnifiedDownloadEngine.instance.download(
+        rawUrl: url,
+        type: isAudio ? 'mp3' : 'video',
+        onProgress: (received, total, progress, speed, status) {
+          if (!mounted) return;
+          final pct = ((progress ?? 0) * 100).clamp(0.0, 100.0);
+          setState(() {
+            _inlineDownloadProgress = pct;
+            _inlineDownloadSpeed = speed;
+          });
+        },
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _isInlineDownloading = false;
+        _inlineDownloadProgress = 0.0;
+        _inlineDownloadSpeed = '';
+      });
+
+      final fileName = file.path.split(Platform.pathSeparator).last;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Başarıyla indirildi: $fileName'),
+          backgroundColor: const Color(0xFF20B8C5),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'GÖRÜNTÜLE',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => DownloadsScreen(
+                    initialFilter: isAudio ? 'audio' : 'video',
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isInlineDownloading = false;
+        _inlineDownloadProgress = 0.0;
+        _inlineDownloadSpeed = '';
+      });
+      DownloadExceptionHandler.showErrorSnackBar(context, error);
+    }
   }
 
   Future<void> _confirmCloseDownloadButton() async {
@@ -837,41 +874,58 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
                 clipBehavior: Clip.none,
                 children: [
                   Tooltip(
-                    message: _isVideoActive
-                        ? 'VidSave İndir'
-                        : 'Sayfadaki videoyu veya sesi bul ve indir',
+                    message: _isInlineDownloading
+                        ? 'İndiriliyor: %${_inlineDownloadProgress.toInt()} • $_inlineDownloadSpeed'
+                        : (_isVideoActive
+                            ? 'VidSave İndir'
+                            : 'Sayfadaki videoyu veya sesi bul ve indir'),
                     child: FloatingActionButton.extended(
                       key: const ValueKey('browser_download_button'),
                       heroTag: 'browser_download_button',
-                      onPressed: _triggerDownload,
-                      backgroundColor: _neonOrange,
+                      onPressed: _isInlineDownloading ? null : _triggerDownload,
+                      backgroundColor: _isInlineDownloading ? const Color(0xFF1E2630) : _neonOrange,
                       foregroundColor: Colors.white,
-                      icon: const Icon(Icons.download_rounded),
-                      label: const Text('İNDİR'),
+                      icon: _isInlineDownloading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.download_rounded),
+                      label: Text(
+                        _isInlineDownloading
+                            ? '%${_inlineDownloadProgress.toInt()}${_inlineDownloadSpeed.isNotEmpty ? ' • $_inlineDownloadSpeed' : ''}'
+                            : 'İNDİR',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
-                  Positioned(
-                    top: -7,
-                    right: -7,
-                    child: Material(
-                      color: const Color(0xFF303943),
-                      shape: const CircleBorder(),
-                      child: InkWell(
-                        key: const ValueKey('close_browser_download_button'),
-                        customBorder: const CircleBorder(),
-                        onTap: _confirmCloseDownloadButton,
-                        child: const SizedBox(
-                          width: 23,
-                          height: 23,
-                          child: Icon(
-                            Icons.close_rounded,
-                            color: Colors.white,
-                            size: 15,
+                  if (!_isInlineDownloading)
+                    Positioned(
+                      top: -7,
+                      right: -7,
+                      child: Material(
+                        color: const Color(0xFF303943),
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          key: const ValueKey('close_browser_download_button'),
+                          customBorder: const CircleBorder(),
+                          onTap: _confirmCloseDownloadButton,
+                          child: const SizedBox(
+                            width: 23,
+                            height: 23,
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 15,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               )
             : null,

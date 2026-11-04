@@ -11,7 +11,7 @@ class ExternalAppDownloadOverlayStatus {
   final bool hasUsageAccess;
   final bool enabled;
 
-  bool get hasRequiredPermissions => canDrawOverlays && hasUsageAccess;
+  bool get hasRequiredPermissions => canDrawOverlays;
 
   factory ExternalAppDownloadOverlayStatus.fromMap(
     Map<Object?, Object?> value,

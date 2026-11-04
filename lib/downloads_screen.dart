@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'admob_banner_widget.dart';
 import 'app_localizations.dart';
 import 'download_item_model.dart';
 import 'lyrics_bottom_sheet.dart';
@@ -355,6 +356,12 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                       );
                     },
                   ),
+          ),
+          const SafeArea(
+            top: false,
+            child: AdmobBannerWidget(
+              margin: EdgeInsets.only(top: 4, bottom: 6),
+            ),
           ),
         ],
       ),

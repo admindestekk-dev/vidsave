@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'auth_service.dart';
+import 'admob_banner_widget.dart';
 import 'admob_service.dart';
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
@@ -64,7 +65,6 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
   ExternalAppDownloadOverlayStatus? _externalOverlayStatus;
   bool _externalOverlayLoading = false;
   bool _enableOverlayAfterPermissions = false;
-  ExternalAppDownloadOverlayStatus? _permissionsBeforeRequest;
   String? _externalOverlayError;
 
   bool get _supportsExternalAppOverlay =>
@@ -99,14 +99,10 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
       if (_enableOverlayAfterPermissions) {
         if (status.hasRequiredPermissions) {
           _enableOverlayAfterPermissions = false;
-          _permissionsBeforeRequest = null;
           if (!status.enabled) {
             await ExternalAppDownloadOverlay.start();
             status = await ExternalAppDownloadOverlay.getStatus();
           }
-        } else if (_hasNewPermission(status)) {
-          _permissionsBeforeRequest = status;
-          await ExternalAppDownloadOverlay.requestNextPermission();
         }
       }
       if (!mounted) return;
@@ -131,11 +127,9 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
       final status = await ExternalAppDownloadOverlay.getStatus();
       if (!enabled) {
         _enableOverlayAfterPermissions = false;
-        _permissionsBeforeRequest = null;
         await ExternalAppDownloadOverlay.stop();
       } else if (!status.hasRequiredPermissions) {
         _enableOverlayAfterPermissions = true;
-        _permissionsBeforeRequest = status;
         await ExternalAppDownloadOverlay.requestNextPermission();
       } else {
         await ExternalAppDownloadOverlay.start();
@@ -149,13 +143,6 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _externalOverlayLoading = false);
     }
-  }
-
-  bool _hasNewPermission(ExternalAppDownloadOverlayStatus status) {
-    final previous = _permissionsBeforeRequest;
-    if (previous == null) return false;
-    return (!previous.canDrawOverlays && status.canDrawOverlays) ||
-        (!previous.hasUsageAccess && status.hasUsageAccess);
   }
 
   void _handleTitleTap() {
@@ -877,6 +864,10 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 onTap: () => _confirmDeleteAccount(context),
               ),
               const Divider(),
+              const SizedBox(height: 12),
+              const AdmobBannerWidget(
+                margin: EdgeInsets.symmetric(vertical: 6),
+              ),
 
               // =============================================================
               // 2. GİZLİ TEKNİK AYARLAR (yalnızca 5 dokunuştan sonra görünür)
@@ -907,6 +898,68 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 BackendSettingsPanel(
                   store: widget.store,
                   resolver: widget.resolver,
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  color: Theme.of(context).cardColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Abonelik / Premium Test Araçları',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        FilledButton.icon(
+                          key: const Key('dev_activate_premium_button'),
+                          onPressed: () async {
+                            final until =
+                                DateTime.now().add(const Duration(days: 30));
+                            await SubscriptionScreen.savePremiumStatus(until);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Test Premium (30 Gün) başarıyla aktif edildi!',
+                                ),
+                                backgroundColor: Color(0xFF0E7C4B),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.workspace_premium_rounded),
+                          label: const Text('Test Premium Aktifleştir (30 Gün)'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF5436),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          key: const Key('dev_reset_premium_button'),
+                          onPressed: () async {
+                            await SubscriptionScreen.clearPremiumStatus();
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Premium durumu sıfırlandı (Ücretsiz mod).',
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Premium Durumunu Sıfırla'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ],
@@ -1148,8 +1201,6 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
         ? 'İzin durumu kontrol ediliyor…'
         : !status.canDrawOverlays
         ? 'Kullanmak için “Diğer uygulamaların üzerinde göster” izni gerekir.'
-        : !status.hasUsageAccess
-        ? 'Hangi uygulamada olduğunuzu anlamak için “Kullanım erişimi” izni gerekir.'
         : 'VidSave düğmesi diğer uygulamaların üzerinde görünür.';
 
     return Container(

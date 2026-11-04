@@ -109,5 +109,30 @@ void main() {
         'https://www.tiktok.com/@user/video/456',
       );
     });
+
+    test('clearLastHandled allows re-detecting URL after completed download', () async {
+      const url = 'https://www.instagram.com/reel/123';
+      clipboardText = url;
+
+      expect(
+        await ClipboardAutoDownloadService.checkClipboardForDownloadUrl(),
+        url,
+      );
+
+      // İkinci kontrolde null döner (çünkü işlendi)
+      expect(
+        await ClipboardAutoDownloadService.checkClipboardForDownloadUrl(),
+        isNull,
+      );
+
+      // İndirme tamamlandığında clearLastHandled çağrılır
+      await ClipboardAutoDownloadService.clearLastHandled();
+
+      // Sıfırlandıktan sonra aynı link veya yeni istek yeniden algılanabilir
+      expect(
+        await ClipboardAutoDownloadService.checkClipboardForDownloadUrl(),
+        url,
+      );
+    });
   });
 }

@@ -87,7 +87,7 @@ void main() {
 
         expect(find.text('ADIM 4 · ANDROID'), findsOneWidget);
         expect(find.text('Diğer Uygulamalarda VidSave'), findsOneWidget);
-        expect(find.text('Kullanım erişimi'), findsOneWidget);
+        expect(find.text('Tek izinle anında etkinleştir'), findsOneWidget);
         expect(find.textContaining('Bağlantıyı kopyala'), findsOneWidget);
         expect(find.text('BAŞLA'), findsOneWidget);
 

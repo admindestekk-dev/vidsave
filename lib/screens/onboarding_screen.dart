@@ -275,8 +275,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ? 'Diğer Uygulamalarda VidSave'
                           : 'VidSave Over Other Apps',
                       description: isTurkish
-                          ? 'Ayarlar > “Diğer uygulamalarda VidSave İndir” anahtarını aç. Android’de iki izni VidSave için etkinleştirip uygulamaya dön; gerekirse anahtarı tekrar aç. Desteklenen uygulamada bağlantıyı kopyala ve ekrandaki VidSave düğmesine dokun.'
-                          : 'Open Settings > “Download VidSave in other apps”. Enable both Android permissions for VidSave, return to the app and turn the switch on again if needed. Copy a link in a supported app and tap the VidSave button.',
+                          ? 'Ayarlar > “Diğer uygulamalarda İNDİR”i tek izinle açın. TikTok veya Instagram’da bağlantıyı kopyalayıp ekrandaki VidSave balonuna dokunun. Uygulamaya dönmeden Video veya MP3 formatında anında indirin.'
+                          : 'Enable Settings > “Download in other apps” with one permission. Copy a link in TikTok or Instagram and tap the VidSave button to download Video or MP3 directly on screen without switching apps.',
                       illustration: _buildStepIllustration4(isTurkish),
                     ),
                   ],
@@ -762,119 +762,122 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final steps = isTurkish
         ? [
             'Ayarlar > Diğer uygulamalar',
-            'Diğer uygulamaların üzerinde göster',
-            'Kullanım erişimi',
+            'Tek izinle anında etkinleştir',
+            'Uygulamadan çıkmadan indir',
           ]
         : [
-            'Settings > Other apps shortcut',
-            'Display over other apps',
-            'Usage access',
+            'Settings > Other apps',
+            'Enable instantly with 1 permission',
+            'Download directly on screen',
           ];
 
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 320, maxHeight: 230),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _cardDark,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: _neonOrange.withValues(alpha: 0.35),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: _neonOrange.withValues(alpha: 0.15),
-            blurRadius: 28,
-            offset: const Offset(0, 10),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 320, maxHeight: 220),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _cardDark,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: _neonOrange.withValues(alpha: 0.35),
+            width: 1.2,
           ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          for (var index = 0; index < steps.length; index++) ...[
-            Row(
-              children: [
-                Container(
-                  width: 25,
-                  height: 25,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: _neonOrange.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(
-                      color: _neonOrange,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
+          boxShadow: [
+            BoxShadow(
+              color: _neonOrange.withValues(alpha: 0.15),
+              blurRadius: 28,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var index = 0; index < steps.length; index++) ...[
+              Row(
+                children: [
+                  Container(
+                    width: 25,
+                    height: 25,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _neonOrange.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        color: _neonOrange,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    steps[index],
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      steps[index],
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
+                  if (index > 0)
+                    const Icon(
+                      Icons.check_circle_rounded,
+                      color: Color(0xFF20B8C5),
+                      size: 17,
+                    ),
+                ],
+              ),
+              if (index < steps.length - 1)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(height: 7, width: 1, color: Colors.white24),
+                  ),
                 ),
-                if (index > 0)
+            ],
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: _neonOrange,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   const Icon(
-                    Icons.check_circle_rounded,
-                    color: Color(0xFF20B8C5),
+                    Icons.download_rounded,
+                    color: Colors.white,
                     size: 17,
                   ),
-              ],
-            ),
-            if (index < steps.length - 1)
-              Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(height: 7, width: 1, color: Colors.white24),
-                ),
-              ),
-          ],
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: _neonOrange,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.download_rounded,
-                  color: Colors.white,
-                  size: 17,
-                ),
-                const SizedBox(width: 7),
-                Flexible(
-                  child: Text(
-                    isTurkish
-                        ? 'Bağlantıyı kopyala · VidSave’e dokun'
-                        : 'Copy link · Tap VidSave',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
+                  const SizedBox(width: 7),
+                  Flexible(
+                    child: Text(
+                      isTurkish
+                          ? 'Bağlantıyı kopyala · Ekranda anında indir'
+                          : 'Copy link · Download instantly on screen',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

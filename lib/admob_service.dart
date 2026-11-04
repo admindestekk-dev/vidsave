@@ -64,8 +64,15 @@ class AdmobService {
 
   RewardedAd? _rewardedAd;
   InterstitialAd? _interstitialAd;
+  AppOpenAd? _appOpenAd;
+  DateTime? _appOpenLoadTime;
+  DateTime? _lastInterstitialShownTime;
+  static const Duration interstitialCooldown = Duration(seconds: 60);
+
   bool _isLoading = false;
   bool _isLoadingInterstitial = false;
+  bool _isLoadingAppOpen = false;
+  bool _isShowingFullScreenAd = false;
   bool _isInitialized = false;
   Future<void>? _initialization;
   Future<void>? _consentUpdate;
@@ -76,6 +83,7 @@ class AdmobService {
 
   bool get isInitialized => _isInitialized;
   bool get canRequestAds => _canRequestAds;
+  bool get isShowingFullScreenAd => _isShowingFullScreenAd;
 
   /// AdMob SDK başlatma metodu (main.dart veya ilk ihtiyaçta çağrılır)
   Future<void> initialize() async {
@@ -110,7 +118,10 @@ class AdmobService {
       await gatherConsentIfRequired();
       if (_canRequestAds) {
         loadRewardedAd();
-        if (!await checkIsPremium()) loadInterstitialAd();
+        if (!await checkIsPremium()) {
+          loadInterstitialAd();
+          loadAppOpenAd();
+        }
       }
     } catch (e) {
       _isInitialized = false;
@@ -156,9 +167,26 @@ class AdmobService {
   /// Background jobs never present ads; a missing ad is skipped rather than
   /// delaying the app or showing a late, unexpected full-screen ad.
   Future<bool> showQueuedInterstitialAfterReopen() async {
+    return showInterstitialAd(checkCooldown: false);
+  }
+
+  /// Doğal geçiş noktalarında (indirme tamamlandığında vb.) geçiş reklamını gösterir.
+  /// Google Play politikası gereği peş peşe reklam gösterilmemesi için 60 saniye soğuma süresi (cooldown) uygulanır.
+  Future<bool> showInterstitialAd({bool checkCooldown = true}) async {
     if (isRunningInTest || kIsWeb || await checkIsPremium()) return false;
+    if (_isShowingFullScreenAd) return false;
     await initialize();
     if (!_isInitialized || !_canRequestAds) return false;
+
+    if (checkCooldown && _lastInterstitialShownTime != null) {
+      final elapsed = DateTime.now().difference(_lastInterstitialShownTime!);
+      if (elapsed < interstitialCooldown) {
+        debugPrint(
+          'AdmobService: Interstitial cooldown aktif (${elapsed.inSeconds}s < ${interstitialCooldown.inSeconds}s)',
+        );
+        return false;
+      }
+    }
 
     final ad = _interstitialAd;
     if (ad == null) {
@@ -167,19 +195,107 @@ class AdmobService {
     }
 
     _interstitialAd = null;
+    _isShowingFullScreenAd = true;
+    final completer = Completer<bool>();
+
     ad.fullScreenContentCallback = FullScreenContentCallback<InterstitialAd>(
       onAdDismissedFullScreenContent: (ad) {
+        _isShowingFullScreenAd = false;
+        _lastInterstitialShownTime = DateTime.now();
         ad.dispose();
         loadInterstitialAd();
+        if (!completer.isCompleted) completer.complete(true);
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
+        _isShowingFullScreenAd = false;
         debugPrint('AdmobService: Interstitial gösterilemedi: $error');
         ad.dispose();
         loadInterstitialAd();
+        if (!completer.isCompleted) completer.complete(false);
       },
     );
     ad.show();
-    return true;
+    return completer.future;
+  }
+
+  /// App Open (Uygulama Açılış) reklamını önceden yükler
+  void loadAppOpenAd() {
+    if (!_isInitialized ||
+        !_canRequestAds ||
+        _isLoadingAppOpen ||
+        _appOpenAd != null) {
+      return;
+    }
+
+    _isLoadingAppOpen = true;
+    try {
+      AppOpenAd.load(
+        adUnitId: testAdUnitId('appOpen'),
+        request: const AdRequest(),
+        adLoadCallback: AppOpenAdLoadCallback(
+          onAdLoaded: (ad) {
+            _appOpenAd = ad;
+            _appOpenLoadTime = DateTime.now();
+            _isLoadingAppOpen = false;
+            debugPrint('AdmobService: App Open reklam yüklendi.');
+          },
+          onAdFailedToLoad: (error) {
+            _isLoadingAppOpen = false;
+            _appOpenAd = null;
+            debugPrint('AdmobService: App Open reklam yüklenemedi: $error');
+          },
+        ),
+      );
+    } catch (e) {
+      _isLoadingAppOpen = false;
+      debugPrint('AdmobService: loadAppOpenAd exception: $e');
+    }
+  }
+
+  /// Uygulama arka plandan ön plana geldiğinde App Open reklamını gösterir.
+  Future<bool> showAppOpenAdIfAvailable() async {
+    if (isRunningInTest || kIsWeb || await checkIsPremium()) return false;
+    if (_isShowingFullScreenAd) return false;
+    await initialize();
+    if (!_isInitialized || !_canRequestAds) return false;
+
+    final ad = _appOpenAd;
+    if (ad == null) {
+      loadAppOpenAd();
+      return false;
+    }
+
+    // Google AdMob politikası: Açılış reklamları maksimum 4 saat geçerlidir
+    if (_appOpenLoadTime == null ||
+        DateTime.now().difference(_appOpenLoadTime!) >=
+            const Duration(hours: 4)) {
+      ad.dispose();
+      _appOpenAd = null;
+      loadAppOpenAd();
+      return false;
+    }
+
+    _appOpenAd = null;
+    _isShowingFullScreenAd = true;
+    final completer = Completer<bool>();
+
+    ad.fullScreenContentCallback = FullScreenContentCallback<AppOpenAd>(
+      onAdDismissedFullScreenContent: (ad) {
+        _isShowingFullScreenAd = false;
+        ad.dispose();
+        loadAppOpenAd();
+        if (!completer.isCompleted) completer.complete(true);
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        _isShowingFullScreenAd = false;
+        debugPrint('AdmobService: App Open gösterilemedi: $error');
+        ad.dispose();
+        loadAppOpenAd();
+        if (!completer.isCompleted) completer.complete(false);
+      },
+    );
+    ad.show();
+    return completer.future;
   }
 
   /// Avrupa Birliği (GDPR) ve UMP SDK Kullanıcı Rızası (Consent Form) Yönetimi
@@ -511,9 +627,11 @@ class AdmobService {
     }
 
     bool earnedReward = false;
+    _isShowingFullScreenAd = true;
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
+        _isShowingFullScreenAd = false;
         ad.dispose();
         _rewardedAd = null;
         loadRewardedAd(); // Bir sonraki indirme için reklamı hemen arka planda hazırla
@@ -522,6 +640,7 @@ class AdmobService {
         }
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
+        _isShowingFullScreenAd = false;
         debugPrint('AdmobService: Reklam gösterilemedi: $error');
         ad.dispose();
         _rewardedAd = null;
@@ -548,5 +667,8 @@ class AdmobService {
     _rewardedAd = null;
     _interstitialAd?.dispose();
     _interstitialAd = null;
+    _appOpenAd?.dispose();
+    _appOpenAd = null;
+    _isShowingFullScreenAd = false;
   }
 }

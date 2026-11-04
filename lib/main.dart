@@ -36,6 +36,7 @@ import 'screens/in_app_media_browser_screen.dart';
 import 'remote_config_service.dart';
 import 'welcome_screen.dart';
 import 'home_screen.dart';
+import 'admob_banner_widget.dart';
 import 'admob_service.dart';
 import 'services/unified_download_engine.dart';
 
@@ -62,14 +63,28 @@ Future<void> _runExternalShareDownloads() async {
 
   try {
     while (true) {
-      var url = await _externalShareDownloadChannel.invokeMethod<String>(
+      var item = await _externalShareDownloadChannel.invokeMethod<dynamic>(
         'takeNextUrl',
       );
+      String? url;
+      String downloadType = 'video';
+      if (item is Map) {
+        url = item['url']?.toString();
+        downloadType = item['type']?.toString() ?? 'video';
+      } else if (item is String) {
+        url = item;
+      }
       if (url == null || url.trim().isEmpty) {
         await Future<void>.delayed(const Duration(milliseconds: 700));
-        url = await _externalShareDownloadChannel.invokeMethod<String>(
+        item = await _externalShareDownloadChannel.invokeMethod<dynamic>(
           'takeNextUrl',
         );
+        if (item is Map) {
+          url = item['url']?.toString();
+          downloadType = item['type']?.toString() ?? 'video';
+        } else if (item is String) {
+          url = item;
+        }
         if (url == null || url.trim().isEmpty) {
           final finished = await _externalShareDownloadChannel
               .invokeMethod<bool>('finishIfIdle', {
@@ -87,7 +102,7 @@ Future<void> _runExternalShareDownloads() async {
       try {
         final file = await UnifiedDownloadEngine.instance.download(
           rawUrl: url,
-          type: 'video',
+          type: downloadType,
           showSystemNotifications: false,
           onProgress: (_, _, progress, speed, _) {
             final percent = progress == null
@@ -338,6 +353,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     if (state == AppLifecycleState.resumed) {
       _checkClipboard();
       _checkPendingShareInterstitial();
+      unawaited(AdmobService.instance.showAppOpenAdIfAvailable());
     }
   }
 
@@ -396,11 +412,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       // 2. Yoksa panodaki kopyalanmış desteklenen URL'yi kontrol et
       url ??= await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
 
-      if (openDownloadFromOverlay) {
-        await _startSilentExternalDownload(url);
-        return;
-      }
-
       if ((url != null || openDownloadFromOverlay) && mounted) {
         await _showClipboardPrompt(
           url,
@@ -417,61 +428,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       );
     } finally {
       _isCheckingClipboard = false;
-    }
-  }
-
-  Future<void> _startSilentExternalDownload(String? url) async {
-    var backgroundStarted = false;
-    try {
-      await ExternalAppDownloadOverlay.beginBackgroundDownload();
-      backgroundStarted = true;
-      if (url == null || url.trim().isEmpty) {
-        throw const FormatException(
-          'İndirilecek bağlantı bulunamadı. Bağlantıyı kopyalayıp tekrar deneyin.',
-        );
-      }
-
-      final file = await UnifiedDownloadEngine.instance.download(
-        rawUrl: url,
-        type: 'video',
-        fallbackResolver: _mediaResolver,
-        fallbackDownloader: _mediaDownloader,
-        onProgress: (_, _, progress, speed, _) {
-          final percent = ((progress ?? 0) * 100).clamp(0.0, 100.0);
-          ExternalAppDownloadOverlay.updateDownloadProgress(
-            progress: percent,
-            speed: speed,
-          ).catchError((Object error) {
-            debugPrint(
-              'Dış uygulama indirme ilerlemesi güncellenemedi: $error',
-            );
-          });
-        },
-      );
-      await ExternalAppDownloadOverlay.finishBackgroundDownload(
-        success: true,
-        message: 'İndirildi: ${file.path.split(Platform.pathSeparator).last}',
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Arka plan indirmesi başarısız oldu: $error\n$stackTrace');
-      if (backgroundStarted) {
-        try {
-          await ExternalAppDownloadOverlay.finishBackgroundDownload(
-            success: false,
-            message: DownloadExceptionHandler.getFriendlyMessage(error, null),
-          );
-        } catch (finishError) {
-          debugPrint('Arka plan indirme hatası bildirilemedi: $finishError');
-        }
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              DownloadExceptionHandler.getFriendlyMessage(error, context),
-            ),
-          ),
-        );
-      }
     }
   }
 
@@ -524,6 +480,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
         resolver: _mediaResolver,
         downloader: _mediaDownloader,
         onDownloadCompleted: (file, kind) {
+          ClipboardAutoDownloadService.clearLastHandled();
           finishOverlayDownload(
             success: true,
             message:
@@ -557,6 +514,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       );
     } finally {
       _isClipboardPromptShowing = false;
+      unawaited(AdmobService.instance.showInterstitialAd());
     }
   }
 
@@ -842,6 +800,7 @@ class _DownloadPageState extends State<_DownloadPage> {
           ..progress = null
           ..status = 'İndirildi: $fileName';
       });
+      unawaited(AdmobService.instance.showInterstitialAd());
     } catch (error, stack) {
       debugPrint('Tile download error: $error\n$stack');
       final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
@@ -1039,7 +998,11 @@ class _DownloadPageState extends State<_DownloadPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+            const AdmobBannerWidget(
+              margin: EdgeInsets.symmetric(vertical: 4),
+            ),
+            const SizedBox(height: 20),
             const Text(
               '© 2026 VidSave. All rights reserved.',
               textAlign: TextAlign.center,
