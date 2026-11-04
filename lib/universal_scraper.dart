@@ -1588,6 +1588,13 @@ class UniversalScraper {
     final effectiveSource = Uri.tryParse(cleanSourceStr) ?? source;
     final host = effectiveSource.host.toLowerCase();
 
+    if (isDirectMediaUrl(effectiveSource)) {
+      final fileName = effectiveSource.pathSegments.isEmpty
+          ? 'vidsave_media.mp4'
+          : effectiveSource.pathSegments.last;
+      return ResolvedMedia(url: effectiveSource, fileName: fileName);
+    }
+
     ResolvedMedia? result;
     Object? primaryError;
 

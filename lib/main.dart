@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_localizations.dart';
 import 'auth_service.dart';
@@ -37,6 +39,105 @@ import 'home_screen.dart';
 import 'admob_service.dart';
 import 'services/unified_download_engine.dart';
 
+const MethodChannel _externalShareDownloadChannel = MethodChannel(
+  'vidsave/external_share_download',
+);
+const MethodChannel _shareLifecycleChannel = MethodChannel(
+  'vidsave/share_lifecycle',
+);
+
+@pragma('vm:entry-point')
+void externalShareDownloadEntrypoint() {
+  WidgetsFlutterBinding.ensureInitialized();
+  unawaited(_runExternalShareDownloads());
+}
+
+Future<void> _runExternalShareDownloads() async {
+  var succeeded = 0;
+  var failed = 0;
+  String? lastFileName;
+  String? lastError;
+  var lastProgressAt = DateTime.fromMillisecondsSinceEpoch(0);
+  var lastProgressPercent = -1;
+
+  try {
+    while (true) {
+      var url = await _externalShareDownloadChannel.invokeMethod<String>(
+        'takeNextUrl',
+      );
+      if (url == null || url.trim().isEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        url = await _externalShareDownloadChannel.invokeMethod<String>(
+          'takeNextUrl',
+        );
+        if (url == null || url.trim().isEmpty) {
+          final finished = await _externalShareDownloadChannel
+              .invokeMethod<bool>('finishIfIdle', {
+                'success': succeeded > 0,
+                'succeeded': succeeded,
+                'failed': failed,
+                'fileName': lastFileName,
+                'error': lastError,
+              });
+          if (finished == true) return;
+          continue;
+        }
+      }
+
+      try {
+        final file = await UnifiedDownloadEngine.instance.download(
+          rawUrl: url,
+          type: 'video',
+          showSystemNotifications: false,
+          onProgress: (_, _, progress, speed, _) {
+            final percent = progress == null
+                ? null
+                : (progress * 100).round().clamp(0, 100);
+            final now = DateTime.now();
+            if (percent != 100 &&
+                percent == lastProgressPercent &&
+                now.difference(lastProgressAt).inMilliseconds < 700) {
+              return;
+            }
+            if (percent != null) lastProgressPercent = percent;
+            lastProgressAt = now;
+            unawaited(
+              _externalShareDownloadChannel
+                  .invokeMethod<void>('updateProgress', {
+                    'progress': percent,
+                    'speed': speed,
+                  })
+                  .catchError((Object error) {
+                    debugPrint(
+                      'Paylaşılan indirme bildirimi güncellenemedi: $error',
+                    );
+                  }),
+            );
+          },
+        );
+        succeeded++;
+        lastFileName = file.uri.pathSegments.last;
+      } catch (error, stackTrace) {
+        failed++;
+        lastError = DownloadExceptionHandler.getFriendlyMessage(error, null);
+        debugPrint('Paylaşılan bağlantı indirilemedi: $error\n$stackTrace');
+      }
+    }
+  } catch (error, stackTrace) {
+    debugPrint('Arka plan indirme motoru başlatılamadı: $error\n$stackTrace');
+    try {
+      await _externalShareDownloadChannel.invokeMethod<void>('finishIfIdle', {
+        'success': false,
+        'succeeded': succeeded,
+        'failed': failed + 1,
+        'error': DownloadExceptionHandler.getFriendlyMessage(error, null),
+      });
+    } catch (finishError) {
+      debugPrint('Arka plan indirme sonucu bildirilemedi: $finishError');
+    }
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final isFirstTimeFuture = OnboardingScreen.checkIsFirstTime();
@@ -50,11 +151,53 @@ void main() async {
   runApp(MyApp(isFirstTime: isFirstTime));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key, this.authService, this.isFirstTime});
 
   final AuthService? authService;
   final bool? isFirstTime;
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  static const _notificationPermissionRequestedKey =
+      'notification_permission_requested';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_requestNotificationPermission());
+    });
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    if (!Platform.isAndroid) return;
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      if (preferences.getBool(_notificationPermissionRequestedKey) == true) {
+        return;
+      }
+
+      final status = await Permission.notification.status;
+      if (!status.isGranted) {
+        await Permission.notification.request();
+      }
+
+      final saved = await preferences.setBool(
+        _notificationPermissionRequestedKey,
+        true,
+      );
+      if (!saved) {
+        debugPrint('Bildirim izni isteği durumu kaydedilemedi.');
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Bildirim izni istenemedi: $error\n$stackTrace');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,8 +248,8 @@ class MyApp extends StatelessWidget {
                   return const Locale('en');
                 },
                 home: AuthGate(
-                  authService: authService,
-                  isFirstTime: isFirstTime,
+                  authService: widget.authService,
+                  isFirstTime: widget.isFirstTime,
                   authenticatedBuilder: (_) => const VidSaveHomePage(
                     promptExternalOverlayOnStartup: true,
                   ),
@@ -154,6 +297,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   int _selectedIndex = 2;
   bool _isCheckingClipboard = false;
   bool _isClipboardPromptShowing = false;
+  bool _isCheckingPendingShareInterstitial = false;
   final GlobalKey<InAppMediaBrowserScreenState> _browserKey =
       GlobalKey<InAppMediaBrowserScreenState>();
   late final MediaLibrary _library =
@@ -177,6 +321,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     // Uygulama açılışında panoyu ilk kez kontrol et
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkClipboard();
+      _checkPendingShareInterstitial();
     });
   }
 
@@ -192,11 +337,39 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     // Kullanıcı Instagram veya TikTok'tan link kopyalayıp uygulamaya geri döndüğünde (resumed)
     if (state == AppLifecycleState.resumed) {
       _checkClipboard();
+      _checkPendingShareInterstitial();
     }
   }
 
-  /// Pano içeriğini ve dış overlay indirme butonundan gelen linki kontrol edip
-  /// desteklenen video linki tespit edilirse QuickDownloadDialog açar.
+  Future<void> _checkPendingShareInterstitial() async {
+    if (!Platform.isAndroid || _isCheckingPendingShareInterstitial) return;
+    _isCheckingPendingShareInterstitial = true;
+    try {
+      final pending = await _shareLifecycleChannel.invokeMethod<bool>(
+        'hasPendingInterstitial',
+      );
+      if (pending != true) return;
+
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        return;
+      }
+
+      await _shareLifecycleChannel.invokeMethod<void>(
+        'clearPendingInterstitial',
+      );
+      await AdmobService.instance.showQueuedInterstitialAfterReopen();
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Bekleyen indirme sonrası reklam durumu işlenemedi: $error\n$stackTrace',
+      );
+    } finally {
+      _isCheckingPendingShareInterstitial = false;
+    }
+  }
+
+  /// Pano içeriğini ve dış overlay isteğini kontrol eder.
   Future<void> _checkClipboard() async {
     if (_isCheckingClipboard) return;
     _isCheckingClipboard = true;
@@ -223,6 +396,11 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       // 2. Yoksa panodaki kopyalanmış desteklenen URL'yi kontrol et
       url ??= await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
 
+      if (openDownloadFromOverlay) {
+        await _startSilentExternalDownload(url);
+        return;
+      }
+
       if ((url != null || openDownloadFromOverlay) && mounted) {
         await _showClipboardPrompt(
           url,
@@ -239,6 +417,61 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       );
     } finally {
       _isCheckingClipboard = false;
+    }
+  }
+
+  Future<void> _startSilentExternalDownload(String? url) async {
+    var backgroundStarted = false;
+    try {
+      await ExternalAppDownloadOverlay.beginBackgroundDownload();
+      backgroundStarted = true;
+      if (url == null || url.trim().isEmpty) {
+        throw const FormatException(
+          'İndirilecek bağlantı bulunamadı. Bağlantıyı kopyalayıp tekrar deneyin.',
+        );
+      }
+
+      final file = await UnifiedDownloadEngine.instance.download(
+        rawUrl: url,
+        type: 'video',
+        fallbackResolver: _mediaResolver,
+        fallbackDownloader: _mediaDownloader,
+        onProgress: (_, _, progress, speed, _) {
+          final percent = ((progress ?? 0) * 100).clamp(0.0, 100.0);
+          ExternalAppDownloadOverlay.updateDownloadProgress(
+            progress: percent,
+            speed: speed,
+          ).catchError((Object error) {
+            debugPrint(
+              'Dış uygulama indirme ilerlemesi güncellenemedi: $error',
+            );
+          });
+        },
+      );
+      await ExternalAppDownloadOverlay.finishBackgroundDownload(
+        success: true,
+        message: 'İndirildi: ${file.path.split(Platform.pathSeparator).last}',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Arka plan indirmesi başarısız oldu: $error\n$stackTrace');
+      if (backgroundStarted) {
+        try {
+          await ExternalAppDownloadOverlay.finishBackgroundDownload(
+            success: false,
+            message: DownloadExceptionHandler.getFriendlyMessage(error, null),
+          );
+        } catch (finishError) {
+          debugPrint('Arka plan indirme hatası bildirilemedi: $finishError');
+        }
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              DownloadExceptionHandler.getFriendlyMessage(error, context),
+            ),
+          ),
+        );
+      }
     }
   }
 

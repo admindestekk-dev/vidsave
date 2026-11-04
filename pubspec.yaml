@@ -63,6 +63,7 @@ dependencies:
   local_auth: ^3.0.2
   flutter_inappwebview: ^6.1.5
   chewie: ^1.17.4
+  permission_handler: ^13.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

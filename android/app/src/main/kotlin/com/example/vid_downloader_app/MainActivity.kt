@@ -22,6 +22,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val DOWNLOADS_CHANNEL = "vidsave/public_downloads"
         private const val OVERLAY_CHANNEL = "vidsave/external_app_download_overlay"
+        private const val SHARE_LIFECYCLE_CHANNEL = "vidsave/share_lifecycle"
         private const val WRITE_STORAGE_REQUEST = 4207
     }
 
@@ -65,6 +66,34 @@ class MainActivity : FlutterActivity() {
             }
 
             exportFile(sourcePath, fileName, result)
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            SHARE_LIFECYCLE_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            val preferences = getSharedPreferences(
+                ExternalShareDownloadService.PREFERENCES,
+                MODE_PRIVATE,
+            )
+            when (call.method) {
+                "hasPendingInterstitial" -> result.success(
+                    preferences.getBoolean(
+                        ExternalShareDownloadService.PENDING_INTERSTITIAL_KEY,
+                        false,
+                    ),
+                )
+                "clearPendingInterstitial" -> {
+                    preferences.edit()
+                        .putBoolean(
+                            ExternalShareDownloadService.PENDING_INTERSTITIAL_KEY,
+                            false,
+                        )
+                        .apply()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
         }
 
         MethodChannel(

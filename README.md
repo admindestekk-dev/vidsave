@@ -81,6 +81,22 @@ This overlay is Android-only; iOS does not allow apps to draw over other apps.
 Review the current Google Play policies and declare the special-use foreground
 service and usage-access purpose accurately before publishing.
 
+### Share a link for a background download
+
+The Android **VidSave İndir** share target uses a transparent, no-history
+receiver and a `dataSync` foreground service. The receiver extracts the shared
+HTTP(S) link, starts a headless Flutter engine, and immediately finishes without
+opening the VidSave home screen. The headless Dart entrypoint runs the same
+`UnifiedDownloadEngine` as the app and reports progress through the foreground
+notification. Successful downloads are added to VidSave history and exported
+to Android media storage when supported.
+
+No ad is shown during the background download. A successful download queues a
+one-time interstitial attempt for the next time VidSave is opened; the app waits
+two seconds and skips the ad if consent, Premium status, or ad availability
+prevents showing it. Android may hide foreground-service notifications from the
+notification drawer when notification access is denied.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.

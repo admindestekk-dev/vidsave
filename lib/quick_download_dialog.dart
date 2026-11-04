@@ -52,6 +52,7 @@ class QuickDownloadDialog extends StatefulWidget {
   final Future<void> Function()? onDownloadStarted;
   final void Function(double progress, String speed)? onDownloadProgress;
   final void Function(String message)? onDownloadFailed;
+  final DownloadKind? initialDownloadKind;
 
   const QuickDownloadDialog({
     super.key,
@@ -66,6 +67,7 @@ class QuickDownloadDialog extends StatefulWidget {
     this.onDownloadStarted,
     this.onDownloadProgress,
     this.onDownloadFailed,
+    this.initialDownloadKind,
   });
 
   /// Dialogu açmak için statik yardımcı metot
@@ -83,6 +85,7 @@ class QuickDownloadDialog extends StatefulWidget {
     void Function(double progress, String speed)? onDownloadProgress,
     void Function(String message)? onDownloadFailed,
     double? maxDurationSeconds,
+    DownloadKind? initialDownloadKind,
   }) {
     return showDialog<void>(
       context: context,
@@ -98,6 +101,7 @@ class QuickDownloadDialog extends StatefulWidget {
         onDownloadStarted: onDownloadStarted,
         onDownloadProgress: onDownloadProgress,
         onDownloadFailed: onDownloadFailed,
+        initialDownloadKind: initialDownloadKind,
         onDownloadVideo: onDownloadVideo,
         onDownloadMp3WithOptions: onDownloadMp3 != null
             ? ({startTime, endTime, audioEffect}) {
@@ -124,6 +128,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
   // 1. Dinamik Değişkenler
   bool _isDownloading = false;
+  bool _autoStartFailed = false;
   double _downloadProgress = 0.0;
   String _downloadSpeed = '0 MB/s';
 
@@ -146,6 +151,14 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
         ? widget.maxDurationSeconds!
         : 300.0; // Varsayılan 5 dakika
     _currentRangeValues = RangeValues(0.0, _maxDuration);
+    final initialDownloadKind = widget.initialDownloadKind;
+    if (initialDownloadKind != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _isDownloading = true);
+        _startDownload(initialDownloadKind);
+      });
+    }
   }
 
   @override
@@ -168,10 +181,17 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
     if (downloadUrl.isEmpty) {
       setState(() {
         _urlInputError = 'Önce video veya gönderi bağlantısını yapıştırın.';
+        _autoStartFailed = widget.initialDownloadKind != null;
+        _isDownloading = false;
       });
       return;
     }
-    if (checkAndShowYouTubeRestriction(context, downloadUrl)) return;
+    if (checkAndShowYouTubeRestriction(context, downloadUrl)) {
+      if (widget.initialDownloadKind != null && mounted) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
 
     // 1. Premium Kontrolü: Kullanıcı isPremium == true ise hiçbir şey sorma, reklamı tamamen bypass et
     final isPremium = await AdmobService.instance.checkIsPremium();
@@ -184,9 +204,13 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
     // 2 & 3. Ücretsiz Kullanıcı İçin Yasal Pop-up (Rewarded Ad Consent Dialog)
     if (!mounted) return;
     final userAccepted = await _showRewardedConsentDialog();
-    if (userAccepted != true || !mounted) {
+    if (userAccepted != true) {
+      if (mounted && widget.initialDownloadKind != null) {
+        Navigator.of(context).pop();
+      }
       return; // Kullanıcı 'Vazgeç' dedi veya pencereyi kapattı
     }
+    if (!mounted) return;
 
     // 4. Reklam Tetikleyici: AdMob ödüllü test reklamını oynat
     await AdmobService.instance.showRewardedAdOrBypass(
@@ -373,6 +397,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
       setState(() {
         _isDownloading = false;
+        _autoStartFailed = widget.initialDownloadKind != null;
         _downloadProgress = 0.0;
         _downloadSpeed = '0 MB/s';
       });
@@ -531,7 +556,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
                     const SizedBox(height: 18),
 
                     // Ses Seçenekleri & Nakarat Ayarları (İndirme başlamadıysa göster)
-                    if (!_isDownloading) ...[
+                    if (!_isDownloading &&
+                        (widget.initialDownloadKind == null ||
+                            _autoStartFailed)) ...[
                       // =======================================================
                       // ÖZELLİK: SES DEĞİŞTİRİCİ VE REMIX MODU (ChoiceChips)
                       // =======================================================

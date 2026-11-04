@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.vid_downloader_app"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

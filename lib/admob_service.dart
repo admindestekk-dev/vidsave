@@ -63,7 +63,9 @@ class AdmobService {
   }
 
   RewardedAd? _rewardedAd;
+  InterstitialAd? _interstitialAd;
   bool _isLoading = false;
+  bool _isLoadingInterstitial = false;
   bool _isInitialized = false;
   Future<void>? _initialization;
   Future<void>? _consentUpdate;
@@ -106,13 +108,78 @@ class AdmobService {
       await MobileAds.instance.initialize();
       _isInitialized = true;
       await gatherConsentIfRequired();
-      if (_canRequestAds) loadRewardedAd();
+      if (_canRequestAds) {
+        loadRewardedAd();
+        if (!await checkIsPremium()) loadInterstitialAd();
+      }
     } catch (e) {
       _isInitialized = false;
       debugPrint('AdmobService: MobileAds initialize error: $e');
     } finally {
       _initialization = null;
     }
+  }
+
+  void loadInterstitialAd() {
+    if (!_isInitialized ||
+        !_canRequestAds ||
+        _isLoadingInterstitial ||
+        _interstitialAd != null) {
+      return;
+    }
+
+    _isLoadingInterstitial = true;
+    try {
+      InterstitialAd.load(
+        adUnitId: testAdUnitId('interstitial'),
+        request: const AdRequest(),
+        adLoadCallback: InterstitialAdLoadCallback(
+          onAdLoaded: (ad) {
+            _interstitialAd = ad;
+            _isLoadingInterstitial = false;
+          },
+          onAdFailedToLoad: (error) {
+            _isLoadingInterstitial = false;
+            debugPrint('AdmobService: Interstitial yüklenemedi: $error');
+          },
+        ),
+      );
+    } catch (error, stackTrace) {
+      _isLoadingInterstitial = false;
+      debugPrint(
+        'AdmobService: Interstitial yükleme hatası: $error\n$stackTrace',
+      );
+    }
+  }
+
+  /// Shows a preloaded interstitial after the user reopens VidSave.
+  /// Background jobs never present ads; a missing ad is skipped rather than
+  /// delaying the app or showing a late, unexpected full-screen ad.
+  Future<bool> showQueuedInterstitialAfterReopen() async {
+    if (isRunningInTest || kIsWeb || await checkIsPremium()) return false;
+    await initialize();
+    if (!_isInitialized || !_canRequestAds) return false;
+
+    final ad = _interstitialAd;
+    if (ad == null) {
+      loadInterstitialAd();
+      return false;
+    }
+
+    _interstitialAd = null;
+    ad.fullScreenContentCallback = FullScreenContentCallback<InterstitialAd>(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        loadInterstitialAd();
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        debugPrint('AdmobService: Interstitial gösterilemedi: $error');
+        ad.dispose();
+        loadInterstitialAd();
+      },
+    );
+    ad.show();
+    return true;
   }
 
   /// Avrupa Birliği (GDPR) ve UMP SDK Kullanıcı Rızası (Consent Form) Yönetimi
@@ -479,5 +546,7 @@ class AdmobService {
   void dispose() {
     _rewardedAd?.dispose();
     _rewardedAd = null;
+    _interstitialAd?.dispose();
+    _interstitialAd = null;
   }
 }

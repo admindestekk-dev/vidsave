@@ -117,6 +117,7 @@ class UnifiedDownloadEngine {
     void Function(String status)? onStatus,
     MediaResolver? fallbackResolver,
     MediaDownloader? fallbackDownloader,
+    bool showSystemNotifications = true,
   }) async {
     ensureNotYouTubeUrl(rawUrl);
     final cleanUrl = evrenselTemizUrl(rawUrl);
@@ -153,9 +154,11 @@ class UnifiedDownloadEngine {
           fallbackResolver != null &&
           fallbackResolver is! BackendMediaResolver &&
           fallbackResolver is! ClientMediaResolver;
+      final targetUri = Uri.tryParse(targetUrl);
 
       AnalyzeResult? analyzeResult;
-      if (!isCustomTestResolver) {
+      if (!isCustomTestResolver &&
+          (targetUri == null || !isDirectMediaUrl(targetUri))) {
         try {
           analyzeResult = await ApiService.instance.analyze(
             url: targetUrl,
@@ -180,13 +183,15 @@ class UnifiedDownloadEngine {
               ? analyzeResult.title
               : defaultTitle;
 
-          unawaited(
-            notifService.showProgress(
-              id: notificationId,
-              title: activeTitle,
-              percent: null,
-            ),
-          );
+          if (showSystemNotifications) {
+            unawaited(
+              notifService.showProgress(
+                id: notificationId,
+                title: activeTitle,
+                percent: null,
+              ),
+            );
+          }
 
           final appDir = await getApplicationDocumentsDirectory();
           final rawFileName = analyzeResult.filename;
@@ -254,7 +259,9 @@ class UnifiedDownloadEngine {
                 speed: downloadSpeed,
               );
 
-              if (percent != null && percent != lastNotifPercent) {
+              if (showSystemNotifications &&
+                  percent != null &&
+                  percent != lastNotifPercent) {
                 lastNotifPercent = percent;
                 unawaited(
                   notifService.showProgress(
@@ -268,7 +275,9 @@ class UnifiedDownloadEngine {
             },
           );
 
-          final isRealMp3 = await MediaDownloader.isGenuineMp3File(downloadedFile);
+          final isRealMp3 = await MediaDownloader.isGenuineMp3File(
+            downloadedFile,
+          );
           final needsAudioConversion =
               isAudio &&
               (!isRealMp3 ||
@@ -335,11 +344,13 @@ class UnifiedDownloadEngine {
           await MediaDownloader.publishToMediaStore(downloadedFile);
 
           // İndirme bitince sesli onay bildirimi fırlat
-          await notifService.showCompleted(
-            id: notificationId,
-            title: activeTitle,
-            fileName: finalFileName,
-          );
+          if (showSystemNotifications) {
+            await notifService.showCompleted(
+              id: notificationId,
+              title: activeTitle,
+              fileName: finalFileName,
+            );
+          }
 
           return downloadedFile;
         } catch (serverStreamErr) {
@@ -373,13 +384,15 @@ class UnifiedDownloadEngine {
           ? media.fileName.trim()
           : defaultTitle;
 
-      unawaited(
-        notifService.showProgress(
-          id: notificationId,
-          title: displayTitle,
-          percent: null,
-        ),
-      );
+      if (showSystemNotifications) {
+        unawaited(
+          notifService.showProgress(
+            id: notificationId,
+            title: displayTitle,
+            percent: null,
+          ),
+        );
+      }
 
       final downloader = fallbackDownloader ?? MediaDownloader();
       final downloadedFile = await downloader.download(
@@ -424,7 +437,9 @@ class UnifiedDownloadEngine {
             speed: downloadSpeed,
           );
 
-          if (percent != null && percent != lastNotifPercent) {
+          if (showSystemNotifications &&
+              percent != null &&
+              percent != lastNotifPercent) {
             lastNotifPercent = percent;
             unawaited(
               notifService.showProgress(
@@ -439,8 +454,9 @@ class UnifiedDownloadEngine {
       );
 
       var targetDownloadedFile = downloadedFile;
-      final isStage2RealMp3 =
-          await MediaDownloader.isGenuineMp3File(targetDownloadedFile);
+      final isStage2RealMp3 = await MediaDownloader.isGenuineMp3File(
+        targetDownloadedFile,
+      );
       final needsStage2AudioConversion =
           isAudio &&
           (!isStage2RealMp3 ||
@@ -511,23 +527,27 @@ class UnifiedDownloadEngine {
 
       DownloadManager.instance.completeTask(taskId);
 
-      await notifService.showCompleted(
-        id: notificationId,
-        title: displayTitle,
-        fileName: finalFileName,
-      );
+      if (showSystemNotifications) {
+        await notifService.showCompleted(
+          id: notificationId,
+          title: displayTitle,
+          fileName: finalFileName,
+        );
+      }
 
       return targetDownloadedFile;
     } catch (e) {
       DownloadManager.instance.failTask(taskId);
       debugPrint('UnifiedDownloadEngine download hatası: $e');
-      unawaited(
-        notifService.showError(
-          id: notificationId,
-          title: defaultTitle,
-          error: e.toString(),
-        ),
-      );
+      if (showSystemNotifications) {
+        unawaited(
+          notifService.showError(
+            id: notificationId,
+            title: defaultTitle,
+            error: e.toString(),
+          ),
+        );
+      }
       rethrow;
     }
   }

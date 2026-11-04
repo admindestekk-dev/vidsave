@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vid_downloader_app/media_downloader.dart';
 import 'package:vid_downloader_app/screens/browser_screen.dart';
 
 void main() {
@@ -122,6 +123,49 @@ void main() {
         find.byKey(const ValueKey('browser_download_button')),
       );
       expect(downloadButton.onPressed, isNotNull);
+    });
+
+    testWidgets(
+      'opens the MP4 and MP3 format selector without leaving browser',
+      (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: InAppMediaBrowserScreen(
+              initialUrl: 'https://example.com/video',
+              webViewBuilder: _testWebViewBuilder,
+            ),
+          ),
+        );
+
+        await tester.tap(find.byKey(const ValueKey('browser_download_button')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('İndirme formatı'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('browser_download_video_option')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('browser_download_audio_option')),
+          findsOneWidget,
+        );
+        expect(find.byType(InAppMediaBrowserScreen), findsOneWidget);
+      },
+    );
+
+    test('recognizes direct downloadable media URLs', () {
+      expect(
+        isDirectMediaUrl(Uri.parse('https://cdn.example/video.mp4?token=1')),
+        isTrue,
+      );
+      expect(
+        isDirectMediaUrl(Uri.parse('https://cdn.example/audio.MP3')),
+        isTrue,
+      );
+      expect(
+        isDirectMediaUrl(Uri.parse('https://example.com/watch?v=1')),
+        isFalse,
+      );
     });
   });
 }

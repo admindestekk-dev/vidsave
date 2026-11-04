@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -30,15 +31,13 @@ class DownloadNotificationService {
   bool get _isSupportedPlatform =>
       !kIsWeb && !Platform.environment.containsKey('FLUTTER_TEST');
 
-  /// Initializes the local notification plugin and requests notification
-  /// permissions on Android 13+. Safe to call multiple times.
+  /// Initializes the local notification plugin. Safe to call multiple times.
   Future<void> initialize() async {
     if (_initialized) return;
     if (!_isSupportedPlatform) return;
 
     try {
-      const androidInit =
-          AndroidInitializationSettings('@mipmap/ic_launcher');
+      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
       const darwinInit = DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
@@ -52,13 +51,6 @@ class DownloadNotificationService {
       );
 
       await _plugin.initialize(settings: initSettings);
-
-      if (Platform.isAndroid) {
-        final androidPlugin = _plugin
-            .resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin>();
-        await androidPlugin?.requestNotificationsPermission();
-      }
 
       _initialized = true;
     } catch (e) {
@@ -90,7 +82,9 @@ class DownloadNotificationService {
       await initialize();
 
       final isIndeterminate = percent == null;
-      final speedSuffix = (speed != null && speed.isNotEmpty) ? ' ($speed)' : '';
+      final speedSuffix = (speed != null && speed.isNotEmpty)
+          ? ' ($speed)'
+          : '';
       final body = isIndeterminate
           ? 'VidSave: Medya İndiriliyor…$speedSuffix'
           : '%$percent İndiriliyor…$speedSuffix';
@@ -138,7 +132,8 @@ class DownloadNotificationService {
       final androidDetails = AndroidNotificationDetails(
         '${_channelId}_completed',
         'Tamamlanan İndirmeler',
-        channelDescription: 'İndirme tamamlandığında sesli ve titreşimli bildirim',
+        channelDescription:
+            'İndirme tamamlandığında sesli ve titreşimli bildirim',
         importance: Importance.high,
         priority: Priority.high,
         showProgress: false,

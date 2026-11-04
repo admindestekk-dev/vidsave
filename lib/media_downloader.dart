@@ -241,6 +241,13 @@ class MediaResolverException implements Exception {
 /// Sahte HTML hata sayfaları (2 KB - 50 KB) bu eşiğe takılarak cihaz hafızasına yazılması engellenir.
 const int kMinValidMediaBytes = 1024 * 1024;
 
+bool isDirectMediaUrl(Uri uri) {
+  return RegExp(
+    r'\.(mp4|m4v|webm|mov|mp3|m4a|aac|wav|ogg|flac)$',
+    caseSensitive: false,
+  ).hasMatch(uri.path);
+}
+
 /// Thrown when the resolved media URL cannot be downloaded to disk.
 class MediaDownloadException implements Exception {
   const MediaDownloadException(this.message);

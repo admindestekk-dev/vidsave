@@ -152,4 +152,33 @@ void main() {
       expect(backgroundDownloadStarted, isTrue);
     },
   );
+
+  testWidgets('starts the selected format automatically when preselected', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      SubscriptionScreen.prefKeyIsPremium: true,
+      SubscriptionScreen.prefKeyPremiumUntil: '2099-12-31T23:59:59Z',
+    });
+
+    final fakeResolver = _FakeMediaResolver();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: QuickDownloadDialog(
+            videoTitle: 'https://example.com/test.mp4',
+            initialDownloadKind: DownloadKind.video,
+            resolver: fakeResolver,
+            downloader: MediaDownloader(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Video İndir'), findsNothing);
+    expect(find.text('MP3 İndir'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+  });
 }

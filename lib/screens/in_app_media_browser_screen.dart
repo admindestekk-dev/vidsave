@@ -516,35 +516,115 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       return;
     }
 
-    QuickDownloadDialog.show(
+    showModalBottomSheet<void>(
       context: context,
-      videoTitle: targetUrl,
-      onDownloadCompleted: (file, kind) {
-        if (!mounted) return;
-        final isAudio = kind == DownloadKind.audio;
-        final fileName = file.path.split(Platform.pathSeparator).last;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Başarıyla indirildi: $fileName'),
-            backgroundColor: const Color(0xFF20B8C5),
-            behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'GÖRÜNTÜLE',
-              textColor: Colors.white,
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => DownloadsScreen(
-                      initialFilter: isAudio ? 'audio' : 'video',
+      backgroundColor: const Color(0xFF1E2630),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white30,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'İndirme formatı',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _buildDownloadFormatOption(
+                context: sheetContext,
+                icon: Icons.videocam_rounded,
+                title: 'Video (MP4)',
+                kind: DownloadKind.video,
+                url: targetUrl,
+              ),
+              const SizedBox(height: 10),
+              _buildDownloadFormatOption(
+                context: sheetContext,
+                icon: Icons.music_note_rounded,
+                title: 'Ses (MP3)',
+                kind: DownloadKind.audio,
+                url: targetUrl,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDownloadFormatOption({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required DownloadKind kind,
+    required String url,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        key: ValueKey('browser_download_${kind.name}_option'),
+        onPressed: () {
+          Navigator.of(context).pop();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            QuickDownloadDialog.show(
+              context: this.context,
+              videoTitle: url,
+              initialDownloadKind: kind,
+              onDownloadCompleted: (file, downloadKind) {
+                if (!mounted) return;
+                final isAudio = downloadKind == DownloadKind.audio;
+                final fileName = file.path.split(Platform.pathSeparator).last;
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  SnackBar(
+                    content: Text('Başarıyla indirildi: $fileName'),
+                    backgroundColor: const Color(0xFF20B8C5),
+                    behavior: SnackBarBehavior.floating,
+                    action: SnackBarAction(
+                      label: 'GÖRÜNTÜLE',
+                      textColor: Colors.white,
+                      onPressed: () {
+                        Navigator.push(
+                          this.context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => DownloadsScreen(
+                              initialFilter: isAudio ? 'audio' : 'video',
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 );
               },
-            ),
-          ),
-        );
-      },
+            );
+          });
+        },
+        icon: Icon(icon),
+        label: Text(title),
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFF303943),
+          foregroundColor: Colors.white,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        ),
+      ),
     );
   }
 
