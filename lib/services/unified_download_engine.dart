@@ -268,9 +268,11 @@ class UnifiedDownloadEngine {
             },
           );
 
+          final isRealMp3 = await MediaDownloader.isGenuineMp3File(downloadedFile);
           final needsAudioConversion =
               isAudio &&
-              (analyzeResult.ext.toLowerCase() != 'mp3' ||
+              (!isRealMp3 ||
+                  analyzeResult.ext.toLowerCase() != 'mp3' ||
                   !uniqueName.toLowerCase().endsWith('.mp3') ||
                   (startTime != null && startTime > 0) ||
                   (endTime != null && endTime > 0) ||
@@ -436,12 +438,63 @@ class UnifiedDownloadEngine {
         },
       );
 
-      final finalFileName = downloadedFile.path
-          .split(Platform.pathSeparator)
+      var targetDownloadedFile = downloadedFile;
+      final isStage2RealMp3 =
+          await MediaDownloader.isGenuineMp3File(targetDownloadedFile);
+      final needsStage2AudioConversion =
+          isAudio &&
+          (!isStage2RealMp3 ||
+              !targetDownloadedFile.path.toLowerCase().endsWith('.mp3') ||
+              (startTime != null && startTime > 0) ||
+              (endTime != null && endTime > 0) ||
+              (audioEffect != null && audioEffect != 'normal'));
+
+      if (needsStage2AudioConversion) {
+        final appDir = await getApplicationDocumentsDirectory();
+        final rawBase = targetDownloadedFile.path
+            .split(RegExp(r'[\\/]'))
+            .last
+            .replaceAll(RegExp(r'\.[^.]+$'), '')
+            .trim();
+        final safeBase = rawBase.isNotEmpty ? rawBase : 'vidsave_media';
+        final mp3Path = '${appDir.path}${Platform.pathSeparator}';
+        var mp3FileName = '$safeBase.mp3';
+        var mp3CopyIndex = 1;
+        while (File('$mp3Path$mp3FileName').existsSync()) {
+          mp3FileName = '${safeBase}_$mp3CopyIndex.mp3';
+          mp3CopyIndex++;
+        }
+
+        try {
+          final converted = await LocalFFmpegService.instance.convertToMp3(
+            inputFile: targetDownloadedFile,
+            outputFile: File('$mp3Path$mp3FileName'),
+            startTime: startTime,
+            endTime: endTime,
+            audioEffect: audioEffect,
+          );
+          if (targetDownloadedFile.path != converted.path &&
+              await targetDownloadedFile.exists()) {
+            try {
+              await targetDownloadedFile.delete();
+            } catch (_) {}
+          }
+          targetDownloadedFile = converted;
+        } catch (convErr) {
+          debugPrint(
+            'UnifiedDownloadEngine Stage 2 MP3 conversion error: $convErr',
+          );
+        }
+      }
+
+      await MediaDownloader.publishToMediaStore(targetDownloadedFile);
+
+      final finalFileName = targetDownloadedFile.path
+          .split(RegExp(r'[\\/]'))
           .last;
       int fileSize = 0;
       try {
-        fileSize = downloadedFile.lengthSync();
+        fileSize = targetDownloadedFile.lengthSync();
       } catch (_) {}
 
       await StorageService.addItem(
@@ -450,7 +503,7 @@ class UnifiedDownloadEngine {
           name: finalFileName,
           type: normalizedType == 'mp3' ? 'audio' : 'video',
           sizeInBytes: fileSize,
-          filePath: downloadedFile.path,
+          filePath: targetDownloadedFile.path,
           downloadedAt: DateTime.now(),
           sourceUrl: targetUrl,
         ),
@@ -464,7 +517,7 @@ class UnifiedDownloadEngine {
         fileName: finalFileName,
       );
 
-      return downloadedFile;
+      return targetDownloadedFile;
     } catch (e) {
       DownloadManager.instance.failTask(taskId);
       debugPrint('UnifiedDownloadEngine download hatası: $e');

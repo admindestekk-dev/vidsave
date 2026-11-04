@@ -12,6 +12,7 @@ import 'package:vid_downloader_app/downloads_screen.dart';
 import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/media_library.dart';
 import 'package:vid_downloader_app/music_player.dart';
+import 'package:vid_downloader_app/premium_player_screen.dart';
 import 'package:vid_downloader_app/storage_service.dart';
 
 class _FakeMusicPlayer implements MusicPlayerController {
@@ -165,7 +166,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.byType(MusicPlayerScreen), findsOneWidget);
+    expect(find.byType(PremiumPlayerScreen), findsOneWidget);
     expect(find.text('favori_sarki.mp3'), findsWidgets);
   });
 }

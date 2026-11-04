@@ -1707,10 +1707,17 @@ class UniversalScraper {
               result.audioUrl)
         : null;
 
+    var resolvedFileName = result.fileName;
+    if (kind == DownloadKind.audio) {
+      final base = resolvedFileName.replaceAll(RegExp(r'\.[^.]+$'), '').trim();
+      final safeBase = base.isNotEmpty ? base : 'vidsave_audio';
+      resolvedFileName = '$safeBase.mp3';
+    }
+
     return ResolvedMedia(
       url: cleanMediaUrl,
-      fileName: result.fileName,
-      mimeType: result.mimeType,
+      fileName: resolvedFileName,
+      mimeType: kind == DownloadKind.audio ? 'audio/mpeg' : result.mimeType,
       fileSizeInBytes: result.fileSizeInBytes,
       downloadHeaders: result.downloadHeaders,
       audioUrl: cleanAudioUrl,

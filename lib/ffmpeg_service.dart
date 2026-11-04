@@ -41,15 +41,29 @@ class LocalFFmpegService {
       await outputFile.delete();
     }
 
-    // -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest
-    final cmd =
-        '-y -i "${videoFile.path}" -i "${audioFile.path}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputFile.path}"';
+    final args = <String>[
+      '-y',
+      '-i',
+      videoFile.path,
+      '-i',
+      audioFile.path,
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-map',
+      '0:v:0',
+      '-map',
+      '1:a:0',
+      '-shortest',
+      outputFile.path,
+    ];
 
-    debugPrint('LocalFFmpegService: Executing merge: $cmd');
+    debugPrint('LocalFFmpegService: Executing merge with arguments: $args');
     final completer = Completer<File>();
 
-    await FFmpegKit.executeAsync(
-      cmd,
+    await FFmpegKit.executeWithArgumentsAsync(
+      args,
       (session) async {
         final returnCode = await session.getReturnCode();
         if (ReturnCode.isSuccess(returnCode) && await outputFile.exists()) {
@@ -87,11 +101,18 @@ class LocalFFmpegService {
       return outputFile;
     }
 
-    if (await outputFile.exists()) {
-      await outputFile.delete();
+    final isSamePath = outputFile.path == inputFile.path;
+    final actualOutput = isSamePath
+        ? File(
+            '${outputFile.parent.path}${Platform.pathSeparator}temp_conv_${DateTime.now().millisecondsSinceEpoch}.mp3',
+          )
+        : outputFile;
+
+    if (!isSamePath && await actualOutput.exists()) {
+      await actualOutput.delete();
     }
 
-    // Build FFmpeg command arguments
+    // Build FFmpeg command arguments (using direct argument list to avoid quote/space bugs)
     final args = <String>['-y'];
 
     // Start time trim (-ss) before input for fast seek
@@ -99,7 +120,7 @@ class LocalFFmpegService {
       args.addAll(['-ss', startTime.toStringAsFixed(2)]);
     }
 
-    args.addAll(['-i', '"${inputFile.path}"']);
+    args.addAll(['-i', inputFile.path]);
 
     // End time trim (-to) or duration (-t)
     if (endTime != null && endTime > 0) {
@@ -128,20 +149,31 @@ class LocalFFmpegService {
       '2',
       '-b:a',
       '192k',
-      '"${outputFile.path}"',
+      actualOutput.path,
     ]);
 
-    final cmd = args.join(' ');
-    debugPrint('LocalFFmpegService: Executing convertToMp3: $cmd');
+    debugPrint('LocalFFmpegService: Executing convertToMp3 args: $args');
 
     final completer = Completer<File>();
 
-    await FFmpegKit.executeAsync(
-      cmd,
+    await FFmpegKit.executeWithArgumentsAsync(
+      args,
       (session) async {
         final returnCode = await session.getReturnCode();
-        if (ReturnCode.isSuccess(returnCode) && await outputFile.exists()) {
-          completer.complete(outputFile);
+        if (ReturnCode.isSuccess(returnCode) && await actualOutput.exists()) {
+          if (isSamePath) {
+            try {
+              if (await inputFile.exists()) {
+                await inputFile.delete();
+              }
+              final renamed = await actualOutput.rename(outputFile.path);
+              completer.complete(renamed);
+            } catch (_) {
+              completer.complete(actualOutput);
+            }
+          } else {
+            completer.complete(outputFile);
+          }
         } else {
           final failTrace = await session.getFailStackTrace();
           final output = await session.getOutput();

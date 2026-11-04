@@ -610,6 +610,9 @@ class RemoteMediaResolver implements MediaResolver {
     required Uri url,
     required DownloadKind kind,
   }) {
+    if (kind == DownloadKind.audio) {
+      return '.mp3';
+    }
     final candidates = <String?>[fromPayload, _fileNameFromUrl(url)];
     for (final candidate in candidates) {
       final extension = _extensionOf(candidate);
@@ -617,7 +620,7 @@ class RemoteMediaResolver implements MediaResolver {
         return '.$extension';
       }
     }
-    return kind == DownloadKind.audio ? '.m4a' : '.mp4';
+    return '.mp4';
   }
 
   String? _fileNameFromUrl(Uri? uri) {
@@ -866,22 +869,51 @@ class MediaDownloader {
     }
   }
 
+  /// Checks if file has a valid MP3 header (ID3 tag or MPEG audio sync frame).
+  static Future<bool> isGenuineMp3File(File file) async {
+    if (!await file.exists()) return false;
+    try {
+      final length = await file.length();
+      if (length < 4) return false;
+      final raf = await file.open(mode: FileMode.read);
+      try {
+        final header = await raf.read(12);
+        if (header.length < 3) return false;
+        // ID3v2 tag: "ID3" (0x49, 0x44, 0x33)
+        if (header[0] == 0x49 && header[1] == 0x44 && header[2] == 0x33) {
+          return true;
+        }
+        // MPEG sync frame: 11 bits of 1s (0xFF followed by 0xE0 mask)
+        if (header[0] == 0xFF && (header[1] & 0xE0) == 0xE0) {
+          return true;
+        }
+        return false;
+      } finally {
+        await raf.close();
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Processes downloaded file to MP3 with optional trimming and effects using FFmpeg.
   Future<File> _processAudioFile(
     File inputFile,
     ResolvedMedia media,
     Directory directory,
   ) async {
-    // If output is already target and requires no trimming or effect
-    if (inputFile.path.toLowerCase().endsWith('.mp3') &&
+    final rawBase = media.fileName.replaceAll(RegExp(r'\.[^.]+$'), '').trim();
+    final safeBase = rawBase.isNotEmpty ? rawBase : 'vidsave_audio';
+    final targetName = '$safeBase.mp3';
+
+    // If file is already a genuine MP3 and requires no trimming or effect
+    final isRealMp3 = await isGenuineMp3File(inputFile);
+    if (isRealMp3 &&
+        inputFile.path.toLowerCase().endsWith('.mp3') &&
         !media.requiresAudioProcessing) {
       await _publishToMediaStore(inputFile);
       return inputFile;
     }
-
-    final targetName = media.fileName.toLowerCase().endsWith('.mp3')
-        ? media.fileName
-        : '${media.fileName.split('.').first}.mp3';
 
     final outputFile = File(
       '${directory.path}${Platform.pathSeparator}'
@@ -899,14 +931,18 @@ class MediaDownloader {
 
       // Remove the raw downloaded file if it was different
       if (inputFile.path != converted.path && await inputFile.exists()) {
-        await inputFile.delete();
+        try {
+          await inputFile.delete();
+        } catch (_) {}
       }
 
       await _publishToMediaStore(converted);
       return converted;
     } catch (_) {
       if (await outputFile.exists()) {
-        await outputFile.delete();
+        try {
+          await outputFile.delete();
+        } catch (_) {}
       }
       rethrow;
     }
