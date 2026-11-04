@@ -224,7 +224,11 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       url ??= await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
 
       if ((url != null || openDownloadFromOverlay) && mounted) {
-        await _showClipboardPrompt(url, allowUrlInput: openDownloadFromOverlay);
+        await _showClipboardPrompt(
+          url,
+          allowUrlInput: openDownloadFromOverlay,
+          returnToSourceApp: openDownloadFromOverlay,
+        );
       }
     } catch (error) {
       if (!mounted) return;
@@ -244,17 +248,54 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   Future<void> _showClipboardPrompt(
     String? url, {
     bool allowUrlInput = false,
+    bool returnToSourceApp = false,
   }) async {
     if (_isClipboardPromptShowing) return;
     _isClipboardPromptShowing = true;
+    var lastReportedProgress = -1;
+    void finishOverlayDownload({required bool success, String? message}) {
+      if (!returnToSourceApp || !Platform.isAndroid) return;
+      ExternalAppDownloadOverlay.finishBackgroundDownload(
+        success: success,
+        message: message,
+      ).catchError((Object error) {
+        debugPrint('Dış uygulama indirme durumu güncellenemedi: $error');
+      });
+    }
+
     try {
       await QuickDownloadDialog.show(
         context: context,
         videoTitle: url ?? '',
         allowUrlInput: allowUrlInput,
+        onDownloadStarted: returnToSourceApp && Platform.isAndroid
+            ? ExternalAppDownloadOverlay.beginBackgroundDownload
+            : null,
+        onDownloadProgress: returnToSourceApp && Platform.isAndroid
+            ? (progress, speed) {
+                final percent = progress.floor();
+                if (percent == lastReportedProgress) return;
+                lastReportedProgress = percent;
+                ExternalAppDownloadOverlay.updateDownloadProgress(
+                  progress: progress,
+                  speed: speed,
+                ).catchError((Object error) {
+                  debugPrint(
+                    'Dış uygulama indirme ilerlemesi güncellenemedi: $error',
+                  );
+                });
+              }
+            : null,
+        onDownloadFailed: (_) =>
+            finishOverlayDownload(success: false, message: 'İndirme başarısız'),
         resolver: _mediaResolver,
         downloader: _mediaDownloader,
         onDownloadCompleted: (file, kind) {
+          finishOverlayDownload(
+            success: true,
+            message:
+                'İndirildi: ${file.path.split(Platform.pathSeparator).last}',
+          );
           if (!mounted) return;
           final isAudio = kind == DownloadKind.audio;
           final fileName = file.path.split(Platform.pathSeparator).last;

@@ -25,6 +25,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 
 object ExternalAppOverlayPermissions {
@@ -49,6 +50,13 @@ class ExternalAppDownloadOverlayService : Service() {
         const val ENABLED_KEY = "enabled"
         const val EXTRA_PENDING_URL = "pending_external_download_url"
         const val EXTRA_OPEN_DOWNLOAD = "open_external_download"
+        const val ACTION_DOWNLOAD_STARTED = "download_started"
+        const val ACTION_DOWNLOAD_PROGRESS = "download_progress"
+        const val ACTION_DOWNLOAD_FINISHED = "download_finished"
+        const val EXTRA_PROGRESS = "download_progress_value"
+        const val EXTRA_SPEED = "download_speed"
+        const val EXTRA_SUCCESS = "download_success"
+        const val EXTRA_MESSAGE = "download_message"
 
         private const val NOTIFICATION_CHANNEL = "vidsave_external_overlay"
         private const val NOTIFICATION_ID = 8431
@@ -79,6 +87,18 @@ class ExternalAppDownloadOverlayService : Service() {
     private var overlayView: View? = null
     private var showingConfirmation = false
     private var foregroundPackage: String? = null
+    private var downloadActive = false
+    private var downloadProgress = 0
+    private var downloadSpeed = ""
+    private var downloadStatusMessage: String? = null
+    private var downloadProgressLabel: TextView? = null
+    private var downloadProgressBar: ProgressBar? = null
+    private val clearDownloadStatus = Runnable {
+        downloadStatusMessage = null
+        downloadProgress = 0
+        downloadSpeed = ""
+        if (overlayView != null) showDownloadButton()
+    }
     private val homePackageName: String? by lazy {
         packageManager.resolveActivity(
             Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
@@ -109,7 +129,11 @@ class ExternalAppDownloadOverlayService : Service() {
                     it !in NON_CONTENT_PACKAGES
             } == true
             if (shouldShow && overlayView == null) {
-                showDownloadButton()
+                if (downloadActive || downloadStatusMessage != null) {
+                    showDownloadProgress()
+                } else {
+                    showDownloadButton()
+                }
             } else if (!shouldShow && overlayView != null) {
                 removeOverlay()
             }
@@ -131,6 +155,48 @@ class ExternalAppDownloadOverlayService : Service() {
                 .apply()
             stopSelf()
             return START_NOT_STICKY
+        }
+
+        if (!getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+                .getBoolean(ENABLED_KEY, false)
+        ) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        when (intent?.action) {
+            ACTION_DOWNLOAD_STARTED -> {
+                startForeground(NOTIFICATION_ID, buildNotification())
+                handler.removeCallbacks(clearDownloadStatus)
+                downloadActive = true
+                downloadProgress = 0
+                downloadSpeed = ""
+                downloadStatusMessage = null
+                handler.removeCallbacks(pollForegroundApp)
+                handler.post(pollForegroundApp)
+                refreshDownloadOverlay()
+                return START_STICKY
+            }
+            ACTION_DOWNLOAD_PROGRESS -> {
+                downloadProgress = (intent.getIntExtra(EXTRA_PROGRESS, 0)).coerceIn(0, 100)
+                downloadSpeed = intent.getStringExtra(EXTRA_SPEED).orEmpty()
+                refreshDownloadOverlay()
+                return START_STICKY
+            }
+            ACTION_DOWNLOAD_FINISHED -> {
+                downloadActive = false
+                downloadProgress = 100
+                downloadStatusMessage = intent.getStringExtra(EXTRA_MESSAGE)
+                    ?: if (intent.getBooleanExtra(EXTRA_SUCCESS, false)) {
+                        "İndirme tamamlandı"
+                    } else {
+                        "İndirme başarısız"
+                    }
+                refreshDownloadOverlay()
+                handler.removeCallbacks(clearDownloadStatus)
+                handler.postDelayed(clearDownloadStatus, 5_000L)
+                return START_STICKY
+            }
         }
 
         if (!ExternalAppOverlayPermissions.canDrawOverlays(this) ||
@@ -177,6 +243,8 @@ class ExternalAppDownloadOverlayService : Service() {
 
     private fun showDownloadButton() {
         showingConfirmation = false
+        downloadProgressLabel = null
+        downloadProgressBar = null
         val density = resources.displayMetrics.density
         val root = FrameLayout(this)
         root.contentDescription = "VidSave İndir"
@@ -214,6 +282,107 @@ class ExternalAppDownloadOverlayService : Service() {
         addOverlay(root, (84 * density).toInt(), (56 * density).toInt())
     }
 
+    private fun showDownloadProgress() {
+        showingConfirmation = false
+        val density = resources.displayMetrics.density
+        val root = FrameLayout(this)
+        root.contentDescription = "VidSave indirme durumu"
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(
+                (14 * density).toInt(),
+                (10 * density).toInt(),
+                (14 * density).toInt(),
+                (10 * density).toInt(),
+            )
+            background = roundedBackground(Color.rgb(30, 38, 48), 14f * density)
+        }
+        downloadProgressLabel = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
+            contentDescription = "İndirme durumu"
+        }
+        content.addView(
+            downloadProgressLabel,
+            LinearLayout.LayoutParams(
+                (150 * density).toInt(),
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        downloadProgressBar = ProgressBar(
+            this,
+            null,
+            android.R.attr.progressBarStyleHorizontal,
+        ).apply {
+            max = 100
+            progress = downloadProgress
+            isIndeterminate = downloadActive && downloadProgress == 0
+        }
+        content.addView(
+            downloadProgressBar,
+            LinearLayout.LayoutParams(
+                (174 * density).toInt(),
+                (6 * density).toInt(),
+            ).apply {
+                topMargin = (7 * density).toInt()
+            },
+        )
+        root.addView(content)
+
+        val close = TextView(this).apply {
+            text = "×"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = roundedBackground(Color.rgb(52, 59, 68), 12f * density)
+            contentDescription = "VidSave İndir düğmesini kapat"
+            setOnClickListener { showCloseConfirmation() }
+        }
+        root.addView(
+            close,
+            FrameLayout.LayoutParams(
+                (24 * density).toInt(),
+                (24 * density).toInt(),
+                Gravity.TOP or Gravity.END,
+            ),
+        )
+        addOverlay(root, (226 * density).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
+        refreshDownloadOverlay()
+    }
+
+    private fun refreshDownloadOverlay() {
+        if (overlayView == null) return
+        if ((downloadActive || downloadStatusMessage != null) &&
+            downloadProgressLabel == null
+        ) {
+            removeOverlay()
+            showDownloadProgress()
+            return
+        }
+        if (!downloadActive && downloadStatusMessage == null &&
+            downloadProgressLabel != null
+        ) {
+            showDownloadButton()
+            return
+        }
+        val label = downloadProgressLabel ?: return
+        label.text = downloadStatusMessage ?: if (downloadActive) {
+            val percent = if (downloadProgress > 0) " %$downloadProgress" else ""
+            val speed = if (downloadSpeed.isNotBlank()) " • $downloadSpeed" else ""
+            "İndiriliyor$percent$speed"
+        } else {
+            "VidSave İNDİR"
+        }
+        downloadProgressBar?.apply {
+            progress = downloadProgress
+            isIndeterminate = downloadActive && downloadProgress == 0
+        }
+    }
+
     private fun showCloseConfirmation() {
         if (showingConfirmation) return
         showingConfirmation = true
@@ -246,7 +415,11 @@ class ExternalAppDownloadOverlayService : Service() {
         }
         actions.addView(actionText("VAZGEÇ", density) {
             showingConfirmation = false
-            showDownloadButton()
+            if (downloadActive || downloadStatusMessage != null) {
+                showDownloadProgress()
+            } else {
+                showDownloadButton()
+            }
         })
         actions.addView(actionText("KAPAT", density) {
             getSharedPreferences(PREFERENCES, MODE_PRIVATE)
@@ -306,6 +479,8 @@ class ExternalAppDownloadOverlayService : Service() {
             // The system can remove a window while revoking overlay permission.
         }
         overlayView = null
+        downloadProgressLabel = null
+        downloadProgressBar = null
         showingConfirmation = false
     }
 

@@ -124,6 +124,7 @@ void main() {
       });
 
       final fakeResolver = _FakeMediaResolver();
+      var backgroundDownloadStarted = false;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -132,6 +133,9 @@ void main() {
               videoTitle: 'https://example.com/test.mp4',
               resolver: fakeResolver,
               downloader: MediaDownloader(),
+              onDownloadStarted: () async {
+                backgroundDownloadStarted = true;
+              },
             ),
           ),
         ),
@@ -145,6 +149,7 @@ void main() {
       expect(find.text('Video İndir'), findsNothing);
       expect(find.byType(LinearProgressIndicator), findsOneWidget);
       expect(find.textContaining('İndiriliyor... %0'), findsOneWidget);
+      expect(backgroundDownloadStarted, isTrue);
     },
   );
 }

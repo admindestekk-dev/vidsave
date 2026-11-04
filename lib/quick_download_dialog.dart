@@ -49,6 +49,9 @@ class QuickDownloadDialog extends StatefulWidget {
 
   /// İndirme başarıyla tamamlandığında tetiklenen geri çağırım
   final void Function(File file, DownloadKind kind)? onDownloadCompleted;
+  final Future<void> Function()? onDownloadStarted;
+  final void Function(double progress, String speed)? onDownloadProgress;
+  final void Function(String message)? onDownloadFailed;
 
   const QuickDownloadDialog({
     super.key,
@@ -60,6 +63,9 @@ class QuickDownloadDialog extends StatefulWidget {
     this.resolver,
     this.downloader,
     this.onDownloadCompleted,
+    this.onDownloadStarted,
+    this.onDownloadProgress,
+    this.onDownloadFailed,
   });
 
   /// Dialogu açmak için statik yardımcı metot
@@ -73,6 +79,9 @@ class QuickDownloadDialog extends StatefulWidget {
     MediaResolver? resolver,
     MediaDownloader? downloader,
     void Function(File file, DownloadKind kind)? onDownloadCompleted,
+    Future<void> Function()? onDownloadStarted,
+    void Function(double progress, String speed)? onDownloadProgress,
+    void Function(String message)? onDownloadFailed,
     double? maxDurationSeconds,
   }) {
     return showDialog<void>(
@@ -86,6 +95,9 @@ class QuickDownloadDialog extends StatefulWidget {
         resolver: resolver,
         downloader: downloader,
         onDownloadCompleted: onDownloadCompleted,
+        onDownloadStarted: onDownloadStarted,
+        onDownloadProgress: onDownloadProgress,
+        onDownloadFailed: onDownloadFailed,
         onDownloadVideo: onDownloadVideo,
         onDownloadMp3WithOptions: onDownloadMp3 != null
             ? ({startTime, endTime, audioEffect}) {
@@ -315,6 +327,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
     final isAudio = kind == DownloadKind.audio;
 
     try {
+      await widget.onDownloadStarted?.call();
       final file = await UnifiedDownloadEngine.instance.download(
         rawUrl: widget.allowUrlInput
             ? _urlController.text.trim()
@@ -324,10 +337,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
         endTime: _enableTrimming ? _currentRangeValues.end : null,
         audioEffect: _selectedEffect,
         onProgress: (received, total, progress, speed, status) {
+          final pct = ((progress ?? 0) * 100).clamp(0.0, 100.0);
+          widget.onDownloadProgress?.call(pct, speed);
           if (!mounted) return;
-          final pct = (progress != null)
-              ? (progress * 100).clamp(0.0, 100.0)
-              : 0.0;
           setState(() {
             _downloadProgress = pct;
             _downloadSpeed = speed;
@@ -356,6 +368,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
       );
     } catch (e, stack) {
       debugPrint('QuickDownloadDialog download error: $e\n$stack');
+      widget.onDownloadFailed?.call(e.toString());
       if (!mounted) return;
 
       setState(() {

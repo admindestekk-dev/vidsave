@@ -70,6 +70,30 @@ class ExternalAppDownloadOverlay {
     await _channel.invokeMethod<void>('stop');
   }
 
+  static Future<void> beginBackgroundDownload() async {
+    await _channel.invokeMethod<void>('beginBackgroundDownload');
+  }
+
+  static Future<void> updateDownloadProgress({
+    required double progress,
+    required String speed,
+  }) async {
+    await _channel.invokeMethod<void>('updateDownloadProgress', {
+      'progress': progress,
+      'speed': speed,
+    });
+  }
+
+  static Future<void> finishBackgroundDownload({
+    required bool success,
+    String? message,
+  }) async {
+    await _channel.invokeMethod<void>('finishBackgroundDownload', {
+      'success': success,
+      'message': message,
+    });
+  }
+
   /// Dış uygulamadaki VidSave overlay indirme butonuna basıldığında
   /// iletilen bekleyen indirme bağlantısını döner (varsa).
   static Future<String?> getPendingDownloadUrl() async {

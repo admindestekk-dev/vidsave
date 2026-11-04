@@ -135,6 +135,108 @@ class MainActivity : FlutterActivity() {
                     )
                     result.success(null)
                 }
+                "beginBackgroundDownload" -> {
+                    val enabled = getSharedPreferences(
+                        ExternalAppDownloadOverlayService.PREFERENCES,
+                        MODE_PRIVATE,
+                    ).getBoolean(
+                        ExternalAppDownloadOverlayService.ENABLED_KEY,
+                        false,
+                    )
+                    if (!enabled ||
+                        !ExternalAppOverlayPermissions.canDrawOverlays(this) ||
+                        !ExternalAppOverlayPermissions.hasUsageAccess(this)
+                    ) {
+                        result.error(
+                            "overlay_unavailable",
+                            "Dış uygulama indirme düğmesi etkin değil.",
+                            null,
+                        )
+                    } else {
+                        startOverlayService(
+                            ExternalAppDownloadOverlayService.ACTION_DOWNLOAD_STARTED,
+                        )
+                        moveTaskToBack(true)
+                        result.success(null)
+                    }
+                }
+                "updateDownloadProgress" -> {
+                    val enabled = getSharedPreferences(
+                        ExternalAppDownloadOverlayService.PREFERENCES,
+                        MODE_PRIVATE,
+                    ).getBoolean(
+                        ExternalAppDownloadOverlayService.ENABLED_KEY,
+                        false,
+                    )
+                    val progress = call.argument<Double>("progress")
+                    val speed = call.argument<String>("speed")
+                    if (!enabled) {
+                        result.success(null)
+                    } else if (progress == null || !progress.isFinite() || speed == null) {
+                        result.error(
+                            "invalid_progress",
+                            "İndirme ilerleme bilgisi geçersiz.",
+                            null,
+                        )
+                    } else {
+                        startService(
+                            Intent(
+                                this,
+                                ExternalAppDownloadOverlayService::class.java,
+                            ).apply {
+                                action =
+                                    ExternalAppDownloadOverlayService.ACTION_DOWNLOAD_PROGRESS
+                                putExtra(
+                                    ExternalAppDownloadOverlayService.EXTRA_PROGRESS,
+                                    progress.toInt(),
+                                )
+                                putExtra(
+                                    ExternalAppDownloadOverlayService.EXTRA_SPEED,
+                                    speed,
+                                )
+                            },
+                        )
+                        result.success(null)
+                    }
+                }
+                "finishBackgroundDownload" -> {
+                    val enabled = getSharedPreferences(
+                        ExternalAppDownloadOverlayService.PREFERENCES,
+                        MODE_PRIVATE,
+                    ).getBoolean(
+                        ExternalAppDownloadOverlayService.ENABLED_KEY,
+                        false,
+                    )
+                    val success = call.argument<Boolean>("success")
+                    if (!enabled) {
+                        result.success(null)
+                    } else if (success == null) {
+                        result.error(
+                            "invalid_result",
+                            "İndirme sonucu belirtilmedi.",
+                            null,
+                        )
+                    } else {
+                        startService(
+                            Intent(
+                                this,
+                                ExternalAppDownloadOverlayService::class.java,
+                            ).apply {
+                                action =
+                                    ExternalAppDownloadOverlayService.ACTION_DOWNLOAD_FINISHED
+                                putExtra(
+                                    ExternalAppDownloadOverlayService.EXTRA_SUCCESS,
+                                    success,
+                                )
+                                putExtra(
+                                    ExternalAppDownloadOverlayService.EXTRA_MESSAGE,
+                                    call.argument<String>("message"),
+                                )
+                            },
+                        )
+                        result.success(null)
+                    }
+                }
                 "getPendingDownloadUrl" -> {
                     val url = pendingOverlayDownloadUrl
                         ?: intent?.getStringExtra(ExternalAppDownloadOverlayService.EXTRA_PENDING_URL)
@@ -200,8 +302,13 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun startOverlayService() {
-        val serviceIntent = Intent(this, ExternalAppDownloadOverlayService::class.java)
+    private fun startOverlayService(action: String? = null) {
+        val serviceIntent = Intent(
+            this,
+            ExternalAppDownloadOverlayService::class.java,
+        ).apply {
+            if (action != null) this.action = action
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
         } else {

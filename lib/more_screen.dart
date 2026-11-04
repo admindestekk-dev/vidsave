@@ -64,6 +64,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
   ExternalAppDownloadOverlayStatus? _externalOverlayStatus;
   bool _externalOverlayLoading = false;
   bool _enableOverlayAfterPermissions = false;
+  ExternalAppDownloadOverlayStatus? _permissionsBeforeRequest;
   String? _externalOverlayError;
 
   bool get _supportsExternalAppOverlay =>
@@ -95,12 +96,18 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
   Future<void> _refreshExternalOverlayStatus() async {
     try {
       var status = await ExternalAppDownloadOverlay.getStatus();
-      if (_enableOverlayAfterPermissions &&
-          status.hasRequiredPermissions &&
-          !status.enabled) {
-        _enableOverlayAfterPermissions = false;
-        await ExternalAppDownloadOverlay.start();
-        status = await ExternalAppDownloadOverlay.getStatus();
+      if (_enableOverlayAfterPermissions) {
+        if (status.hasRequiredPermissions) {
+          _enableOverlayAfterPermissions = false;
+          _permissionsBeforeRequest = null;
+          if (!status.enabled) {
+            await ExternalAppDownloadOverlay.start();
+            status = await ExternalAppDownloadOverlay.getStatus();
+          }
+        } else if (_hasNewPermission(status)) {
+          _permissionsBeforeRequest = status;
+          await ExternalAppDownloadOverlay.requestNextPermission();
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -124,9 +131,11 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
       final status = await ExternalAppDownloadOverlay.getStatus();
       if (!enabled) {
         _enableOverlayAfterPermissions = false;
+        _permissionsBeforeRequest = null;
         await ExternalAppDownloadOverlay.stop();
       } else if (!status.hasRequiredPermissions) {
         _enableOverlayAfterPermissions = true;
+        _permissionsBeforeRequest = status;
         await ExternalAppDownloadOverlay.requestNextPermission();
       } else {
         await ExternalAppDownloadOverlay.start();
@@ -140,6 +149,13 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _externalOverlayLoading = false);
     }
+  }
+
+  bool _hasNewPermission(ExternalAppDownloadOverlayStatus status) {
+    final previous = _permissionsBeforeRequest;
+    if (previous == null) return false;
+    return (!previous.canDrawOverlays && status.canDrawOverlays) ||
+        (!previous.hasUsageAccess && status.hasUsageAccess);
   }
 
   void _handleTitleTap() {
@@ -1142,45 +1158,48 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFEDF2F7), width: 1.2),
       ),
-      child: Column(
-        children: [
-          SwitchListTile(
-            key: const ValueKey('external_app_download_overlay_switch'),
-            value: status?.enabled ?? false,
-            onChanged: _externalOverlayLoading || status == null
-                ? null
-                : _toggleExternalOverlay,
-            secondary: const Icon(Icons.picture_in_picture_alt_rounded),
-            title: const Text(
-              'Diğer uygulamalarda İNDİR',
-              style: TextStyle(fontWeight: FontWeight.w700),
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          children: [
+            SwitchListTile(
+              key: const ValueKey('external_app_download_overlay_switch'),
+              value: status?.enabled ?? false,
+              onChanged: _externalOverlayLoading || status == null
+                  ? null
+                  : _toggleExternalOverlay,
+              secondary: const Icon(Icons.picture_in_picture_alt_rounded),
+              title: const Text(
+                'Diğer uygulamalarda İNDİR',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(permissionText),
             ),
-            subtitle: Text(permissionText),
-          ),
-          if (_externalOverlayLoading)
-            const LinearProgressIndicator(minHeight: 2),
-          if (_externalOverlayError != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _externalOverlayError!,
-                      style: const TextStyle(
-                        color: Colors.redAccent,
-                        fontSize: 12,
+            if (_externalOverlayLoading)
+              const LinearProgressIndicator(minHeight: 2),
+            if (_externalOverlayError != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _externalOverlayError!,
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: _refreshExternalOverlayStatus,
-                    child: const Text('Tekrar Dene'),
-                  ),
-                ],
+                    TextButton(
+                      onPressed: _refreshExternalOverlayStatus,
+                      child: const Text('Tekrar Dene'),
+                    ),
+                  ],
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -45,6 +45,36 @@ void main() {
     expect(methods, ['requestNextPermission', 'start', 'stop']);
   });
 
+  test('sends background download progress to the native overlay', () async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          return null;
+        });
+
+    await ExternalAppDownloadOverlay.beginBackgroundDownload();
+    await ExternalAppDownloadOverlay.updateDownloadProgress(
+      progress: 42,
+      speed: '1.2 MB/s',
+    );
+    await ExternalAppDownloadOverlay.finishBackgroundDownload(
+      success: true,
+      message: 'İndirildi: video.mp4',
+    );
+
+    expect(calls.map((call) => call.method), [
+      'beginBackgroundDownload',
+      'updateDownloadProgress',
+      'finishBackgroundDownload',
+    ]);
+    expect(calls[1].arguments, {'progress': 42.0, 'speed': '1.2 MB/s'});
+    expect(calls[2].arguments, {
+      'success': true,
+      'message': 'İndirildi: video.mp4',
+    });
+  });
+
   test('reads pending download url from overlay action', () async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {

@@ -71,10 +71,13 @@ Android's special "Display over other apps" and "Usage access" settings. Once
 enabled, it appears over other apps (but not VidSave, YouTube, or core Android
 system screens). The foreground service checks only which package is currently
 in the foreground; it does not read page contents or extract media from another app.
-Tapping **İNDİR** opens VidSave's download dialog immediately. A copied link is
-filled in when available; otherwise, paste the post or media link into the
-dialog. A persistent notification is shown while the feature is enabled. This
-overlay is Android-only; iOS does not allow apps to draw over other apps.
+Tapping **İNDİR** opens VidSave's download dialog. A copied link is filled in
+when available; otherwise, paste the post or media link into the dialog. After
+you choose video or audio download, VidSave moves behind the source app and the
+floating overlay shows download progress and completion. The download still runs
+through VidSave; Android does not allow VidSave to add download controls inside
+another app. A persistent notification is shown while this feature is enabled.
+This overlay is Android-only; iOS does not allow apps to draw over other apps.
 Review the current Google Play policies and declare the special-use foreground
 service and usage-access purpose accurately before publishing.
 
