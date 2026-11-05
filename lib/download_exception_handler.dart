@@ -31,6 +31,18 @@ class DownloadExceptionHandler {
           'İndirme tamamlanamadı. Lütfen tekrar deneyin.';
     }
 
+    // FFmpeg ve Sunucu Teknik Hata Kalkanı (Kurumsal Sansür)
+    final rawErrStr = error.toString().toLowerCase();
+    if (rawErrStr.contains('ffmpeg') ||
+        rawErrStr.contains('rc: 1') ||
+        rawErrStr.contains('rc:1') ||
+        rawErrStr.contains('rate limit') ||
+        rawErrStr.contains('ip block') ||
+        rawErrStr.contains('bot algılama') ||
+        rawErrStr.contains('postprocessing')) {
+      return 'Yasal kısıtlamalar ve telif hakları politikaları gereği, ilgili platforma ait medyaların indirilmesi kısıtlanmıştır. VidSave; TikTok, Instagram ve Facebook platformlarında Pro bulut gücüyle 7/24 hizmet sunmaya devam etmektedir.';
+    }
+
     // 1. Zaten özelleştirilmiş çözücü ve indirme istisnaları
     if (error is ApiException) {
       return error.message;

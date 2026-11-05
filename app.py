@@ -24,41 +24,26 @@ from server import app, TIKTOK_UA  # noqa: F401
 
 # Universal yt-dlp configuration with aggressive bot mask headers to bypass CDN blocks
 ydl_opts: dict[str, Any] = {
-    # 1. Disable searching for local browser cookies database on headless server
-    "cookiesfrombrowser": None,
-    # 2. Global client impersonation and browser masking
-    "impersonate": "chrome",
-    "extractor_args": {
-        "tiktok": {"web_search": [""]},
-        "youtube": {
-            "player_client": ["ios", "android", "web"]
-        },
-        "generic": {"impersonate": "chrome"},
+    'format': 'bestaudio/best',  # En kararlı ses akışını doğrudan yakala
+    'extract_audio': True,
+    'audio_format': 'mp3',
+    'outtmpl': '%(title)s.%(ext)s',
+    # Sunucu IP engellerini ve çerez hatalarını susturan ağ maskesi
+    'no_warnings': True,
+    'quiet': True,
+    'cookiesfrombrowser': None,
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8',
     },
-    "http_headers": {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,video/*,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Referer": "https://tiktok.com",
-        "Origin": "https://tiktok.com",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
-        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-    },
-    "concurrent_fragment_downloads": 8,
-    "retries": 10,
-    "fragment_retries": 10,
+    'concurrent_fragment_downloads': 8,
+    'retries': 10,
+    'fragment_retries': 10,
     # Parça ve arabellek (Buffer) kalkanları: kısa videolarda akış kopmasını, uzun videolarda taşmayı önler
-    "buffersize": 1024 * 16,  # Veriyi dengeli parçalarla akıtır
-    "external_downloader_args": ["--min-chunk-size", "1M"],
-    "hls_use_mpegts": True,  # Uzun video akışlarını parça parça korur
-    "http_chunk_size": 1024 * 1024,  # 1MB dengeli parça sınırı
+    'buffersize': 1024 * 16,  # Veriyi dengeli parçalarla akıtır
+    'external_downloader_args': ['--min-chunk-size', '1M'],
+    'hls_use_mpegts': True,  # Uzun video akışlarını parça parça korur
+    'http_chunk_size': 1024 * 1024,  # 1MB dengeli parça sınırı
 }
 YTDLP_UNIVERSAL_OPTS: dict[str, Any] = ydl_opts
 

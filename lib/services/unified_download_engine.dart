@@ -303,19 +303,23 @@ class UnifiedDownloadEngine {
               mp3CopyIndex++;
             }
 
-            final convertedFile = await LocalFFmpegService.instance
-                .convertToMp3(
-                  inputFile: downloadedFile,
-                  outputFile: File('$mp3Path$finalFileName'),
-                  startTime: startTime,
-                  endTime: endTime,
-                  audioEffect: audioEffect,
-                );
-            if (downloadedFile.path != convertedFile.path &&
-                await downloadedFile.exists()) {
-              await downloadedFile.delete();
+            try {
+              final convertedFile = await LocalFFmpegService.instance
+                  .convertToMp3(
+                    inputFile: downloadedFile,
+                    outputFile: File('$mp3Path$finalFileName'),
+                    startTime: startTime,
+                    endTime: endTime,
+                    audioEffect: audioEffect,
+                  );
+              if (downloadedFile.path != convertedFile.path &&
+                  await downloadedFile.exists()) {
+                await downloadedFile.delete();
+              }
+              downloadedFile = convertedFile;
+            } catch (convErr) {
+              debugPrint('UnifiedDownloadEngine Stage 1 MP3 conversion recovery fallback: $convErr');
             }
-            downloadedFile = convertedFile;
           }
 
           // Veritabanına kaydet

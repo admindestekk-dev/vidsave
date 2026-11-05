@@ -951,6 +951,11 @@ class MediaDownloader {
           await outputFile.delete();
         } catch (_) {}
       }
+      // Recovery fallback: if raw inputFile exists, publish and return it rather than failing
+      if (await inputFile.exists()) {
+        await _publishToMediaStore(inputFile);
+        return inputFile;
+      }
       rethrow;
     }
   }

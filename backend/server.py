@@ -46,7 +46,12 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-import requests
+try:
+    import requests
+    HAS_REQUESTS = True
+except ImportError:
+    requests = None
+    HAS_REQUESTS = False
 from flask import Flask, Response, jsonify, request, send_file
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -106,7 +111,7 @@ except ImportError:
 BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/133.0.0.0 Safari/537.36"
+    "Chrome/126.0.0.0 Safari/537.36"
 )
 UA = BROWSER_UA
 
@@ -114,7 +119,7 @@ UA = BROWSER_UA
 PINTEREST_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/133.0.0.0 Safari/537.36"
+    "Chrome/126.0.0.0 Safari/537.36"
 )
 
 # TikTok-specific aggressive bot mask User-Agent & HTTP headers (bypass 403 Forbidden)
@@ -1354,19 +1359,22 @@ def _is_direct_url_accessible(url: str | None, headers: dict[str, Any] | None) -
             for k, v in headers.items():
                 if k.lower() not in ("host", "content-length"):
                     test_h[k] = str(v)
-        res = requests.get(url, headers=test_h, stream=True, timeout=5, allow_redirects=True)
-        status = res.status_code
-        res.close()
-        return status in (200, 206)
+        if requests is not None:
+            res = requests.get(url, headers=test_h, stream=True, timeout=5, allow_redirects=True)
+            status = res.status_code
+            res.close()
+            return status in (200, 206)
+        else:
+            req = urllib.request.Request(url, headers=test_h)
+            with urllib.request.urlopen(req, timeout=5) as res:
+                return res.getcode() in (200, 206)
     except Exception:
         return False
 
 
 def _download_job_to_disk(job: Job, target_source: str | None = None) -> str:
     """Download merged video or mp3 audio directly to WORK_DIR using yt-dlp + ffmpeg."""
-    if not FFMPEG_PATH:
-        if job.kind == "audio":
-            raise RuntimeError("Ses (mp3) dönüştürmek için sunucuda ffmpeg kurulu olmalı.")
+    if not FFMPEG_PATH and job.kind != "audio":
         raise RuntimeError("Bu video için ayrı akışları birleştirmek gerekiyor; sunucuda ffmpeg kurulu olmalı.")
 
     src = target_source or job.source
@@ -1384,10 +1392,12 @@ def _download_job_to_disk(job: Job, target_source: str | None = None) -> str:
         _format_selector(job.kind, job.height),
     ]
     if job.kind == "audio":
-        q = f"{job.height}K" if (job.height and job.height in (128, 192, 256, 320)) else "0"
-        cmd += ["-x", "--audio-format", "mp3", "--audio-quality", q]
+        if FFMPEG_PATH:
+            q = f"{job.height}K" if (job.height and job.height in (128, 192, 256, 320)) else "0"
+            cmd += ["-x", "--audio-format", "mp3", "--audio-quality", q]
     else:
-        cmd += ["--merge-output-format", "mp4"]
+        if FFMPEG_PATH:
+            cmd += ["--merge-output-format", "mp4"]
     cmd += ["-o", out_tmpl, "--", src]
 
     _PROGRESS_RE = re.compile(
@@ -1464,9 +1474,9 @@ def _work(job: Job) -> None:
             return
 
         direct = _pick_direct_format(info, job.kind)
-        # Audio downloads are normalized to MP3 even when the source already
-        # offers a single-file M4A/AAC stream.
-        if direct is not None and job.kind != "audio":
+        # Audio downloads are normalized to MP3 when ffmpeg is available.
+        # If ffmpeg is absent, stream directly without transcode.
+        if direct is not None and (job.kind != "audio" or not FFMPEG_PATH):
             direct_url = direct.get("url")
             direct_headers = direct.get("http_headers") or {}
             if _is_tiktok_url(direct_url or "") or _is_tiktok_url(job.source):

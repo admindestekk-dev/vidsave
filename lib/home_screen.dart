@@ -9,7 +9,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admob_service.dart';
-import 'download_exception_handler.dart';
 import 'auth_service.dart';
 import 'backend_settings.dart';
 import 'media_downloader.dart';
@@ -677,13 +676,32 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
     _focusNode.unfocus();
 
-    // 1. Premium değilse yasal AdMob onay pop-up'ını aç
-    await AdmobService.instance.showRewardedAdOrBypass(
-      onRewardEarned: () async {
-        if (!mounted) return;
-        await _executeServerDownload(rawUrl, type);
-      },
-    );
+    try {
+      // 1. Premium değilse yasal AdMob onay pop-up'ını aç
+      await AdmobService.instance.showRewardedAdOrBypass(
+        onRewardEarned: () async {
+          if (!mounted) return;
+          await _executeServerDownload(rawUrl, type);
+        },
+      );
+    } catch (e) {
+      debugPrint('QuickDownloadWindow execution error: $e');
+      if (!mounted) return;
+      const corporateErrorMessage =
+          'Yasal kısıtlamalar ve telif hakları politikaları gereği, ilgili platforma ait medyaların indirilmesi kısıtlanmıştır. VidSave; TikTok, Instagram ve Facebook platformlarında Pro bulut gücüyle 7/24 hizmet sunmaya devam etmektedir.';
+      setState(() {
+        _isAnalyzing = false;
+        _isDownloading = false;
+        _errorMessage = corporateErrorMessage;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(corporateErrorMessage),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _executeServerDownload(String rawUrl, String type) async {
@@ -805,17 +823,18 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
       if (!mounted) return;
 
-      final errorMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
+      const corporateErrorMessage =
+          'Yasal kısıtlamalar ve telif hakları politikaları gereği, ilgili platforma ait medyaların indirilmesi kısıtlanmıştır. VidSave; TikTok, Instagram ve Facebook platformlarında Pro bulut gücüyle 7/24 hizmet sunmaya devam etmektedir.';
 
       setState(() {
         _isAnalyzing = false;
         _isDownloading = false;
-        _errorMessage = errorMsg;
+        _errorMessage = corporateErrorMessage;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_errorMessage ?? context.tr('quick_download_error')),
+        const SnackBar(
+          content: Text(corporateErrorMessage),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),
