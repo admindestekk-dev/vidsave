@@ -13,8 +13,17 @@ import re
 import socket
 import time
 from urllib.parse import quote, urljoin, urlsplit
+import urllib.request
+from typing import Any
 
-import requests
+try:
+    import requests
+    RequestException: type[Exception] = requests.RequestException
+except ImportError:
+    requests = None  # type: ignore[assignment]
+    class RequestException(Exception):  # type: ignore[no-redef]
+        pass
+
 from flask import Response, jsonify, stream_with_context
 
 
@@ -93,8 +102,12 @@ def validate_public_http_url(url: str) -> None:
         raise ValueError("Private network destinations are not allowed")
 
 
-def _content_length(headers: requests.structures.CaseInsensitiveDict) -> int | None:
-    value = headers.get("Content-Length")
+def _content_length(headers: Any) -> int | None:
+    if headers is None:
+        return None
+    value = headers.get("Content-Length") if hasattr(headers, "get") else None
+    if value is None and hasattr(headers, "get"):
+        value = headers.get("content-length")
     if value is None:
         return None
     try:
@@ -113,11 +126,52 @@ BROWSER_USER_AGENT = (
 )
 
 
+class _UrllibUpstreamResponse:
+    def __init__(self, raw_resp: Any) -> None:
+        self._raw = raw_resp
+        self.headers = dict(raw_resp.headers)
+        self.status_code = getattr(raw_resp, "status", 200)
+
+    def iter_content(self, chunk_size: int = CHUNK_SIZE):
+        while True:
+            chunk = self._raw.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
+    def close(self) -> None:
+        try:
+            self._raw.close()
+        except Exception:
+            pass
+
+
+class _UrllibSession:
+    def close(self) -> None:
+        pass
+
+
 def _open_upstream(
     url: str,
     range_header: str | None,
     extra_headers: dict[str, str] | None = None,
-) -> tuple[requests.Session, requests.Response]:
+) -> tuple[Any, Any]:
+    if requests is None:
+        validate_public_http_url(url)
+        headers = {
+            "User-Agent": BROWSER_USER_AGENT,
+            "Accept": "*/*",
+        }
+        if extra_headers and isinstance(extra_headers, dict):
+            for k, v in extra_headers.items():
+                if k.lower() not in ("host", "content-length"):
+                    headers[k] = str(v)
+        if range_header and re.fullmatch(r"bytes=\d*-\d*", range_header.strip()):
+            headers["Range"] = range_header.strip()
+        req = urllib.request.Request(url, headers=headers)
+        raw_resp = urllib.request.urlopen(req, timeout=CONNECT_TIMEOUT_SECONDS)
+        return _UrllibSession(), _UrllibUpstreamResponse(raw_resp)
+
     session = requests.Session()
     # Avoid inheriting proxy settings from the environment for an untrusted URL.
     session.trust_env = False
@@ -204,7 +258,7 @@ def stream_upstream_response(
             session, upstream = _open_upstream(job.direct_url, range_header)
     except ProxyDownloadTooLarge:
         return jsonify(status="error", error={"code": "download.too_large"}), 413
-    except (ProxyDownloadError, requests.RequestException, OSError, ValueError):
+    except (ProxyDownloadError, RequestException, OSError, ValueError):
         return jsonify(status="error", error={"code": "download.upstream_error"}), 502
 
     expected_length = _content_length(upstream.headers)

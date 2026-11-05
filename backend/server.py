@@ -44,7 +44,15 @@ import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+# Add project bin directories to PATH if present (e.g. for ffmpeg binary on Render)
+_server_dir = Path(__file__).resolve().parent
+_root_dir = _server_dir.parent
+for _bin_candidate in [_root_dir / "bin", _server_dir / "bin", Path.home() / ".local" / "bin"]:
+    if _bin_candidate.is_dir() and str(_bin_candidate) not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = f"{_bin_candidate}:{os.environ.get('PATH', '')}"
 
 try:
     import requests
