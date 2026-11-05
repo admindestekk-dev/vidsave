@@ -110,11 +110,27 @@ class SearchResultItem {
   }
 }
 
+class MediaStreamInfo {
+  const MediaStreamInfo({
+    required this.url,
+    required this.kind,
+    this.mimeType,
+    this.quality,
+    this.fileSize,
+  });
+
+  final Uri url;
+  final DownloadKind kind;
+  final String? mimeType;
+  final String? quality;
+  final int? fileSize;
+}
+
 /// A resolved media URL plus a best-effort file name and mime type.
 class ResolvedMedia {
-  const ResolvedMedia({
-    required this.url,
-    required this.fileName,
+  ResolvedMedia({
+    Uri? url,
+    String? fileName,
     this.mimeType,
     this.fileSizeInBytes,
     this.downloadHeaders = const {},
@@ -125,10 +141,23 @@ class ResolvedMedia {
     this.audioEffect,
     this.byteStreamProvider,
     this.audioByteStreamProvider,
-  });
+    String? title,
+    List<MediaStreamInfo>? streams,
+  })  : url = url ??
+            (streams != null && streams.isNotEmpty
+                ? streams.first.url
+                : Uri()),
+        fileName = fileName ??
+            (title != null && title.isNotEmpty
+                ? '$title.mp4'
+                : 'media.mp4'),
+        title = title ?? fileName,
+        streams = streams ?? const [];
 
   final Uri url;
   final String fileName;
+  final String? title;
+  final List<MediaStreamInfo> streams;
   final String? mimeType;
   final int? fileSizeInBytes;
   final Map<String, String> downloadHeaders;

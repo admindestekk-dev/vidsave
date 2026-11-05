@@ -25,6 +25,8 @@ class ShareReceiverActivity : Activity() {
         val serviceIntent = Intent(this, ExternalShareDownloadService::class.java)
             .putExtra(ExternalShareDownloadService.EXTRA_SHARED_URL, validUrl)
         try {
+            intent?.removeExtra(Intent.EXTRA_TEXT)
+            intent?.data = null
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(serviceIntent)
             } else {

@@ -33,6 +33,33 @@ typedef AudioPlayerFactory = MusicPlayerController Function(AssetEntity asset);
 typedef AudioSourceResolver = Future<Source> Function(AssetEntity asset);
 
 class _AudioplayersMusicController implements MusicPlayerController {
+  _AudioplayersMusicController() {
+    _ensureAudioContextConfigured();
+  }
+
+  static bool _contextConfigured = false;
+  static void _ensureAudioContextConfigured() {
+    if (_contextConfigured) return;
+    _contextConfigured = true;
+    try {
+      AudioPlayer.global.setAudioContext(
+        AudioContext(
+          android: const AudioContextAndroid(
+            isSpeakerphoneOn: false,
+            stayAwake: true,
+            contentType: AndroidContentType.music,
+            usageType: AndroidUsageType.media,
+            audioFocus: AndroidAudioFocus.gain,
+          ),
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playback,
+            options: const {},
+          ),
+        ),
+      );
+    } catch (_) {}
+  }
+
   final AudioPlayer _player = AudioPlayer();
 
   @override
@@ -183,6 +210,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   Duration _duration = Duration.zero;
   double _dragValue = 0;
   bool _isDragging = false;
+  bool _isSeeking = false;
   bool _isPlaybackCommandPending = false;
   bool _isLoading = true;
   Object? _error;
@@ -271,7 +299,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       });
     });
     _positionSub = player.onPositionChanged.listen((position) {
-      if (!mounted || _isDragging) return;
+      if (!mounted || _isDragging || _isSeeking) return;
       setState(() => _position = position);
     });
     _durationSub = player.onDurationChanged.listen((duration) {
@@ -314,11 +342,24 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     final player = _player;
     if (player == null) return;
     final target = Duration(seconds: seconds.round());
+    _isSeeking = true;
     setState(() {
       _position = target;
-      _isDragging = false;
+      _dragValue = seconds;
     });
-    await player.seek(target);
+    try {
+      await player.seek(target);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDragging = false;
+          _isSeeking = false;
+        });
+      } else {
+        _isDragging = false;
+        _isSeeking = false;
+      }
+    }
   }
 
   @override

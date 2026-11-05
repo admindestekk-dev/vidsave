@@ -100,6 +100,16 @@ class ClipboardAutoDownloadService {
     } catch (_) {}
   }
 
+  /// Her indirme öncesi ve sonrası hafıza kalıntılarını derhal sıfırlar.
+  /// Birbiri ardına sonsuz farklı medyanın çakışmasız indirilmesini sağlar.
+  static Future<void> clearMemoryAndCache() async {
+    _lastHandledUrl = null;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.remove(_lastHandledUrlKey);
+    } catch (_) {}
+  }
+
   /// Testlerde uygulama belleğinin yeniden başlatılmasını taklit etmek için kullanılır.
   static void resetLastHandled() {
     _lastHandledUrl = null;

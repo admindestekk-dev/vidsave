@@ -46,10 +46,14 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   StreamSubscription<PlayerState>? _audioStateSubscription;
   StreamSubscription<Duration>? _audioPositionSubscription;
   StreamSubscription<Duration>? _audioDurationSubscription;
+  StreamSubscription<void>? _audioCompleteSubscription;
 
   Duration _audioPosition = Duration.zero;
   Duration _audioDuration = Duration.zero;
   PlayerState _audioState = PlayerState.stopped;
+  double _dragValue = 0;
+  bool _isDragging = false;
+  bool _isSeeking = false;
   bool _isLoading = true;
   bool _isRenaming = false;
   bool _isHandlingOrientation = false;
@@ -133,10 +137,20 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
       _updateWaveAnimation(state);
     });
     _audioPositionSubscription = player.onPositionChanged.listen((position) {
-      if (mounted) setState(() => _audioPosition = position);
+      if (!mounted || _isDragging || _isSeeking) return;
+      setState(() => _audioPosition = position);
     });
     _audioDurationSubscription = player.onDurationChanged.listen((duration) {
-      if (mounted) setState(() => _audioDuration = duration);
+      if (!mounted || duration <= Duration.zero) return;
+      setState(() => _audioDuration = duration);
+    });
+    _audioCompleteSubscription = player.onPlayerComplete.listen((_) {
+      if (!mounted) return;
+      setState(() {
+        _audioPosition = _audioDuration;
+        _audioState = PlayerState.completed;
+      });
+      _updateWaveAnimation(PlayerState.completed);
     });
     await player.setReleaseMode(ReleaseMode.stop);
     await player.setSource(DeviceFileSource(_file.path));
@@ -210,6 +224,7 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
     _audioStateSubscription?.cancel();
     _audioPositionSubscription?.cancel();
     _audioDurationSubscription?.cancel();
+    _audioCompleteSubscription?.cancel();
     final audioPlayer = _audioPlayer;
     if (audioPlayer != null) unawaited(audioPlayer.dispose());
     _chewieController?.dispose();
@@ -257,7 +272,24 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   Future<void> _seekAudio(Duration position) async {
     final player = _audioPlayer;
     if (player == null) return;
-    await player.seek(position);
+    _isSeeking = true;
+    setState(() {
+      _audioPosition = position;
+      _dragValue = position.inMilliseconds.toDouble();
+    });
+    try {
+      await player.seek(position);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDragging = false;
+          _isSeeking = false;
+        });
+      } else {
+        _isDragging = false;
+        _isSeeking = false;
+      }
+    }
   }
 
   Future<void> _seekAudioBy(int seconds) async {
@@ -268,7 +300,6 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
         : target > _audioDuration
         ? _audioDuration
         : target;
-    setState(() => _audioPosition = boundedTarget);
     await _seekAudio(boundedTarget);
   }
 
@@ -588,9 +619,11 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
 
   Widget _buildAudioPlayer() {
     final maxMilliseconds = math.max(1, _audioDuration.inMilliseconds);
-    final position = _audioPosition.inMilliseconds
-        .clamp(0, maxMilliseconds)
-        .toDouble();
+    final position = _isDragging
+        ? _dragValue.clamp(0.0, maxMilliseconds.toDouble())
+        : _audioPosition.inMilliseconds
+            .clamp(0, maxMilliseconds)
+            .toDouble();
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       child: Column(
@@ -652,13 +685,19 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
             max: maxMilliseconds.toDouble(),
             activeColor: _accent,
             inactiveColor: Colors.white24,
-            onChanged: _audioDuration == Duration.zero
+            onChangeStart: _audioDuration <= Duration.zero
                 ? null
-                : (value) => setState(
-                    () =>
-                        _audioPosition = Duration(milliseconds: value.round()),
-                  ),
-            onChangeEnd: _audioDuration == Duration.zero
+                : (value) => setState(() {
+                    _isDragging = true;
+                    _dragValue = value;
+                  }),
+            onChanged: _audioDuration <= Duration.zero
+                ? null
+                : (value) => setState(() {
+                    _isDragging = true;
+                    _dragValue = value;
+                  }),
+            onChangeEnd: _audioDuration <= Duration.zero
                 ? null
                 : (value) => _seekAudio(Duration(milliseconds: value.round())),
           ),
@@ -667,7 +706,11 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
             child: Row(
               children: [
                 Text(
-                  _formatDuration(_audioPosition),
+                  _formatDuration(
+                    _isDragging
+                        ? Duration(milliseconds: _dragValue.round())
+                        : _audioPosition,
+                  ),
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
                 const Spacer(),

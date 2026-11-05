@@ -7,7 +7,9 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart' as inapp;
 
 import '../downloads_screen.dart';
 import '../download_exception_handler.dart';
+import '../clipboard_auto_download_service.dart';
 import '../media_downloader.dart';
+import '../services/micro_toast.dart';
 import '../services/unified_download_engine.dart';
 import '../universal_scraper.dart';
 import '../youtube_restriction.dart';
@@ -584,7 +586,11 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       child: FilledButton.icon(
         key: ValueKey('browser_download_${kind.name}_option'),
         onPressed: () {
-          Navigator.of(context).pop();
+          // Diyalogları Otomatik Kapat (Auto-Dismiss UI):
+          // Seçenek tıklandığı an alt sayfayı derhal kapat
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
           _startInlineDownload(url: url, kind: kind);
         },
         icon: Icon(icon),
@@ -604,13 +610,33 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     required DownloadKind kind,
   }) async {
     if (!mounted) return;
+
+    // Diyalogları Otomatik Kapat (Auto-Dismiss UI)
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing)
+    // Bir indirme butonu tetiklendiği an, ilgili link değişkenini (_detectedVideoUrl)
+    // derhal null veya boş metin haline getir.
     setState(() {
+      _detectedVideoUrl = null;
+      _isVideoActive = false;
       _isInlineDownloading = true;
       _inlineDownloadProgress = 0.0;
       _inlineDownloadSpeed = 'Başlatılıyor…';
     });
+    ClipboardAutoDownloadService.clearMemoryAndCache();
 
     final isAudio = kind == DownloadKind.audio;
+
+    // Profesyonel Mikro Bildirim (Micro Toast): 2 saniyelik minimal turuncu toast
+    showMicroToast(
+      context,
+      message: isAudio ? 'MP3 indirmesi başlatılıyor…' : 'Video indirmesi başlatılıyor…',
+      isLoading: true,
+    );
+
     try {
       final file = await UnifiedDownloadEngine.instance.download(
         rawUrl: url,
@@ -627,40 +653,44 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
 
       if (!mounted) return;
       setState(() {
+        _detectedVideoUrl = null;
+        _isVideoActive = false;
         _isInlineDownloading = false;
         _inlineDownloadProgress = 0.0;
         _inlineDownloadSpeed = '';
       });
+      ClipboardAutoDownloadService.clearMemoryAndCache();
 
       final fileName = file.path.split(Platform.pathSeparator).last;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Başarıyla indirildi: $fileName'),
-          backgroundColor: const Color(0xFF20B8C5),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'GÖRÜNTÜLE',
-            textColor: Colors.white,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => DownloadsScreen(
-                    initialFilter: isAudio ? 'audio' : 'video',
-                  ),
+      showMicroToast(
+        context,
+        message: 'Başarıyla indirildi: $fileName',
+        isSuccess: true,
+        action: SnackBarAction(
+          label: 'GÖRÜNTÜLE',
+          textColor: Colors.white,
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => DownloadsScreen(
+                  initialFilter: isAudio ? 'audio' : 'video',
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       );
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _detectedVideoUrl = null;
+        _isVideoActive = false;
         _isInlineDownloading = false;
         _inlineDownloadProgress = 0.0;
         _inlineDownloadSpeed = '';
       });
+      ClipboardAutoDownloadService.clearMemoryAndCache();
       DownloadExceptionHandler.showErrorSnackBar(context, error);
     }
   }

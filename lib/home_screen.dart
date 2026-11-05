@@ -14,7 +14,9 @@ import 'backend_settings.dart';
 import 'media_downloader.dart';
 import 'subscription_screen.dart';
 import 'downloads_screen.dart';
+import 'clipboard_auto_download_service.dart';
 import 'services/api_service.dart';
+import 'services/micro_toast.dart';
 import 'services/unified_download_engine.dart';
 import 'app_localizations.dart';
 import 'l10n/l10n_extension.dart';
@@ -585,11 +587,15 @@ class QuickDownloadWindow extends StatefulWidget {
   const QuickDownloadWindow({
     super.key,
     this.initialUrl,
+    this.autoDismissOnStart = false,
+    this.onDownloadStarted,
     this.onDownloadCompleted,
     this.onPreviewResolved,
   });
 
   final String? initialUrl;
+  final bool autoDismissOnStart;
+  final VoidCallback? onDownloadStarted;
   final void Function(File file, String type)? onDownloadCompleted;
   final void Function(String? title, String? thumbnail, int? duration)?
   onPreviewResolved;
@@ -753,6 +759,22 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
     if (!mounted) return;
 
+    // Diyalogları Otomatik Kapat (Auto-Dismiss UI):
+    // İndirme tetiklendiği anda açık modal/pop-up diyalogunu derhal kapat
+    if (widget.autoDismissOnStart && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    widget.onDownloadStarted?.call();
+
+    // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing):
+    // İndirme başladığı anda eski linki ve hafızayı tamamen temizle
+    _controller.clear();
+    _videoTitle = null;
+    _videoThumbnail = null;
+    _videoDuration = null;
+    _activeTitle = null;
+    ClipboardAutoDownloadService.clearMemoryAndCache();
+
     setState(() {
       _isAnalyzing = false;
       _isDownloading = true;
@@ -760,6 +782,15 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
           ? l10n.text('quick_download_downloading_audio')
           : l10n.text('quick_download_downloading_video');
     });
+
+    // Profesyonel Mikro Bildirim (Micro Toast): İndirme başlangıcını 2 saniyelik minimal toast ile bildir
+    showMicroToast(
+      context,
+      message: (normalizedType == 'mp3')
+          ? l10n.text('quick_download_downloading_audio')
+          : l10n.text('quick_download_downloading_video'),
+      isLoading: true,
+    );
 
     try {
       final downloadedFile = await UnifiedDownloadEngine.instance.download(
@@ -787,25 +818,21 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${context.tr('quick_download_success')}$targetFileName',
-          ),
-          backgroundColor: const Color(0xFF20B8C5),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'GÖRÜNTÜLE',
-            textColor: Colors.white,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => const DownloadsScreen(),
-                ),
-              );
-            },
-          ),
+      showMicroToast(
+        context,
+        message: '${context.tr('quick_download_success')}$targetFileName',
+        isSuccess: true,
+        action: SnackBarAction(
+          label: 'GÖRÜNTÜLE',
+          textColor: Colors.white,
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const DownloadsScreen(),
+              ),
+            );
+          },
         ),
       );
 
@@ -1326,6 +1353,8 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 Future<void> showQuickDownloadDialog(
   BuildContext context, {
   String? initialUrl,
+  bool autoDismissOnStart = true,
+  VoidCallback? onDownloadStarted,
   void Function(File file, String type)? onDownloadCompleted,
 }) {
   return showDialog<void>(
@@ -1337,8 +1366,17 @@ Future<void> showQuickDownloadDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: QuickDownloadWindow(
         initialUrl: initialUrl,
+        autoDismissOnStart: autoDismissOnStart,
+        onDownloadStarted: () {
+          if (autoDismissOnStart && Navigator.of(ctx).canPop()) {
+            Navigator.of(ctx).pop();
+          }
+          onDownloadStarted?.call();
+        },
         onDownloadCompleted: (file, type) {
-          Navigator.of(ctx).pop();
+          if (Navigator.of(ctx).canPop()) {
+            Navigator.of(ctx).pop();
+          }
           onDownloadCompleted?.call(file, type);
         },
       ),

@@ -38,6 +38,7 @@ import 'welcome_screen.dart';
 import 'home_screen.dart';
 import 'admob_banner_widget.dart';
 import 'admob_service.dart';
+import 'services/micro_toast.dart';
 import 'services/unified_download_engine.dart';
 
 const MethodChannel _externalShareDownloadChannel = MethodChannel(
@@ -457,9 +458,20 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
         context: context,
         videoTitle: url ?? '',
         allowUrlInput: allowUrlInput,
-        onDownloadStarted: returnToSourceApp && Platform.isAndroid
-            ? ExternalAppDownloadOverlay.beginBackgroundDownload
-            : null,
+        autoDismissOnStart: true,
+        onDownloadStarted: () async {
+          ClipboardAutoDownloadService.clearMemoryAndCache();
+          if (returnToSourceApp && Platform.isAndroid) {
+            await ExternalAppDownloadOverlay.beginBackgroundDownload();
+          }
+          if (mounted) {
+            showMicroToast(
+              context,
+              message: 'İndirme başlatılıyor…',
+              isLoading: true,
+            );
+          }
+        },
         onDownloadProgress: returnToSourceApp && Platform.isAndroid
             ? (progress, speed) {
                 final percent = progress.floor();
@@ -475,12 +487,14 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
                 });
               }
             : null,
-        onDownloadFailed: (_) =>
-            finishOverlayDownload(success: false, message: 'İndirme başarısız'),
+        onDownloadFailed: (_) {
+          ClipboardAutoDownloadService.clearMemoryAndCache();
+          finishOverlayDownload(success: false, message: 'İndirme başarısız');
+        },
         resolver: _mediaResolver,
         downloader: _mediaDownloader,
         onDownloadCompleted: (file, kind) {
-          ClipboardAutoDownloadService.clearLastHandled();
+          ClipboardAutoDownloadService.clearMemoryAndCache();
           finishOverlayDownload(
             success: true,
             message:
@@ -489,25 +503,23 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           if (!mounted) return;
           final isAudio = kind == DownloadKind.audio;
           final fileName = file.path.split(Platform.pathSeparator).last;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Başarıyla indirildi: $fileName'),
-              backgroundColor: const Color(0xFF20B8C5),
-              behavior: SnackBarBehavior.floating,
-              action: SnackBarAction(
-                label: 'GÖRÜNTÜLE',
-                textColor: Colors.white,
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => DownloadsScreen(
-                        initialFilter: isAudio ? 'audio' : 'video',
-                      ),
+          showMicroToast(
+            context,
+            message: 'Başarıyla indirildi: $fileName',
+            isSuccess: true,
+            action: SnackBarAction(
+              label: 'GÖRÜNTÜLE',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => DownloadsScreen(
+                      initialFilter: isAudio ? 'audio' : 'video',
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
           );
         },
@@ -2265,6 +2277,22 @@ class _PlatformSearchDownloadModalState
     final cleanUrl = evrenselTemizUrl(item.url);
     if (checkAndShowYouTubeRestriction(context, cleanUrl)) return;
 
+    // Diyalogları Otomatik Kapat (Auto-Dismiss UI)
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing)
+    _controller.clear();
+    ClipboardAutoDownloadService.clearMemoryAndCache();
+
+    // Profesyonel Mikro Bildirim (Micro Toast): 2 saniyelik minimal bildirim
+    showMicroToast(
+      context,
+      message: '${item.baslik} MP3 olarak indiriliyor…',
+      isLoading: true,
+    );
+
     setState(() {
       _downloading = true;
       _downloadingUrl = item.id.isNotEmpty ? item.id : item.url;
@@ -2302,12 +2330,11 @@ class _PlatformSearchDownloadModalState
         _statusIsError = false;
       });
 
-      // İndirme başarıyla tamamlandığında paneli otomatik kapat
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      });
+      showMicroToast(
+        context,
+        message: 'Başarıyla indirildi: $fileName',
+        isSuccess: true,
+      );
     } catch (error) {
       final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
         error,
@@ -2368,6 +2395,22 @@ class _PlatformSearchDownloadModalState
         ? DownloadKind.audio
         : DownloadKind.video;
 
+    // Diyalogları Otomatik Kapat (Auto-Dismiss UI)
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing)
+    _controller.clear();
+    ClipboardAutoDownloadService.clearMemoryAndCache();
+
+    // Profesyonel Mikro Bildirim (Micro Toast): 2 saniyelik minimal bildirim
+    showMicroToast(
+      context,
+      message: '${quality.label} hazırlanıyor…',
+      isLoading: true,
+    );
+
     setState(() {
       _downloading = true;
       _downloadingHeight = quality.height;
@@ -2409,12 +2452,11 @@ class _PlatformSearchDownloadModalState
         _statusIsError = false;
       });
 
-      // İndirme başarıyla tamamlandığında paneli otomatik kapat
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      });
+      showMicroToast(
+        context,
+        message: 'Başarıyla indirildi: $fileName',
+        isSuccess: true,
+      );
     } catch (error) {
       final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
         error,

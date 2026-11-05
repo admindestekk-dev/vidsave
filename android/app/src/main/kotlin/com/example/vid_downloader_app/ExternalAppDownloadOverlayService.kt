@@ -216,7 +216,7 @@ class ExternalAppDownloadOverlayService : Service() {
                     }
                 refreshDownloadOverlay()
                 handler.removeCallbacks(clearDownloadStatus)
-                handler.postDelayed(clearDownloadStatus, 5_000L)
+                handler.postDelayed(clearDownloadStatus, 2_000L)
                 return START_STICKY
             }
         }
@@ -670,14 +670,31 @@ class ExternalAppDownloadOverlayService : Service() {
         addOverlay(card, (270 * density).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
     }
 
+    private fun clearClipboardUrl() {
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                clipboard?.clearPrimaryClip()
+            } else {
+                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
+            }
+        } catch (_: Exception) {}
+    }
+
     private fun startSilentDownloadFromOverlay(url: String, type: String) {
-        // İndirme durumunu ekranda overlay içinde hemen göster
+        // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing)
+        clearClipboardUrl()
+
+        // Diyalogları Otomatik Kapat (Auto-Dismiss UI):
+        // Pop-up'ı salisesinde kapat ve minimal indirme butonuna dön
+        removeOverlay()
+        showDownloadButton()
+
         handler.removeCallbacks(clearDownloadStatus)
         downloadActive = true
         downloadProgress = 0
         downloadSpeed = ""
-        downloadStatusMessage = "İndirme başlatılıyor…"
-        showDownloadProgress()
+        downloadStatusMessage = null
 
         // Arka plan indirme servisine (ExternalShareDownloadService) doğrudan gönder
         val serviceIntent = Intent(this, ExternalShareDownloadService::class.java).apply {
@@ -694,7 +711,7 @@ class ExternalAppDownloadOverlayService : Service() {
             downloadActive = false
             downloadStatusMessage = "Başlatılamadı: ${e.localizedMessage}"
             refreshDownloadOverlay()
-            handler.postDelayed(clearDownloadStatus, 4_000L)
+            handler.postDelayed(clearDownloadStatus, 2_000L)
         }
     }
 

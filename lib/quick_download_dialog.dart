@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 
 import 'admob_service.dart';
 import 'client_media_resolver.dart';
+import 'clipboard_auto_download_service.dart';
 import 'download_exception_handler.dart';
 import 'media_downloader.dart';
+import 'services/micro_toast.dart';
 import 'services/unified_download_engine.dart';
 import 'l10n/l10n_extension.dart';
 import 'youtube_restriction.dart';
@@ -53,6 +55,7 @@ class QuickDownloadDialog extends StatefulWidget {
   final void Function(double progress, String speed)? onDownloadProgress;
   final void Function(String message)? onDownloadFailed;
   final DownloadKind? initialDownloadKind;
+  final bool autoDismissOnStart;
 
   const QuickDownloadDialog({
     super.key,
@@ -68,6 +71,7 @@ class QuickDownloadDialog extends StatefulWidget {
     this.onDownloadProgress,
     this.onDownloadFailed,
     this.initialDownloadKind,
+    this.autoDismissOnStart = false,
   });
 
   /// Dialogu açmak için statik yardımcı metot
@@ -75,6 +79,7 @@ class QuickDownloadDialog extends StatefulWidget {
     required BuildContext context,
     required String videoTitle,
     bool allowUrlInput = false,
+    bool autoDismissOnStart = true,
     VoidCallback? onDownloadVideo,
     void Function({double? startTime, double? endTime, String? audioEffect})?
     onDownloadMp3,
@@ -102,6 +107,7 @@ class QuickDownloadDialog extends StatefulWidget {
         onDownloadProgress: onDownloadProgress,
         onDownloadFailed: onDownloadFailed,
         initialDownloadKind: initialDownloadKind,
+        autoDismissOnStart: autoDismissOnStart,
         onDownloadVideo: onDownloadVideo,
         onDownloadMp3WithOptions: onDownloadMp3 != null
             ? ({startTime, endTime, audioEffect}) {
@@ -141,6 +147,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
   // Ses Değiştirici ve Remix Modu: "normal", "nightcore", "bassboost"
   String _selectedEffect = 'normal';
+  bool _isAutoDismissed = false;
 
   @override
   void initState() {
@@ -341,21 +348,41 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
     final effectiveResolver = widget.resolver ?? ClientMediaResolver();
     final effectiveDownloader = widget.downloader ?? MediaDownloader();
 
-    // 2. Butonların Dönüşümü: İndirme başladı, butonlar gizlenip progress bar görüntülenir
+    final targetUrl = widget.allowUrlInput
+        ? _urlController.text.trim()
+        : widget.videoTitle;
+
+    // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing)
+    _urlController.clear();
+    ClipboardAutoDownloadService.clearMemoryAndCache();
+
+    // 2. Butonların Dönüşümü: İndirme başladı
     setState(() {
       _isDownloading = true;
       _downloadProgress = 0.0;
       _downloadSpeed = '0 MB/s';
     });
 
+    // Diyalogları Otomatik Kapat (Auto-Dismiss UI):
+    // İndirme tetiklendiği salisede pencereyi otomatik kapat
+    if (widget.autoDismissOnStart) {
+      _isAutoDismissed = true;
+      showMicroToast(
+        context,
+        message: 'İndirme başlatılıyor…',
+        isLoading: true,
+      );
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    }
+
     final isAudio = kind == DownloadKind.audio;
 
     try {
       await widget.onDownloadStarted?.call();
       final file = await UnifiedDownloadEngine.instance.download(
-        rawUrl: widget.allowUrlInput
-            ? _urlController.text.trim()
-            : widget.videoTitle,
+        rawUrl: targetUrl,
         type: isAudio ? 'mp3' : 'video',
         startTime: _enableTrimming ? _currentRangeValues.start : null,
         endTime: _enableTrimming ? _currentRangeValues.end : null,
@@ -378,17 +405,15 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
       if (!mounted) return;
 
-      // İndirme bittiğinde dialog otomatik kapansın
+      // İndirme bittiğinde dialog açıksa otomatik kapansın
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Başarıyla indirildi: $fileName'),
-          backgroundColor: const Color(0xFF20B8C5),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showMicroToast(
+        context,
+        message: 'Başarıyla indirildi: $fileName',
+        isSuccess: true,
       );
     } catch (e, stack) {
       debugPrint('QuickDownloadDialog download error: $e\n$stack');
@@ -408,6 +433,9 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isAutoDismissed) {
+      return const SizedBox.shrink();
+    }
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
