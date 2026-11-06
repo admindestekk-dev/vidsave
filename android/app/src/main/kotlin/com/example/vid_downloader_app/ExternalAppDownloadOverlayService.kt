@@ -111,7 +111,7 @@ class ExternalAppDownloadOverlayService : Service() {
         downloadStatusMessage = null
         downloadProgress = 0
         downloadSpeed = ""
-        if (overlayView != null) showDownloadButton()
+        removeOverlay()
     }
     private val homePackageName: String? by lazy {
         packageManager.resolveActivity(
@@ -135,7 +135,10 @@ class ExternalAppDownloadOverlayService : Service() {
             }
 
             val hasUsage = ExternalAppOverlayPermissions.hasUsageAccess(this@ExternalAppDownloadOverlayService)
-            val shouldShow = if (hasUsage) {
+            val shouldShow = if (isAppInForeground) {
+                // VidSave uygulaması açıkken asla ekranda İNDİR butonu gösterme
+                false
+            } else if (hasUsage) {
                 updateForegroundPackage()
                 foregroundPackage?.let {
                     it != packageName &&
@@ -324,20 +327,21 @@ class ExternalAppDownloadOverlayService : Service() {
 
         val close = TextView(this).apply {
             text = "×"
-            textSize = 17f
+            textSize = 18f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            background = roundedBackground(Color.rgb(52, 59, 68), 12f * density)
+            typeface = Typeface.DEFAULT_BOLD
+            background = roundedBackground(Color.rgb(52, 59, 68), 16f * density)
             contentDescription = "VidSave İndir düğmesini kapat"
-            setOnClickListener { showCloseConfirmation() }
+            setOnClickListener { closeOverlayDirectly() }
         }
         val closeParams = FrameLayout.LayoutParams(
-            (24 * density).toInt(),
-            (24 * density).toInt(),
+            (32 * density).toInt(),
+            (32 * density).toInt(),
             Gravity.TOP or Gravity.END,
         )
         root.addView(close, closeParams)
-        addOverlay(root, (84 * density).toInt(), (56 * density).toInt())
+        addOverlay(root, (92 * density).toInt(), (64 * density).toInt())
     }
 
     private fun showDownloadProgress() {
@@ -393,22 +397,23 @@ class ExternalAppDownloadOverlayService : Service() {
 
         val close = TextView(this).apply {
             text = "×"
-            textSize = 17f
+            textSize = 18f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            background = roundedBackground(Color.rgb(52, 59, 68), 12f * density)
+            typeface = Typeface.DEFAULT_BOLD
+            background = roundedBackground(Color.rgb(52, 59, 68), 16f * density)
             contentDescription = "VidSave İndir düğmesini kapat"
-            setOnClickListener { showCloseConfirmation() }
+            setOnClickListener { closeOverlayDirectly() }
         }
         root.addView(
             close,
             FrameLayout.LayoutParams(
-                (24 * density).toInt(),
-                (24 * density).toInt(),
+                (32 * density).toInt(),
+                (32 * density).toInt(),
                 Gravity.TOP or Gravity.END,
             ),
         )
-        addOverlay(root, (226 * density).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
+        addOverlay(root, (234 * density).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
         refreshDownloadOverlay()
     }
 
@@ -441,62 +446,20 @@ class ExternalAppDownloadOverlayService : Service() {
         }
     }
 
-    private fun showCloseConfirmation() {
-        if (showingConfirmation) return
-        showingConfirmation = true
-        val density = resources.displayMetrics.density
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(
-                (16 * density).toInt(),
-                (14 * density).toInt(),
-                (16 * density).toInt(),
-                (12 * density).toInt(),
-            )
-            background = roundedBackground(Color.rgb(30, 38, 48), 16f * density)
-        }
-        card.addView(TextView(this).apply {
-            text = "VidSave İndirme Butonu Kapatılıyor"
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-        })
-        card.addView(TextView(this).apply {
-            text = "VidSave İndir düğmesini kapatmak istiyor musunuz?"
-            textSize = 13f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, (8 * density).toInt(), 0, (12 * density).toInt())
-        })
-        val actions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-        }
-        actions.addView(actionText("VAZGEÇ", density) {
-            showingConfirmation = false
-            if (downloadActive || downloadStatusMessage != null) {
-                showDownloadProgress()
-            } else {
-                showDownloadButton()
-            }
-        })
-        actions.addView(actionText("KAPAT", density) {
-            getSharedPreferences(PREFERENCES, MODE_PRIVATE)
-                .edit()
-                .putBoolean(ENABLED_KEY, false)
-                .apply()
-            removeOverlay()
-            handler.removeCallbacksAndMessages(null)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                stopForeground(true)
-            }
-            stopSelf()
-        })
-        card.addView(actions)
+    private fun closeOverlayDirectly() {
+        getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+            .edit()
+            .putBoolean(ENABLED_KEY, false)
+            .apply()
         removeOverlay()
-        addOverlay(card, (300 * density).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
+        handler.removeCallbacksAndMessages(null)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
     }
 
     private fun actionText(label: String, density: Float, onClick: () -> Unit) =
