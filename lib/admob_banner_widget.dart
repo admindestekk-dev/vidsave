@@ -126,7 +126,10 @@ class _AdmobBannerWidgetState extends State<AdmobBannerWidget> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
                     decoration: BoxDecoration(
                       color: isDark ? Colors.white10 : Colors.black12,
                       borderRadius: BorderRadius.circular(4),
