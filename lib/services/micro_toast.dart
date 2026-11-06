@@ -30,7 +30,8 @@ class VidSaveMicroToast {
     messenger.clearSnackBars();
 
     final accentColor = isSuccess ? brandTeal : brandOrange;
-    final effectiveIcon = icon ??
+    final effectiveIcon =
+        icon ??
         (isSuccess
             ? Icons.check_circle_rounded
             : (isLoading ? null : Icons.bolt_rounded));
@@ -64,11 +65,7 @@ class VidSaveMicroToast {
               ),
               const SizedBox(width: 12),
             ] else if (effectiveIcon != null) ...[
-              Icon(
-                effectiveIcon,
-                color: accentColor,
-                size: 20,
-              ),
+              Icon(effectiveIcon, color: accentColor, size: 20),
               const SizedBox(width: 12),
             ],
             Expanded(
