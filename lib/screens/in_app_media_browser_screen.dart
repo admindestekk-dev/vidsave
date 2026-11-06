@@ -97,11 +97,13 @@ class InAppMediaBrowserScreen extends StatefulWidget {
     super.key,
     this.initialUrl = 'https://www.google.com',
     this.onCloseTab,
+    this.showDownloadButton = false,
     @visibleForTesting this.webViewBuilder,
   });
 
   final String initialUrl;
   final VoidCallback? onCloseTab;
+  final bool showDownloadButton;
   final WidgetBuilder? webViewBuilder;
 
   @override
@@ -117,7 +119,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   String? _detectedVideoUrl;
   bool _isVideoActive = false;
   bool _isDownloadButtonAllowedForPage = false;
-  bool _showDownloadButton = true;
+  late bool _showDownloadButton = widget.showDownloadButton;
   String _pageTitle = '';
   bool _isInlineDownloading = false;
   double _inlineDownloadProgress = 0.0;

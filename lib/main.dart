@@ -330,6 +330,8 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   late final MediaDownloader _mediaDownloader =
       widget.mediaDownloader ?? MediaDownloader();
 
+  Timer? _clipboardPollingTimer;
+
   @override
   void initState() {
     super.initState();
@@ -340,10 +342,25 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       _checkClipboard();
       _checkPendingShareInterstitial();
     });
+    // Kullanıcı uygulama içindeyken (tarayıcıda veya başka sekmedeyken)
+    // bir bağlantıyı kopyaladığı an indirme penceresinin hemen açılabilmesi için
+    // düzenli pano kontrolü başlat (test ortamı haricinde)
+    if (!AdmobService.instance.isRunningInTest) {
+      _clipboardPollingTimer = Timer.periodic(
+        const Duration(milliseconds: 1200),
+        (_) {
+          if (mounted &&
+              WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+            _checkClipboard();
+          }
+        },
+      );
+    }
   }
 
   @override
   void dispose() {
+    _clipboardPollingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _clientResolver.dispose();
     super.dispose();

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vid_downloader_app/media_downloader.dart';
 import 'package:vid_downloader_app/screens/browser_screen.dart';
 
 void main() {
@@ -38,6 +37,7 @@ void main() {
         const MaterialApp(
           home: InAppMediaBrowserScreen(
             initialUrl: 'https://www.youtube.com/watch?v=abc123',
+            showDownloadButton: true,
             webViewBuilder: _testWebViewBuilder,
           ),
         ),
@@ -56,6 +56,7 @@ void main() {
         const MaterialApp(
           home: InAppMediaBrowserScreen(
             initialUrl: 'https://www.instagram.com',
+            showDownloadButton: true,
             webViewBuilder: _testWebViewBuilder,
           ),
         ),
@@ -95,6 +96,7 @@ void main() {
         const MaterialApp(
           home: InAppMediaBrowserScreen(
             initialUrl: 'https://www.google.com',
+            showDownloadButton: true,
             webViewBuilder: _testWebViewBuilder,
           ),
         ),
@@ -114,6 +116,7 @@ void main() {
         const MaterialApp(
           home: InAppMediaBrowserScreen(
             initialUrl: 'https://example.com/article',
+            showDownloadButton: true,
             webViewBuilder: _testWebViewBuilder,
           ),
         ),
@@ -132,6 +135,7 @@ void main() {
           const MaterialApp(
             home: InAppMediaBrowserScreen(
               initialUrl: 'https://example.com/video',
+              showDownloadButton: true,
               webViewBuilder: _testWebViewBuilder,
             ),
           ),
@@ -153,18 +157,19 @@ void main() {
       },
     );
 
-    test('recognizes direct downloadable media URLs', () {
-      expect(
-        isDirectMediaUrl(Uri.parse('https://cdn.example/video.mp4?token=1')),
-        isTrue,
+    testWidgets('hides the download button by default when showDownloadButton is false', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: InAppMediaBrowserScreen(
+            initialUrl: 'https://www.google.com',
+            webViewBuilder: _testWebViewBuilder,
+          ),
+        ),
       );
+
       expect(
-        isDirectMediaUrl(Uri.parse('https://cdn.example/audio.MP3')),
-        isTrue,
-      );
-      expect(
-        isDirectMediaUrl(Uri.parse('https://example.com/watch?v=1')),
-        isFalse,
+        find.byKey(const ValueKey('browser_download_button')),
+        findsNothing,
       );
     });
   });

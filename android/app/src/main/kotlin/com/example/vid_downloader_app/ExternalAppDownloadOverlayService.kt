@@ -151,10 +151,8 @@ class ExternalAppDownloadOverlayService : Service() {
             if (shouldShow && overlayView == null) {
                 if (downloadActive || downloadStatusMessage != null) {
                     showDownloadProgress()
-                } else {
-                    showDownloadButton()
                 }
-            } else if (!shouldShow && overlayView != null) {
+            } else if (!shouldShow && overlayView != null && !downloadActive && downloadStatusMessage == null) {
                 removeOverlay()
             }
             handler.postDelayed(this, POLL_INTERVAL_MS)
@@ -172,7 +170,8 @@ class ExternalAppDownloadOverlayService : Service() {
                 val lastDownloaded = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
                     .getString(LAST_DOWNLOADED_URL_KEY, null)
                 if (!url.isNullOrBlank() && url != lastDownloaded) {
-                    highlightNewLinkReady()
+                    // Bağlantı kopyalandığı an ekranda bekleme yapmadan VidSave indirme penceresini doğrudan aç
+                    openVidSave()
                 }
             }
             clipManager?.addPrimaryClipChangedListener(clipboardListener)
@@ -429,7 +428,7 @@ class ExternalAppDownloadOverlayService : Service() {
         if (!downloadActive && downloadStatusMessage == null &&
             downloadProgressLabel != null
         ) {
-            showDownloadButton()
+            removeOverlay()
             return
         }
         val label = downloadProgressLabel ?: return
@@ -591,11 +590,11 @@ class ExternalAppDownloadOverlayService : Service() {
                 gravity = Gravity.END
             }
             actions.addView(actionText("TAMAM", density) {
-                showDownloadButton()
+                removeOverlay()
             })
             actions.addView(actionText("UYGULAMAYI AÇ", density) {
                 openVidSave()
-                showDownloadButton()
+                removeOverlay()
             })
             card.addView(actions)
             removeOverlay()
@@ -640,7 +639,7 @@ class ExternalAppDownloadOverlayService : Service() {
                 gravity = Gravity.END
             }
             actions.addView(actionText("TAMAM", density) {
-                showDownloadButton()
+                removeOverlay()
             })
             actions.addView(actionText("YİNE DE İNDİR", density) {
                 showFormatSelectionCard(detectedUrl)
@@ -777,7 +776,7 @@ class ExternalAppDownloadOverlayService : Service() {
             setPadding(0, (4 * density).toInt(), 0, 0)
         }
         cancelRow.addView(actionText("VAZGEÇ", density) {
-            showDownloadButton()
+            removeOverlay()
         })
         card.addView(cancelRow)
 
@@ -807,9 +806,8 @@ class ExternalAppDownloadOverlayService : Service() {
         clearClipboardUrl()
 
         // Diyalogları Otomatik Kapat (Auto-Dismiss UI):
-        // Pop-up'ı salisesinde kapat ve minimal indirme butonuna dön
+        // Pop-up'ı salisesinde kapat
         removeOverlay()
-        showDownloadButton()
 
         handler.removeCallbacks(clearDownloadStatus)
         downloadActive = true
