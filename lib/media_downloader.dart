@@ -1193,13 +1193,20 @@ class MediaDownloader {
 
         // 2. AŞAMA DENETİMİ: Content-Length dosya boyutu güvenlik sigortası
         // Gelen HTML hata sayfaları genellikle 2 KB - 50 KB arasıdır.
-        // Video için 1 MB, ses/MP3 için 10 KB altı ise indirmeyi durdur.
+        // Video için 1 MB, ses/MP3 ve fotoğraflar için 5 KB altı ise indirmeyi durdur.
         final isAudioTarget =
             targetFileName.toLowerCase().endsWith('.mp3') ||
             targetFileName.toLowerCase().endsWith('.m4a') ||
             targetFileName.toLowerCase().endsWith('.aac') ||
             targetFileName.toLowerCase().endsWith('.wav');
-        final minAllowedBytes = isAudioTarget ? 10 * 1024 : kMinValidMediaBytes;
+        final isImageTarget =
+            targetFileName.toLowerCase().endsWith('.jpg') ||
+            targetFileName.toLowerCase().endsWith('.jpeg') ||
+            targetFileName.toLowerCase().endsWith('.png') ||
+            targetFileName.toLowerCase().endsWith('.webp') ||
+            targetFileName.toLowerCase().endsWith('.gif');
+        final minAllowedBytes =
+            (isAudioTarget || isImageTarget) ? 5 * 1024 : kMinValidMediaBytes;
 
         if (contentLengthVal != null &&
             contentLengthVal > 0 &&
@@ -1260,13 +1267,20 @@ class MediaDownloader {
       if (await file.exists()) {
         final downloadedLength = await file.length();
 
-        // 2. AŞAMA POST-DOWNLOAD SİGORTASI: İndirilen dosya video için 1 MB, MP3 için 10 KB altındaysa veya HTML içeriyorsa sil
+        // 2. AŞAMA POST-DOWNLOAD SİGORTASI: İndirilen dosya video için 1 MB, MP3/fotoğraf için 5 KB altındaysa veya HTML içeriyorsa sil
         final isAudioTarget =
             targetFileName.toLowerCase().endsWith('.mp3') ||
             targetFileName.toLowerCase().endsWith('.m4a') ||
             targetFileName.toLowerCase().endsWith('.aac') ||
             targetFileName.toLowerCase().endsWith('.wav');
-        final minAllowedBytes = isAudioTarget ? 10 * 1024 : kMinValidMediaBytes;
+        final isImageTarget =
+            targetFileName.toLowerCase().endsWith('.jpg') ||
+            targetFileName.toLowerCase().endsWith('.jpeg') ||
+            targetFileName.toLowerCase().endsWith('.png') ||
+            targetFileName.toLowerCase().endsWith('.webp') ||
+            targetFileName.toLowerCase().endsWith('.gif');
+        final minAllowedBytes =
+            (isAudioTarget || isImageTarget) ? 5 * 1024 : kMinValidMediaBytes;
 
         if (downloadedLength < minAllowedBytes) {
           try {
@@ -1370,16 +1384,30 @@ class MediaDownloader {
     }
 
     // 2. AŞAMA POST-DOWNLOAD SİGORTASI (HTTP Streaming için):
-    // İndirilen dosya 1 MB altındaysa veya HTML hata sayfasıysa sil ve kullanıcıyı uyar
+    // İndirilen dosya video için 1 MB, ses/MP3 ve fotoğraf için 5 KB altındaysa veya HTML hata sayfasıysa sil ve kullanıcıyı uyar
     final downloadedLength = await file.length();
-    if (downloadedLength < kMinValidMediaBytes) {
+    final isAudioStreamTarget =
+        targetFileName.toLowerCase().endsWith('.mp3') ||
+        targetFileName.toLowerCase().endsWith('.m4a') ||
+        targetFileName.toLowerCase().endsWith('.aac') ||
+        targetFileName.toLowerCase().endsWith('.wav');
+    final isImageStreamTarget =
+        targetFileName.toLowerCase().endsWith('.jpg') ||
+        targetFileName.toLowerCase().endsWith('.jpeg') ||
+        targetFileName.toLowerCase().endsWith('.png') ||
+        targetFileName.toLowerCase().endsWith('.webp') ||
+        targetFileName.toLowerCase().endsWith('.gif');
+    final minStreamAllowedBytes =
+        (isAudioStreamTarget || isImageStreamTarget) ? 5 * 1024 : kMinValidMediaBytes;
+
+    if (downloadedLength < minStreamAllowedBytes) {
       if (await file.exists()) {
         await file.delete();
       }
       unawaited(
         RemoteConfigService.instance.reportBotBlockSignal(
           failedUrl: effectiveUri,
-          reason: 'Streamed file smaller than 1MB: $downloadedLength bytes',
+          reason: 'Streamed file smaller than minimum ($minStreamAllowedBytes): $downloadedLength bytes',
           contentLength: downloadedLength,
         ),
       );

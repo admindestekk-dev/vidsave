@@ -400,171 +400,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     );
   }
 
-  /// Aktif indirme kartı (Canlı ilerleme, MB boyutu, hız ve Duraklat/Devam Et butonu)
   Widget _buildActiveDownloadCard(ActiveDownloadTask task) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E2630) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _primaryOrange.withValues(alpha: 0.35),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: _primaryOrange.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              // Kapak Resmi veya Format İkonu
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: 52,
-                  height: 52,
-                  color: isDark ? Colors.black38 : const Color(0xFFF1F5F7),
-                  child:
-                      task.thumbnailUrl != null && task.thumbnailUrl!.isNotEmpty
-                      ? Image.network(
-                          task.thumbnailUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _buildFallbackThumbnail(task.isAudio),
-                        )
-                      : _buildFallbackThumbnail(task.isAudio),
-                ),
-              ),
-              const SizedBox(width: 12),
-
-              // Başlık ve İlerleme Detayı
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          task.formattedSizeInfo,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF546E7A),
-                          ),
-                        ),
-                        if (task.speed.isNotEmpty &&
-                            task.speed != '0 KB/s') ...[
-                          const SizedBox(width: 6),
-                          const Text(
-                            '•',
-                            style: TextStyle(color: Color(0xFFB0BEC5)),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            task.speed,
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: _primaryOrange,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              // Sağ Taraftaki Duraklat / Devam Et Durum Butonu
-              Container(
-                decoration: BoxDecoration(
-                  color: _primaryOrange.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  icon: Icon(
-                    task.isPaused
-                        ? Icons.play_arrow_rounded
-                        : Icons.pause_rounded,
-                    color: _primaryOrange,
-                    size: 26,
-                  ),
-                  tooltip: task.isPaused ? 'Devam Ettir' : 'Duraklat',
-                  onPressed: () {
-                    if (task.isPaused) {
-                      DownloadManager.instance.resumeTask(task.id);
-                    } else {
-                      DownloadManager.instance.pauseTask(task.id);
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 4),
-              // İptal Butonu
-              IconButton(
-                icon: const Icon(
-                  Icons.close_rounded,
-                  size: 20,
-                  color: Color(0xFF90A4AE),
-                ),
-                tooltip: 'İptal Et',
-                onPressed: () => DownloadManager.instance.cancelTask(task.id),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          // Şık Canlı İlerleme Çubuğu ve Yüzde Yazısı
-          Row(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: task.progress > 0 ? task.progress : null,
-                    minHeight: 6,
-                    backgroundColor: isDark
-                        ? Colors.white12
-                        : const Color(0xFFE2E8F0),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      _primaryOrange,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                task.formattedProgress,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: _primaryOrange,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+    return ActiveDownloadTaskCard(task: task);
   }
 
   /// Geçmiş indirme kartı (Kapak resmi, format etiketi, MB, oynat ve sil)
@@ -814,6 +651,216 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+/// Ortak Kullanılabilir Aktif İndirme Görevi Kartı (ActiveDownloadTaskCard)
+///
+/// Hem İndirilenler (DownloadsScreen) ekranında hem de Ana Sayfada canlı
+/// olarak indirme durumunu, hızı, kalan boyutu ve kontrol butonlarını gösterir.
+class ActiveDownloadTaskCard extends StatelessWidget {
+  const ActiveDownloadTaskCard({
+    super.key,
+    required this.task,
+    this.onTap,
+  });
+
+  final ActiveDownloadTask task;
+  final VoidCallback? onTap;
+
+  static const Color _primaryOrange = Color(0xFFFF5436);
+
+  static Widget buildFallbackThumbnail(bool isAudio) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isAudio
+              ? const [Color(0xFFFF8A00), Color(0xFFE52E71)]
+              : const [Color(0xFF087E8B), Color(0xFF0B4F6C)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          isAudio ? Icons.music_note_rounded : Icons.videocam_rounded,
+          color: Colors.white,
+          size: 26,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2630) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _primaryOrange.withValues(alpha: 0.35),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _primaryOrange.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              // Kapak Resmi veya Format İkonu
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  color: isDark ? Colors.black38 : const Color(0xFFF1F5F7),
+                  child:
+                      task.thumbnailUrl != null && task.thumbnailUrl!.isNotEmpty
+                      ? Image.network(
+                          task.thumbnailUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              buildFallbackThumbnail(task.isAudio),
+                        )
+                      : buildFallbackThumbnail(task.isAudio),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // Başlık ve İlerleme Detayı
+              Expanded(
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            task.formattedSizeInfo,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF546E7A),
+                            ),
+                          ),
+                          if (task.speed.isNotEmpty &&
+                              task.speed != '0 KB/s') ...[
+                            const SizedBox(width: 6),
+                            const Text(
+                              '•',
+                              style: TextStyle(color: Color(0xFFB0BEC5)),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              task.speed,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: _primaryOrange,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Sağ Taraftaki Duraklat / Devam Et Durum Butonu
+              Container(
+                decoration: BoxDecoration(
+                  color: _primaryOrange.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: Icon(
+                    task.isPaused
+                        ? Icons.play_arrow_rounded
+                        : Icons.pause_rounded,
+                    color: _primaryOrange,
+                    size: 26,
+                  ),
+                  tooltip: task.isPaused ? 'Devam Ettir' : 'Duraklat',
+                  onPressed: () {
+                    if (task.isPaused) {
+                      DownloadManager.instance.resumeTask(task.id);
+                    } else {
+                      DownloadManager.instance.pauseTask(task.id);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 4),
+              // İptal Butonu
+              IconButton(
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 20,
+                  color: Color(0xFF90A4AE),
+                ),
+                tooltip: 'İptal Et',
+                onPressed: () => DownloadManager.instance.cancelTask(task.id),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Şık Canlı İlerleme Çubuğu ve Yüzde Yazısı
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: task.progress > 0 ? task.progress : null,
+                    minHeight: 6,
+                    backgroundColor: isDark
+                        ? Colors.white12
+                        : const Color(0xFFE2E8F0),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      _primaryOrange,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                task.formattedProgress,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: _primaryOrange,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -13,6 +13,7 @@ import 'auth_service.dart';
 import 'backend_settings.dart';
 import 'media_downloader.dart';
 import 'subscription_screen.dart';
+import 'download_exception_handler.dart';
 import 'downloads_screen.dart';
 import 'clipboard_auto_download_service.dart';
 import 'services/api_service.dart';
@@ -693,20 +694,13 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     } catch (e) {
       debugPrint('QuickDownloadWindow execution error: $e');
       if (!mounted) return;
-      const corporateErrorMessage =
-          'Yasal kısıtlamalar ve telif hakları politikaları gereği, ilgili platforma ait medyaların indirilmesi kısıtlanmıştır. VidSave; TikTok, Instagram ve Facebook platformlarında Pro bulut gücüyle 7/24 hizmet sunmaya devam etmektedir.';
+      final friendlyMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
       setState(() {
         _isAnalyzing = false;
         _isDownloading = false;
-        _errorMessage = corporateErrorMessage;
+        _errorMessage = friendlyMsg;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(corporateErrorMessage),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      DownloadExceptionHandler.showErrorSnackBar(context, e);
     }
   }
 
@@ -850,22 +844,15 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
       if (!mounted) return;
 
-      const corporateErrorMessage =
-          'Yasal kısıtlamalar ve telif hakları politikaları gereği, ilgili platforma ait medyaların indirilmesi kısıtlanmıştır. VidSave; TikTok, Instagram ve Facebook platformlarında Pro bulut gücüyle 7/24 hizmet sunmaya devam etmektedir.';
+      final friendlyMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
 
       setState(() {
         _isAnalyzing = false;
         _isDownloading = false;
-        _errorMessage = corporateErrorMessage;
+        _errorMessage = friendlyMsg;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(corporateErrorMessage),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      DownloadExceptionHandler.showErrorSnackBar(context, e);
     }
   }
 

@@ -38,6 +38,7 @@ import 'welcome_screen.dart';
 import 'home_screen.dart';
 import 'admob_banner_widget.dart';
 import 'admob_service.dart';
+import 'services/download_manager.dart';
 import 'services/micro_toast.dart';
 import 'services/unified_download_engine.dart';
 
@@ -594,6 +595,67 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
               scrolledUnderElevation: 0,
               centerTitle: false,
               title: const VidSaveBrandTitle(),
+              actions: [
+                ValueListenableBuilder<List<ActiveDownloadTask>>(
+                  valueListenable: DownloadManager.instance.activeTasksNotifier,
+                  builder: (context, activeTasks, _) {
+                    final hasActive = activeTasks.isNotEmpty;
+                    return IconButton(
+                      tooltip: hasActive ? 'Aktif İndirmeler (${activeTasks.length})' : 'İndirilenler',
+                      icon: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            hasActive
+                                ? Icons.downloading_rounded
+                                : Icons.download_done_rounded,
+                            color: hasActive
+                                ? const Color(0xFFFF5436)
+                                : const Color(0xFF87949D),
+                            size: 24,
+                          ),
+                          if (hasActive)
+                            Positioned(
+                              top: -4,
+                              right: -6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFF5436),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: Theme.of(context).scaffoldBackgroundColor,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: Text(
+                                  activeTasks.length.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const DownloadsScreen(),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+              ],
             )
           : null,
       body: IndexedStack(
@@ -875,6 +937,94 @@ class _DownloadPageState extends State<_DownloadPage> {
               const SizedBox(height: 14),
             ],
             const QuickDownloadWindow(),
+            // Aktif olarak devam eden indirmeler varsa doğrudan Ana Ekranda canlı göster
+            ValueListenableBuilder<List<ActiveDownloadTask>>(
+              valueListenable: DownloadManager.instance.activeTasksNotifier,
+              builder: (context, activeTasks, _) {
+                if (activeTasks.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 9,
+                                height: 9,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFFF5436),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'AKTİF İNDİRMELER',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.8,
+                                  color: Color(0xFFFF5436),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '(${activeTasks.length})',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFFF5436),
+                                ),
+                              ),
+                            ],
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const DownloadsScreen(),
+                                ),
+                              );
+                            },
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              foregroundColor: const Color(0xFFFF5436),
+                            ),
+                            child: const Text(
+                              'TÜMÜNÜ GÖR',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      for (final task in activeTasks) ...[
+                        ActiveDownloadTaskCard(
+                          task: task,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => const DownloadsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 20),
             Text(
               l10n.text('section_which_platform'),
@@ -2334,6 +2484,20 @@ class _PlatformSearchDownloadModalState
         context,
         message: 'Başarıyla indirildi: $fileName',
         isSuccess: true,
+        action: SnackBarAction(
+          label: 'GÖRÜNTÜLE',
+          textColor: Colors.white,
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const DownloadsScreen(
+                  initialFilter: 'audio',
+                ),
+              ),
+            );
+          },
+        ),
       );
     } catch (error) {
       final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
@@ -2456,6 +2620,20 @@ class _PlatformSearchDownloadModalState
         context,
         message: 'Başarıyla indirildi: $fileName',
         isSuccess: true,
+        action: SnackBarAction(
+          label: 'GÖRÜNTÜLE',
+          textColor: Colors.white,
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => DownloadsScreen(
+                  initialFilter: widget.platform.isAudio ? 'audio' : 'video',
+                ),
+              ),
+            );
+          },
+        ),
       );
     } catch (error) {
       final errorMsg = DownloadExceptionHandler.getFriendlyMessage(

@@ -1547,7 +1547,12 @@ class UniversalScraper {
             media.fileName.toLowerCase().endsWith('.m4a') ||
             media.fileName.toLowerCase().endsWith('.aac') ||
             media.fileName.toLowerCase().endsWith('.wav');
-        final minAllowedBytes = isAudioTarget ? 10 * 1024 : kMinValidMediaBytes;
+        final isImageTarget = media.fileName.toLowerCase().endsWith('.jpg') ||
+            media.fileName.toLowerCase().endsWith('.jpeg') ||
+            media.fileName.toLowerCase().endsWith('.png') ||
+            media.fileName.toLowerCase().endsWith('.webp') ||
+            media.fileName.toLowerCase().endsWith('.gif');
+        final minAllowedBytes = (isAudioTarget || isImageTarget) ? 5 * 1024 : kMinValidMediaBytes;
 
         if (length != null && length > 0 && length < minAllowedBytes) {
           unawaited(
@@ -1592,7 +1597,16 @@ class UniversalScraper {
       final fileName = effectiveSource.pathSegments.isEmpty
           ? 'vidsave_media.mp4'
           : effectiveSource.pathSegments.last;
-      return ResolvedMedia(url: effectiveSource, fileName: fileName);
+      return ResolvedMedia(
+        url: effectiveSource,
+        fileName: fileName,
+        downloadHeaders: {
+          'User-Agent': kUniversalMobileUserAgent,
+          'Accept': '*/*',
+          'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Connection': 'keep-alive',
+        },
+      );
     }
 
     ResolvedMedia? result;

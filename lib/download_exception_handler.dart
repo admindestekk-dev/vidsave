@@ -31,7 +31,7 @@ class DownloadExceptionHandler {
           'İndirme tamamlanamadı. Lütfen tekrar deneyin.';
     }
 
-    // FFmpeg ve Sunucu Teknik Hata Kalkanı (Kurumsal Sansür)
+    // FFmpeg ve Sunucu Teknik Hata Kalkanı (Kurumsal Koruma)
     final rawErrStr = error.toString().toLowerCase();
     if (rawErrStr.contains('ffmpeg') ||
         rawErrStr.contains('rc: 1') ||
@@ -39,7 +39,8 @@ class DownloadExceptionHandler {
         rawErrStr.contains('rate limit') ||
         rawErrStr.contains('ip block') ||
         rawErrStr.contains('bot algılama') ||
-        rawErrStr.contains('postprocessing')) {
+        rawErrStr.contains('postprocessing') ||
+        rawErrStr.contains('vimeo')) {
       return 'Yasal kısıtlamalar ve telif hakları politikaları gereği, ilgili platforma ait medyaların indirilmesi kısıtlanmıştır. VidSave; TikTok, Instagram ve Facebook platformlarında Pro bulut gücüyle 7/24 hizmet sunmaya devam etmektedir.';
     }
 
