@@ -10,10 +10,10 @@ import '../main.dart';
 /// VidSave Profesyonel Tanıtım Rehberi (Onboarding Screen)
 ///
 /// 4 Adımlı Geçişli PageView Mimarisi:
-///   1. Adım: Linki Kopyala (Desteklenen platformlardan video/müzik linkini kopyalayın)
-///   2. Adım: VidSave'e Yapıştır (VidSave linki anında algılar veya kutuya yapıştırın)
-///   3. Adım: Formatı Seç ve İndir (İster 4K MP4 video ister 320kbps MP3 olarak cihazınıza kaydedin)
-///   4. Adım: Diğer uygulamalarda VidSave kısayolunu etkinleştirin ve kullanın (Android)
+///   1. Adım: Bağlantıyı Kopyala (Desteklenen platformlardan veya tarayıcılardan bağlantıyı kopyalayın)
+///   2. Adım: Otomatik Algılama & İndirme Penceresi (Bağlantı kopyalandığı an indirme penceresi otomatik açılır)
+///   3. Adım: Formatı Seç ve İndir (İster yüksek kalite MP4 video ister MP3 müzik olarak cihazınıza kaydedin)
+///   4. Adım: Diğer Uygulamalarda Otomatik İndirme (Dış uygulamalardan veya tarayıcılardan kopyalandığında anında indirme)
 ///
 /// Tasarım Dili:
 ///   - Koyu Premium Arka Plan: `Color(0xFF121212)`
@@ -236,17 +236,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       illustration: _buildStepIllustration1(isTurkish),
                     ),
 
-                    // 2. Adım: VidSave'e Yapıştır
+                    // 2. Adım: Otomatik Algılama
                     _buildStepPage(
                       stepNumber: '2',
-                      icon: Icons.content_paste_rounded,
+                      icon: Icons.bolt_rounded,
                       badgeText: isTurkish ? 'ADIM 2' : 'STEP 2',
                       title: isTurkish
-                          ? 'VidSave\'e Yapıştır'
-                          : 'Paste to VidSave',
+                          ? 'Kopyala ve Anında Aç'
+                          : 'Copy & Instant Pop-up',
                       description: isTurkish
-                          ? 'VidSave’e dön. Bağlantı otomatik algılanmazsa indirme alanına dokunup Yapıştır’ı seç. Ardından bağlantıyı kontrol ederek devam et.'
-                          : 'Return to VidSave. If the link is not detected automatically, tap the download field and choose Paste, then continue.',
+                          ? 'Dahili tarayıcıda veya dış uygulamalarda bağlantıyı kopyaladığın an VidSave indirme penceresi ekranda otomatik açılır. İndir butonuna basmana gerek kalmaz.'
+                          : 'Whenever you copy a link in the browser or other apps, VidSave automatically opens the download prompt without needing a download button.',
                       illustration: _buildStepIllustration2(isTurkish),
                     ),
 
@@ -264,7 +264,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       illustration: _buildStepIllustration3(isTurkish),
                     ),
 
-                    // 4. Adım: Diğer uygulamalarda VidSave kısayolu
+                    // 4. Adım: Diğer uygulamalarda butonsuz otomatik indirme
                     _buildStepPage(
                       stepNumber: '4',
                       icon: Icons.open_in_new_rounded,
@@ -272,11 +272,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ? 'ADIM 4 · ANDROID'
                           : 'STEP 4 · ANDROID',
                       title: isTurkish
-                          ? 'Diğer Uygulamalarda VidSave'
-                          : 'VidSave Over Other Apps',
+                          ? 'Diğer Uygulamalarda Otomatik İndir'
+                          : 'Auto Download in Other Apps',
                       description: isTurkish
-                          ? 'Ayarlar > “Diğer uygulamalarda İNDİR”i tek izinle açın. TikTok veya Instagram’da bağlantıyı kopyalayıp ekrandaki VidSave balonuna dokunun. Uygulamaya dönmeden Video veya MP3 formatında anında indirin.'
-                          : 'Enable Settings > “Download in other apps” with one permission. Copy a link in TikTok or Instagram and tap the VidSave button to download Video or MP3 directly on screen without switching apps.',
+                          ? 'Ayarlar > “Diğer uygulamalarda İNDİR”i açın. TikTok, Instagram veya harici tarayıcılarda bağlantıyı kopyaladığınız an hiçbir butona basmadan indirme penceresi açılır ve anında indirir.'
+                          : 'Enable Settings > “Download in other apps”. Copy a link in TikTok, Instagram, or external browsers, and the download window opens automatically without any extra button.',
                       illustration: _buildStepIllustration4(isTurkish),
                     ),
                   ],

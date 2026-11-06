@@ -513,6 +513,27 @@ class ExternalAppDownloadOverlayService : Service() {
         showingConfirmation = false
     }
 
+    private fun isSupportedMediaUrl(url: String): Boolean {
+        val lower = url.lowercase(Locale.ROOT)
+        val supportedDomains = listOf(
+            "instagram.com", "instagr.am",
+            "tiktok.com", "douyin.com",
+            "youtube.com", "youtu.be",
+            "facebook.com", "fb.watch", "fb.com",
+            "twitter.com", "x.com",
+            "vimeo.com",
+            "dailymotion.com", "dai.ly",
+            "pinterest.com", "pin.it",
+            "reddit.com", "redd.it",
+        )
+        if (supportedDomains.any { it in lower }) {
+            return true
+        }
+        val mediaExtensions = listOf(".mp4", ".m4v", ".webm", ".mov", ".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac")
+        val cleanPath = lower.substringBefore("?").substringBefore("#")
+        return mediaExtensions.any { cleanPath.endsWith(it) }
+    }
+
     private fun getClipboardUrl(): String? {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
             ?: return null
@@ -522,7 +543,7 @@ class ExternalAppDownloadOverlayService : Service() {
         val matcher = android.util.Patterns.WEB_URL.matcher(text)
         if (matcher.find()) {
             val url = matcher.group()?.trim().orEmpty()
-            if (url.startsWith("http://") || url.startsWith("https://")) {
+            if ((url.startsWith("http://") || url.startsWith("https://")) && isSupportedMediaUrl(url)) {
                 return sanitizeUrl(url)
             }
         }

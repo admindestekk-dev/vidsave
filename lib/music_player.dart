@@ -324,15 +324,23 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     _isPlaybackCommandPending = true;
     try {
       if (_playerState == PlayerState.playing) {
-        await player.pause();
         if (mounted) setState(() => _playerState = PlayerState.paused);
+        await player.pause();
         return;
       }
       if (_playerState == PlayerState.completed) {
         await player.seek(Duration.zero);
       }
-      await player.resume();
       if (mounted) setState(() => _playerState = PlayerState.playing);
+      await player.resume();
+    } catch (_) {
+      // Olası platform istisnasında gerçek durumu tekrar kontrol et
+      if (mounted) {
+        final currentPos = await player.getCurrentPosition();
+        if (currentPos != null) {
+          setState(() => _position = currentPos);
+        }
+      }
     } finally {
       _isPlaybackCommandPending = false;
     }
@@ -657,13 +665,19 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   }
 
   Future<void> _seekBackward() async {
+    final player = _player;
+    if (player == null) return;
     final target = _position - const Duration(seconds: 10);
-    await _player?.seek(target < Duration.zero ? Duration.zero : target);
+    final boundedTarget = target < Duration.zero ? Duration.zero : target;
+    await _seekTo(boundedTarget.inSeconds.toDouble());
   }
 
   Future<void> _seekForward() async {
+    final player = _player;
+    if (player == null) return;
     final target = _position + const Duration(seconds: 10);
-    await _player?.seek(target > _duration ? _duration : target);
+    final boundedTarget = target > _duration ? _duration : target;
+    await _seekTo(boundedTarget.inSeconds.toDouble());
   }
 }
 

@@ -243,16 +243,16 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
         final player = _audioPlayer;
         if (player == null) return;
         if (_audioState == PlayerState.playing) {
-          await player.pause();
           if (mounted) setState(() => _audioState = PlayerState.paused);
           _updateWaveAnimation(PlayerState.paused);
+          await player.pause();
         } else {
           if (_audioState == PlayerState.completed) {
             await player.seek(Duration.zero);
           }
-          await player.resume();
           if (mounted) setState(() => _audioState = PlayerState.playing);
           _updateWaveAnimation(PlayerState.playing);
+          await player.resume();
         }
         return;
       }

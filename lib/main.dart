@@ -12,7 +12,7 @@ import 'app_localizations.dart';
 import 'auth_service.dart';
 import 'backend_media_resolver.dart';
 import 'backend_settings.dart';
-import 'bulk_download_screen.dart';
+import 'batch_download_screen.dart';
 import 'client_media_resolver.dart';
 import 'clipboard_auto_download_service.dart';
 import 'external_app_download_overlay.dart';
@@ -682,10 +682,9 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
             key: _browserKey,
             onCloseTab: () => _onDestinationSelected(_homeIndex),
           ),
-          BulkDownloadScreen(
+          BatchDownloadScreen(
             resolver: _mediaResolver,
             downloader: _mediaDownloader,
-            settingsStore: _backendSettingsStore,
           ),
           _DownloadPage(
             resolver: _mediaResolver,

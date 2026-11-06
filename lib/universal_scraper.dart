@@ -1594,12 +1594,19 @@ class UniversalScraper {
     final host = effectiveSource.host.toLowerCase();
 
     if (isDirectMediaUrl(effectiveSource)) {
-      final fileName = effectiveSource.pathSegments.isEmpty
+      final rawName = effectiveSource.pathSegments.isEmpty
           ? 'vidsave_media.mp4'
           : effectiveSource.pathSegments.last;
+      var fileName = rawName;
+      if (kind == DownloadKind.audio) {
+        final base = fileName.replaceAll(RegExp(r'\.[^.]+$'), '').trim();
+        final safeBase = base.isNotEmpty ? base : 'vidsave_audio';
+        fileName = '$safeBase.mp3';
+      }
       return ResolvedMedia(
         url: effectiveSource,
         fileName: fileName,
+        mimeType: kind == DownloadKind.audio ? 'audio/mpeg' : null,
         downloadHeaders: {
           'User-Agent': kUniversalMobileUserAgent,
           'Accept': '*/*',
@@ -1642,7 +1649,18 @@ class UniversalScraper {
       } else if (host.contains('dailymotion.com') || host.contains('dai.ly')) {
         result = await extractDailymotion(effectiveSource);
       } else {
-        result = await extractGeneric(effectiveSource, kind);
+        // Genel / doğrudan web sayfası bağlantısı (Chrome, Brave, Samsung Internet vb. harici tarayıcılardan kopyalanan linkler):
+        // Sayfa URL'sini doğrudan indirmeye çalışmak yerine HTML içeriğindeki video/ses taglarını ve og:video kaynaklarını tara
+        try {
+          result = await extractWithRegexFallback(effectiveSource, kind);
+          final isSecure = await _verifyResolvedMediaSecurity(result, effectiveSource);
+          if (!isSecure) {
+            result = null;
+          }
+        } catch (_) {
+          result = null;
+        }
+        result ??= await extractGeneric(effectiveSource, kind);
       }
 
       // Güvenlik Kalkanı 1. ve 2. Aşama Denetimi:

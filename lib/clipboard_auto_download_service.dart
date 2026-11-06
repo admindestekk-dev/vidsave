@@ -30,7 +30,11 @@ class ClipboardAutoDownloadService {
     RegExp(r'https?://(?:www\.)?x\.com/[^\s]+', caseSensitive: false),
     RegExp(r'https?://(?:www\.)?vimeo\.com/[^\s]+', caseSensitive: false),
     RegExp(r'https?://(?:www\.)?dailymotion\.com/[^\s]+', caseSensitive: false),
-    RegExp(r'https?://dai\.ly/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:www\.)?pinterest\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://pin\.it/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:www\.)?reddit\.com/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://(?:v\.)?redd\.it/[^\s]+', caseSensitive: false),
+    RegExp(r'https?://[^\s]+\.(?:mp4|m4v|webm|mov|mp3|m4a|aac|wav|ogg|flac)(?:\?[^\s]*)?', caseSensitive: false),
   ];
 
   /// Verilen metnin bir Instagram veya TikTok video linki olup olmadığını kontrol eder.

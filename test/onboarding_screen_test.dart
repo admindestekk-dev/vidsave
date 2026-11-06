@@ -60,9 +60,9 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('ADIM 2'), findsOneWidget);
-        expect(find.text('VidSave\'e Yapıştır'), findsOneWidget);
+        expect(find.text('Kopyala ve Anında Aç'), findsOneWidget);
         expect(
-          find.textContaining('Bağlantı otomatik algılanmazsa'),
+          find.textContaining('bağlantıyı kopyaladığın an VidSave indirme penceresi'),
           findsOneWidget,
         );
         expect(find.text('İLERİ'), findsOneWidget);
@@ -86,7 +86,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('ADIM 4 · ANDROID'), findsOneWidget);
-        expect(find.text('Diğer Uygulamalarda VidSave'), findsOneWidget);
+        expect(find.text('Diğer Uygulamalarda Otomatik İndir'), findsOneWidget);
         expect(find.text('Tek izinle anında etkinleştir'), findsOneWidget);
         expect(find.textContaining('Bağlantıyı kopyala'), findsOneWidget);
         expect(find.text('BAŞLA'), findsOneWidget);

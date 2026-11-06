@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 
-import 'package:vid_downloader_app/bulk_download_screen.dart';
+import 'package:vid_downloader_app/batch_download_screen.dart';
 import 'package:vid_downloader_app/download_platforms.dart';
 import 'package:vid_downloader_app/media_library.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
@@ -147,7 +147,7 @@ void main() {
 
     await tester.tap(bulkTab);
     await tester.pumpAndSettle();
-    expect(find.byType(BulkDownloadScreen), findsOneWidget);
+    expect(find.byType(BatchDownloadScreen), findsOneWidget);
 
     await tester.tap(moreTab);
     await tester.pumpAndSettle();
