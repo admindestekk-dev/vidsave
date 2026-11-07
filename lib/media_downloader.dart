@@ -1474,6 +1474,41 @@ class MediaDownloader {
         throw StateError('Android medya deposu kayıt konumu döndürmedi.');
       }
       debugPrint('MediaDownloader: Dosya telefona kaydedildi: $savedUri');
+
+      // Cihaz dosya yöneticisinde doğrudan VidSave/Video ve VidSave/Mp3 klasörlerine erişim
+      try {
+        final name = file.uri.pathSegments.last;
+        final ext = name.contains('.')
+            ? name.split('.').last.toLowerCase()
+            : '';
+        final isAudio = {
+          'mp3',
+          'm4a',
+          'wav',
+          'aac',
+          'ogg',
+          'flac',
+          'opus',
+        }.contains(ext);
+        final subFolder = isAudio ? 'Mp3' : 'Video';
+
+        for (final basePath in [
+          '/storage/emulated/0/Download/VidSave/$subFolder',
+          '/storage/emulated/0/VidSave/$subFolder',
+        ]) {
+          try {
+            final targetDir = Directory(basePath);
+            if (!targetDir.existsSync()) {
+              targetDir.createSync(recursive: true);
+            }
+            final targetFile = File('${targetDir.path}/$name');
+            if (!targetFile.existsSync()) {
+              file.copySync(targetFile.path);
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+
       return true;
     } on PlatformException catch (error) {
       debugPrint(

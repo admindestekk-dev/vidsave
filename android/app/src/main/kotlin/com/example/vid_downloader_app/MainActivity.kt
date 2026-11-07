@@ -395,9 +395,19 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun isAudioFile(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        return ext in setOf("mp3", "m4a", "wav", "aac", "ogg", "flac", "opus")
+    }
+
+    private fun relativePathFor(fileName: String): String {
+        val subDir = if (isAudioFile(fileName)) "Mp3" else "Video"
+        return "${Environment.DIRECTORY_DOWNLOADS}/VidSave/$subDir"
+    }
+
     private fun exportWithMediaStore(source: File, fileName: String, mimeType: String): String {
         val resolver = applicationContext.contentResolver
-        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/VidSave"
+        val relativePath = relativePathFor(fileName)
         val uniqueName = uniqueMediaStoreName(fileName, relativePath)
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, uniqueName)
@@ -431,9 +441,10 @@ class MainActivity : FlutterActivity() {
         fileName: String,
         mimeType: String,
     ): String {
+        val subDir = if (isAudioFile(fileName)) "Mp3" else "Video"
         val directory = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "VidSave",
+            "VidSave/$subDir",
         )
         if (!directory.exists() && !directory.mkdirs()) {
             throw IllegalStateException("Telefonun İndirilenler klasörü oluşturulamadı.")

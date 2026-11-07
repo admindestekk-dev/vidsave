@@ -54,6 +54,21 @@ class ClipboardAutoDownloadService {
         return match.group(0);
       }
     }
+    // Herhangi bir siteden kopyalanan geçerli video veya ses web bağlantılarını yakala
+    final genericMatch =
+        RegExp(r'https?://[^\s<>"{}|\\^~\[\]`]+').firstMatch(trimmed);
+    if (genericMatch != null) {
+      final candidate = genericMatch.group(0)!;
+      final uri = Uri.tryParse(candidate);
+      if (uri != null && uri.host.isNotEmpty) {
+        final host = uri.host.toLowerCase();
+        if ((host == 'google.com' || host == 'www.google.com') &&
+            (uri.path.isEmpty || uri.path == '/')) {
+          return null;
+        }
+        return candidate;
+      }
+    }
     return null;
   }
 

@@ -162,6 +162,7 @@ void main() {
         const MaterialApp(
           home: InAppMediaBrowserScreen(
             initialUrl: 'https://www.google.com',
+            showDownloadButton: false,
             webViewBuilder: _testWebViewBuilder,
           ),
         ),

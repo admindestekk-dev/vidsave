@@ -112,6 +112,9 @@ class ExternalAppDownloadOverlayService : Service() {
         downloadProgress = 0
         downloadSpeed = ""
         removeOverlay()
+        if (!isAppInForeground) {
+            showDownloadButton()
+        }
     }
     private val homePackageName: String? by lazy {
         packageManager.resolveActivity(
@@ -151,6 +154,8 @@ class ExternalAppDownloadOverlayService : Service() {
             if (shouldShow && overlayView == null) {
                 if (downloadActive || downloadStatusMessage != null) {
                     showDownloadProgress()
+                } else {
+                    showDownloadButton()
                 }
             } else if (!shouldShow && overlayView != null && !downloadActive && downloadStatusMessage == null) {
                 removeOverlay()
@@ -167,11 +172,12 @@ class ExternalAppDownloadOverlayService : Service() {
             val clipManager = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
             clipboardListener = android.content.ClipboardManager.OnPrimaryClipChangedListener {
                 val url = getClipboardUrl()
-                val lastDownloaded = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
-                    .getString(LAST_DOWNLOADED_URL_KEY, null)
-                if (!url.isNullOrBlank() && url != lastDownloaded) {
-                    // Bağlantı kopyalandığı an ekranda bekleme yapmadan VidSave indirme penceresini doğrudan aç
-                    openVidSave()
+                if (!url.isNullOrBlank()) {
+                    if (overlayView == null) {
+                        showDownloadButton()
+                    }
+                    highlightNewLinkReady()
+                    showFormatSelectionCard(url)
                 }
             }
             clipManager?.addPrimaryClipChangedListener(clipboardListener)
@@ -514,24 +520,15 @@ class ExternalAppDownloadOverlayService : Service() {
     }
 
     private fun isSupportedMediaUrl(url: String): Boolean {
-        val lower = url.lowercase(Locale.ROOT)
-        val supportedDomains = listOf(
-            "instagram.com", "instagr.am",
-            "tiktok.com", "douyin.com",
-            "youtube.com", "youtu.be",
-            "facebook.com", "fb.watch", "fb.com",
-            "twitter.com", "x.com",
-            "vimeo.com",
-            "dailymotion.com", "dai.ly",
-            "pinterest.com", "pin.it",
-            "reddit.com", "redd.it",
-        )
-        if (supportedDomains.any { it in lower }) {
-            return true
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return false
         }
-        val mediaExtensions = listOf(".mp4", ".m4v", ".webm", ".mov", ".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac")
-        val cleanPath = lower.substringBefore("?").substringBefore("#")
-        return mediaExtensions.any { cleanPath.endsWith(it) }
+        val lower = url.lowercase(Locale.ROOT)
+        // YouTube kısıtlaması (Google Play politikaları gereği)
+        if (lower.contains("youtube.com") || lower.contains("youtu.be")) {
+            return false
+        }
+        return true
     }
 
     private fun getClipboardUrl(): String? {
@@ -566,7 +563,10 @@ class ExternalAppDownloadOverlayService : Service() {
             "pinterest.com" in lower || "pin.it" in lower -> "Pinterest"
             "dailymotion.com" in lower || "dai.ly" in lower -> "Dailymotion"
             "reddit.com" in lower || "redd.it" in lower -> "Reddit"
-            else -> "Video Bağlantısı"
+            "soundcloud.com" in lower -> "SoundCloud"
+            "threads.net" in lower -> "Threads"
+            lower.contains(".mp3") || lower.contains(".m4a") || lower.contains(".aac") || lower.contains(".wav") -> "Ses / MP3"
+            else -> "Web Medya"
         }
     }
 
@@ -612,10 +612,12 @@ class ExternalAppDownloadOverlayService : Service() {
             }
             actions.addView(actionText("TAMAM", density) {
                 removeOverlay()
+                showDownloadButton()
             })
             actions.addView(actionText("UYGULAMAYI AÇ", density) {
                 openVidSave()
                 removeOverlay()
+                showDownloadButton()
             })
             card.addView(actions)
             removeOverlay()
@@ -623,55 +625,7 @@ class ExternalAppDownloadOverlayService : Service() {
             return
         }
 
-        if (detectedUrl == lastDownloaded) {
-            // Panodaki link az önce indirilmişti, kullanıcı yeni videonun linkini henüz kopyalamadı
-            val platform = detectPlatformLabel(detectedUrl)
-            val shortUrl = formatDisplayUrl(detectedUrl)
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(
-                    (14 * density).toInt(),
-                    (12 * density).toInt(),
-                    (14 * density).toInt(),
-                    (10 * density).toInt(),
-                )
-                background = roundedBackground(Color.rgb(30, 38, 48), 14f * density)
-            }
-            card.addView(TextView(this).apply {
-                text = "Yeni Bağlantı Bekleniyor"
-                textSize = 14f
-                setTextColor(Color.WHITE)
-                typeface = Typeface.DEFAULT_BOLD
-            })
-            card.addView(TextView(this).apply {
-                text = "Panodaki $platform videosu zaten az önce indirildi.\n\nŞu an izlediğiniz yeni videoyu indirmek için:\n1. Videodaki 'Paylaş' simgesine dokunun\n2. 'Bağlantıyı Kopyala' deyin\n3. Buradaki 'İNDİR'e tekrar dokunun."
-                textSize = 12f
-                setTextColor(Color.LTGRAY)
-                setPadding(0, (6 * density).toInt(), 0, (8 * density).toInt())
-            })
-            card.addView(TextView(this).apply {
-                text = "Son indirilen: $shortUrl"
-                textSize = 11f
-                setTextColor(Color.rgb(255, 126, 64))
-                setPadding(0, 0, 0, (8 * density).toInt())
-            })
-            val actions = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.END
-            }
-            actions.addView(actionText("TAMAM", density) {
-                removeOverlay()
-            })
-            actions.addView(actionText("YİNE DE İNDİR", density) {
-                showFormatSelectionCard(detectedUrl)
-            })
-            card.addView(actions)
-            removeOverlay()
-            addOverlay(card, (290 * density).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
-            return
-        }
-
-        // Yeni bağlantı algılandı, doğrudan format seçtir
+        // Bağlantı mevcut, doğrudan format seçtir
         showFormatSelectionCard(detectedUrl)
     }
 
@@ -798,6 +752,7 @@ class ExternalAppDownloadOverlayService : Service() {
         }
         cancelRow.addView(actionText("VAZGEÇ", density) {
             removeOverlay()
+            showDownloadButton()
         })
         card.addView(cancelRow)
 

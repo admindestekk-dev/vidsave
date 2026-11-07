@@ -318,8 +318,9 @@ class ExternalShareDownloadService : Service() {
                 ?.takeIf { it.isNotBlank() }
                 ?: source.name
 
+            val subDir = if (isAudioFile(name)) "Mp3" else "Video"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/VidSave"
+                val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/VidSave/$subDir"
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, uniqueName(name, relativePath))
                     put(MediaStore.MediaColumns.MIME_TYPE, mimeTypeFor(name))
@@ -348,8 +349,11 @@ class ExternalShareDownloadService : Service() {
                     throw error
                 }
             } else {
-                val downloadsDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                val baseDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    ?: getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
                     ?: error("Uygulama indirme klasörü kullanılamıyor.")
+                val downloadsDir = File(baseDir, "VidSave/$subDir")
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
                 val destination = File(downloadsDir, name)
                 FileInputStream(source).use { input ->
                     destination.outputStream().use { output -> input.copyTo(output) }
@@ -359,6 +363,11 @@ class ExternalShareDownloadService : Service() {
         } catch (error: Exception) {
             result.error("export_failed", error.localizedMessage, null)
         }
+    }
+
+    private fun isAudioFile(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        return ext in setOf("mp3", "m4a", "wav", "aac", "ogg", "flac", "opus")
     }
 
     private fun uniqueName(fileName: String, relativePath: String): String {

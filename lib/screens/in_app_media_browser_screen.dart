@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as inapp;
 
+import '../admob_service.dart';
 import '../downloads_screen.dart';
 import '../download_exception_handler.dart';
 import '../clipboard_auto_download_service.dart';
@@ -97,7 +100,7 @@ class InAppMediaBrowserScreen extends StatefulWidget {
     super.key,
     this.initialUrl = 'https://www.google.com',
     this.onCloseTab,
-    this.showDownloadButton = false,
+    this.showDownloadButton = true,
     @visibleForTesting this.webViewBuilder,
   });
 
@@ -147,6 +150,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     setState(() {
       _detectedVideoUrl = clean;
       _isVideoActive = true;
+      _showDownloadButton = true;
     });
   }
 
@@ -190,6 +194,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
           setState(() {
             _detectedVideoUrl = target;
             _isVideoActive = true;
+            _showDownloadButton = true;
             if (title != null && title.trim().isNotEmpty) {
               _pageTitle = title.trim();
             }
@@ -254,6 +259,9 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
 
       function extractMediaSrc(videoEl) {
         if (!videoEl) return null;
+        if (videoEl.tagName === 'A' && videoEl.href) {
+          return videoEl.href;
+        }
         var src = videoEl.currentSrc || videoEl.src || videoEl.getAttribute('src');
         if (src && typeof src === 'string') {
           var s = src.trim();
@@ -325,7 +333,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       }
 
       function attachVideoListeners(videoEl) {
-        if (!videoEl || videoEl.__vidsaveAttached) return;
+        if (!videoEl || videoEl.__vidsaveAttached || videoEl.tagName === 'A') return;
         videoEl.__vidsaveAttached = true;
 
         videoEl.addEventListener('play', scheduleVideoCheck, { passive: true });
@@ -343,6 +351,9 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       }
 
       function getVisibleVideo(videoEl, viewportWidth, viewportHeight) {
+        if (videoEl.tagName === 'AUDIO') {
+          return { video: videoEl, area: 50000 };
+        }
         var rect = videoEl.getBoundingClientRect();
         var visibleWidth = Math.max(
           0,
@@ -367,7 +378,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       }
 
       function checkPlayingOrVisibleVideo() {
-        var vids = document.querySelectorAll('video');
+        var vids = document.querySelectorAll('video, audio');
         var viewportWidth = window.innerWidth ||
             document.documentElement.clientWidth || 800;
         var viewportHeight = window.innerHeight ||
@@ -394,6 +405,14 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         if (active) {
           reportActiveVideo(active.video, !active.video.paused && !active.video.ended);
         } else {
+          // Sayfada doğrudan video veya ses (.mp4, .mp3 vb.) bağlantısı var mı kontrol et
+          try {
+            var mediaLink = document.querySelector('a[href*=".mp4"], a[href*=".mp3"], a[href*=".m4a"], a[href*=".webm"], a[href*=".wav"], a[href*=".mov"]');
+            if (mediaLink && mediaLink.href) {
+              reportActiveVideo(mediaLink, false);
+              return;
+            }
+          } catch(e) {}
           resetReportedVideo();
         }
       }
@@ -487,6 +506,8 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     })();
   ''';
 
+  Timer? _clipboardCheckTimer;
+
   @override
   void initState() {
     super.initState();
@@ -494,10 +515,52 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     _isDownloadButtonAllowedForPage = isDownloadButtonAllowedUrl(
       widget.initialUrl,
     );
+    _startClipboardWatcher();
+  }
+
+  void _startClipboardWatcher() {
+    if (AdmobService.instance.isRunningInTest) return;
+    _clipboardCheckTimer = Timer.periodic(
+      const Duration(milliseconds: 1200),
+      (_) => _checkLocalClipboard(),
+    );
+  }
+
+  bool _isFormatSheetOpen = false;
+
+  void triggerDownloadForUrl(String? url) {
+    if (!mounted) return;
+    if (url != null && url.trim().isNotEmpty) {
+      setState(() {
+        _detectedVideoUrl = url.trim();
+        _isVideoActive = true;
+        _showDownloadButton = true;
+      });
+    }
+    if (!_isFormatSheetOpen && !_isInlineDownloading) {
+      _triggerDownload();
+    }
+  }
+
+  Future<void> _checkLocalClipboard() async {
+    if (!mounted || _isInlineDownloading) return;
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text?.trim();
+      if (text != null && text.isNotEmpty) {
+        final extracted = ClipboardAutoDownloadService.extractUrl(text);
+        if (extracted != null &&
+            extracted.isNotEmpty &&
+            extracted != _detectedVideoUrl) {
+          triggerDownloadForUrl(extracted);
+        }
+      }
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _clipboardCheckTimer?.cancel();
     _urlBarController.dispose();
     super.dispose();
   }
@@ -524,6 +587,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       return;
     }
 
+    _isFormatSheetOpen = true;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: const Color(0xFF1E2630),
@@ -573,7 +637,9 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
           ),
         ),
       ),
-    );
+    ).whenComplete(() {
+      _isFormatSheetOpen = false;
+    });
   }
 
   Widget _buildDownloadFormatOption({

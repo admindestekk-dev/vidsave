@@ -432,11 +432,15 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       url ??= await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
 
       if ((url != null || openDownloadFromOverlay) && mounted) {
-        await _showClipboardPrompt(
-          url,
-          allowUrlInput: openDownloadFromOverlay,
-          returnToSourceApp: openDownloadFromOverlay,
-        );
+        if (_selectedIndex == 0) {
+          _browserKey.currentState?.triggerDownloadForUrl(url);
+        } else {
+          await _showClipboardPrompt(
+            url,
+            allowUrlInput: openDownloadFromOverlay,
+            returnToSourceApp: openDownloadFromOverlay,
+          );
+        }
       }
     } catch (error) {
       if (!mounted) return;
@@ -544,6 +548,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       );
     } finally {
       _isClipboardPromptShowing = false;
+      ClipboardAutoDownloadService.clearMemoryAndCache();
       unawaited(AdmobService.instance.showInterstitialAd());
     }
   }
@@ -680,6 +685,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
         children: [
           InAppMediaBrowserScreen(
             key: _browserKey,
+            showDownloadButton: true,
             onCloseTab: () => _onDestinationSelected(_homeIndex),
           ),
           BatchDownloadScreen(
@@ -1675,6 +1681,11 @@ class _MediaLibraryPageState extends State<_MediaLibraryPage> {
                 : const {'.mp4', '.mov', '.webm', '.mkv'};
 
             for (final p in const [
+              '/storage/emulated/0/Download/VidSave/Video',
+              '/storage/emulated/0/Download/VidSave/Mp3',
+              '/storage/emulated/0/VidSave/Video',
+              '/storage/emulated/0/VidSave/Mp3',
+              '/storage/emulated/0/Download/VidSave',
               '/storage/emulated/0/Download',
               '/storage/emulated/0/Music',
             ]) {
