@@ -150,7 +150,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     setState(() {
       _detectedVideoUrl = clean;
       _isVideoActive = true;
-      _showDownloadButton = true;
     });
   }
 
@@ -194,7 +193,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
           setState(() {
             _detectedVideoUrl = target;
             _isVideoActive = true;
-            _showDownloadButton = true;
             if (title != null && title.trim().isNotEmpty) {
               _pageTitle = title.trim();
             }
@@ -534,7 +532,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       setState(() {
         _detectedVideoUrl = url.trim();
         _isVideoActive = true;
-        _showDownloadButton = true;
       });
     }
     if (!_isFormatSheetOpen && !_isInlineDownloading) {
@@ -966,65 +963,42 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
               ),
           ],
         ),
-        floatingActionButton:
-            _isDownloadButtonAllowedForPage && _showDownloadButton
-            ? Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Tooltip(
-                    message: _isInlineDownloading
-                        ? 'İndiriliyor: %${_inlineDownloadProgress.toInt()} • $_inlineDownloadSpeed'
-                        : (_isVideoActive
-                            ? 'VidSave İndir'
-                            : 'Sayfadaki videoyu veya sesi bul ve indir'),
-                    child: FloatingActionButton.extended(
-                      key: const ValueKey('browser_download_button'),
-                      heroTag: 'browser_download_button',
-                      onPressed: _isInlineDownloading ? null : _triggerDownload,
-                      backgroundColor: _isInlineDownloading ? const Color(0xFF1E2630) : _neonOrange,
-                      foregroundColor: Colors.white,
-                      icon: _isInlineDownloading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Icon(Icons.download_rounded),
-                      label: Text(
-                        _isInlineDownloading
-                            ? '%${_inlineDownloadProgress.toInt()}${_inlineDownloadSpeed.isNotEmpty ? ' • $_inlineDownloadSpeed' : ''}'
-                            : 'İNDİR',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+        floatingActionButton: _isInlineDownloading
+            ? Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E2630),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     ),
-                  ),
-                  if (!_isInlineDownloading)
-                    Positioned(
-                      top: -7,
-                      right: -7,
-                      child: Material(
-                        color: const Color(0xFF303943),
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          key: const ValueKey('close_browser_download_button'),
-                          customBorder: const CircleBorder(),
-                          onTap: _confirmCloseDownloadButton,
-                          child: const SizedBox(
-                            width: 23,
-                            height: 23,
-                            child: Icon(
-                              Icons.close_rounded,
-                              color: Colors.white,
-                              size: 15,
-                            ),
-                          ),
-                        ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'İndiriliyor: %${_inlineDownloadProgress.toInt()}${_inlineDownloadSpeed.isNotEmpty ? ' • $_inlineDownloadSpeed' : ''}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
                       ),
                     ),
-                ],
+                  ],
+                ),
               )
             : null,
       ),

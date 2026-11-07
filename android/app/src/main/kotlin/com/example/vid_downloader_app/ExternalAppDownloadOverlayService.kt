@@ -112,9 +112,6 @@ class ExternalAppDownloadOverlayService : Service() {
         downloadProgress = 0
         downloadSpeed = ""
         removeOverlay()
-        if (!isAppInForeground) {
-            showDownloadButton()
-        }
     }
     private val homePackageName: String? by lazy {
         packageManager.resolveActivity(
@@ -154,8 +151,6 @@ class ExternalAppDownloadOverlayService : Service() {
             if (shouldShow && overlayView == null) {
                 if (downloadActive || downloadStatusMessage != null) {
                     showDownloadProgress()
-                } else {
-                    showDownloadButton()
                 }
             } else if (!shouldShow && overlayView != null && !downloadActive && downloadStatusMessage == null) {
                 removeOverlay()
@@ -172,10 +167,9 @@ class ExternalAppDownloadOverlayService : Service() {
             val clipManager = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
             clipboardListener = android.content.ClipboardManager.OnPrimaryClipChangedListener {
                 val url = getClipboardUrl()
-                if (!url.isNullOrBlank()) {
-                    if (overlayView == null) {
-                        showDownloadButton()
-                    }
+                val prefs = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+                val lastDownloaded = prefs.getString(LAST_DOWNLOADED_URL_KEY, null)
+                if (!url.isNullOrBlank() && url != lastDownloaded) {
                     highlightNewLinkReady()
                     showFormatSelectionCard(url)
                 }
@@ -612,12 +606,10 @@ class ExternalAppDownloadOverlayService : Service() {
             }
             actions.addView(actionText("TAMAM", density) {
                 removeOverlay()
-                showDownloadButton()
             })
             actions.addView(actionText("UYGULAMAYI AÇ", density) {
                 openVidSave()
                 removeOverlay()
-                showDownloadButton()
             })
             card.addView(actions)
             removeOverlay()
@@ -752,7 +744,6 @@ class ExternalAppDownloadOverlayService : Service() {
         }
         cancelRow.addView(actionText("VAZGEÇ", density) {
             removeOverlay()
-            showDownloadButton()
         })
         card.addView(cancelRow)
 
@@ -839,10 +830,10 @@ class ExternalAppDownloadOverlayService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL,
-            "VidSave uygulama üstü İNDİR düğmesi",
+            "VidSave uygulama üstü indirme seçenekleri",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Diğer uygulamalarda VidSave İNDİR düğmesini etkin tutar."
+            description = "Diğer uygulamalarda bağlantı kopyalandığında indirme seçeneklerini gösterir."
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
@@ -856,8 +847,8 @@ class ExternalAppDownloadOverlayService : Service() {
         }
         return builder
             .setSmallIcon(R.drawable.ic_notification_download)
-            .setContentTitle("VidSave İNDİR düğmesi etkin")
-            .setContentText("Diğer uygulamaların üzerinde görünecek.")
+            .setContentTitle("VidSave otomatik indirme seçenekleri etkin")
+            .setContentText("Bağlantı kopyalandığında indirme formatı doğrudan belirir.")
             .setOngoing(true)
             .build()
     }

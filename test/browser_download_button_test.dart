@@ -49,91 +49,32 @@ void main() {
       expect(downloadButton, findsNothing);
     });
 
-    testWidgets('asks before closing and keeps button when cancelled', (
-      tester,
-    ) async {
+    testWidgets('does not show any floating INDIR button in browser by default', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: InAppMediaBrowserScreen(
-            initialUrl: 'https://www.instagram.com',
+            initialUrl: 'https://example.com/video',
             showDownloadButton: true,
             webViewBuilder: _testWebViewBuilder,
           ),
         ),
       );
 
-      final closeButton = find.byKey(
-        const ValueKey('close_browser_download_button'),
-      );
-      final downloadButton = find.byKey(
-        const ValueKey('browser_download_button'),
-      );
-      expect(downloadButton, findsOneWidget);
-
-      await tester.tap(closeButton);
-      await tester.pumpAndSettle();
-      expect(find.text('VidSave İndirme Butonu Kapatılıyor'), findsOneWidget);
-      expect(downloadButton, findsOneWidget);
-
-      await tester.tap(
-        find.byKey(const ValueKey('cancel_close_download_button')),
-      );
-      await tester.pumpAndSettle();
-      expect(downloadButton, findsOneWidget);
-
-      await tester.tap(closeButton);
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('confirm_close_download_button')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(downloadButton, findsNothing);
-    });
-
-    testWidgets('shows the button on any other website', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: InAppMediaBrowserScreen(
-            initialUrl: 'https://www.google.com',
-            showDownloadButton: true,
-            webViewBuilder: _testWebViewBuilder,
-          ),
-        ),
-      );
-
+      // İNDİR butonu yerine doğrudan format seçimi veya arka plan çalışır
       expect(
         find.byKey(const ValueKey('browser_download_button')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('İNDİR'), findsOneWidget);
-    });
-
-    testWidgets('keeps the button active before media is detected', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: InAppMediaBrowserScreen(
-            initialUrl: 'https://example.com/article',
-            showDownloadButton: true,
-            webViewBuilder: _testWebViewBuilder,
-          ),
-        ),
-      );
-
-      final downloadButton = tester.widget<FloatingActionButton>(
-        find.byKey(const ValueKey('browser_download_button')),
-      );
-      expect(downloadButton.onPressed, isNotNull);
     });
 
     testWidgets(
-      'opens the MP4 and MP3 format selector without leaving browser',
+      'opens the MP4 and MP3 format selector directly via triggerDownloadForUrl without leaving browser',
       (tester) async {
+        final key = GlobalKey<InAppMediaBrowserScreenState>();
         await tester.pumpWidget(
-          const MaterialApp(
+          MaterialApp(
             home: InAppMediaBrowserScreen(
+              key: key,
               initialUrl: 'https://example.com/video',
               showDownloadButton: true,
               webViewBuilder: _testWebViewBuilder,
@@ -141,7 +82,8 @@ void main() {
           ),
         );
 
-        await tester.tap(find.byKey(const ValueKey('browser_download_button')));
+        // Link kopyalandığında veya medya algılandığında doğrudan triggerDownloadForUrl çağrılır
+        key.currentState?.triggerDownloadForUrl('https://example.com/video.mp4');
         await tester.pumpAndSettle();
 
         expect(find.text('İndirme formatı'), findsOneWidget);
