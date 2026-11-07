@@ -121,8 +121,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   bool _isLoading = true;
   String? _detectedVideoUrl;
   bool _isVideoActive = false;
-  bool _isDownloadButtonAllowedForPage = false;
-  late bool _showDownloadButton = widget.showDownloadButton;
   String _pageTitle = '';
   bool _isInlineDownloading = false;
   double _inlineDownloadProgress = 0.0;
@@ -198,9 +196,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
             }
             if (validPage != null && validPage.isNotEmpty) {
               _urlBarController.text = validPage;
-              _isDownloadButtonAllowedForPage = isDownloadButtonAllowedUrl(
-                validPage,
-              );
             }
           });
           return;
@@ -510,9 +505,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   void initState() {
     super.initState();
     _urlBarController.text = widget.initialUrl;
-    _isDownloadButtonAllowedForPage = isDownloadButtonAllowedUrl(
-      widget.initialUrl,
-    );
     _startClipboardWatcher();
   }
 
@@ -760,35 +752,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     }
   }
 
-  Future<void> _confirmCloseDownloadButton() async {
-    final shouldClose = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        key: const ValueKey('close_download_button_confirmation'),
-        title: const Text('VidSave İndirme Butonu Kapatılıyor'),
-        content: const Text(
-          'VidSave İndir butonunu bu tarayıcı sekmesi için kapatmak istiyor musunuz?',
-        ),
-        actions: [
-          TextButton(
-            key: const ValueKey('cancel_close_download_button'),
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('VAZGEÇ'),
-          ),
-          FilledButton(
-            key: const ValueKey('confirm_close_download_button'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('KAPAT'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldClose == true && mounted) {
-      setState(() => _showDownloadButton = false);
-    }
-  }
-
   /// Geri tuşu aksiyonunu yönetir.
   /// Tarayıcı geçmişinde geri gidilebiliyorsa bir önceki sayfaya döner ve `true` döner.
   /// Sayfa geçmişi bittiğinde modal/sekme kapanır ve `true` döner.
@@ -882,7 +845,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
           _urlBarController.text = pageUrl;
           _detectedVideoUrl = null;
           _isVideoActive = false;
-          _isDownloadButtonAllowedForPage = isDownloadButtonAllowedUrl(pageUrl);
         });
       },
       onLoadStop: (controller, url) async {
