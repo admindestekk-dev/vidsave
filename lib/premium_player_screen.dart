@@ -137,7 +137,12 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
       _updateWaveAnimation(state);
     });
     _audioPositionSubscription = player.onPositionChanged.listen((position) {
-      if (!mounted || _isDragging || _isSeeking) return;
+      if (!mounted ||
+          _isDragging ||
+          _isSeeking ||
+          _audioState != PlayerState.playing) {
+        return;
+      }
       setState(() => _audioPosition = position);
     });
     _audioDurationSubscription = player.onDurationChanged.listen((duration) {
@@ -154,6 +159,12 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
     });
     await player.setReleaseMode(ReleaseMode.stop);
     await player.setSource(DeviceFileSource(_file.path));
+    try {
+      final initialDuration = await player.getDuration();
+      if (initialDuration != null && initialDuration > Duration.zero && mounted) {
+        setState(() => _audioDuration = initialDuration);
+      }
+    } catch (_) {}
     await player.resume();
     _updateWaveAnimation(PlayerState.playing);
   }
@@ -243,12 +254,30 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
         final player = _audioPlayer;
         if (player == null) return;
         if (_audioState == PlayerState.playing) {
-          if (mounted) setState(() => _audioState = PlayerState.paused);
-          _updateWaveAnimation(PlayerState.paused);
           await player.pause();
+          try {
+            final currentPos = await player.getCurrentPosition();
+            if (mounted) {
+              setState(() {
+                _audioState = PlayerState.paused;
+                if (currentPos != null && currentPos > Duration.zero) {
+                  _audioPosition = currentPos;
+                }
+              });
+              _updateWaveAnimation(PlayerState.paused);
+            }
+          } catch (_) {
+            if (mounted) {
+              setState(() => _audioState = PlayerState.paused);
+              _updateWaveAnimation(PlayerState.paused);
+            }
+          }
         } else {
           if (_audioState == PlayerState.completed) {
             await player.seek(Duration.zero);
+            if (mounted) setState(() => _audioPosition = Duration.zero);
+          } else if (_audioPosition > Duration.zero) {
+            await player.seek(_audioPosition);
           }
           if (mounted) setState(() => _audioState = PlayerState.playing);
           _updateWaveAnimation(PlayerState.playing);

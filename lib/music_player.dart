@@ -35,6 +35,23 @@ typedef AudioSourceResolver = Future<Source> Function(AssetEntity asset);
 class _AudioplayersMusicController implements MusicPlayerController {
   _AudioplayersMusicController() {
     _ensureAudioContextConfigured();
+    try {
+      _player.setAudioContext(
+        AudioContext(
+          android: const AudioContextAndroid(
+            isSpeakerphoneOn: false,
+            stayAwake: true,
+            contentType: AndroidContentType.music,
+            usageType: AndroidUsageType.media,
+            audioFocus: AndroidAudioFocus.gain,
+          ),
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playback,
+            options: const {},
+          ),
+        ),
+      );
+    } catch (_) {}
   }
 
   static bool _contextConfigured = false;
@@ -299,7 +316,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       });
     });
     _positionSub = player.onPositionChanged.listen((position) {
-      if (!mounted || _isDragging || _isSeeking) return;
+      if (!mounted ||
+          _isDragging ||
+          _isSeeking ||
+          _playerState != PlayerState.playing) {
+        return;
+      }
       setState(() => _position = position);
     });
     _durationSub = player.onDurationChanged.listen((duration) {
@@ -324,12 +346,27 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     _isPlaybackCommandPending = true;
     try {
       if (_playerState == PlayerState.playing) {
-        if (mounted) setState(() => _playerState = PlayerState.paused);
         await player.pause();
+        try {
+          final currentPos = await player.getCurrentPosition();
+          if (mounted) {
+            setState(() {
+              _playerState = PlayerState.paused;
+              if (currentPos != null && currentPos > Duration.zero) {
+                _position = currentPos;
+              }
+            });
+          }
+        } catch (_) {
+          if (mounted) setState(() => _playerState = PlayerState.paused);
+        }
         return;
       }
       if (_playerState == PlayerState.completed) {
         await player.seek(Duration.zero);
+        if (mounted) setState(() => _position = Duration.zero);
+      } else if (_position > Duration.zero) {
+        await player.seek(_position);
       }
       if (mounted) setState(() => _playerState = PlayerState.playing);
       await player.resume();
