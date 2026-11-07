@@ -7,7 +7,10 @@ import '../services/pro_server_reward_service.dart';
 /// Ana Ekranda (HomeScreen) yer alan ve kullanıcının kısa bir ödüllü test videosu izleyerek
 /// 3 indirme boyunca Pro Sunucuyu ve reklamsız modu aktif etmesini sağlayan ödül kartı.
 class ProServerRewardCard extends StatefulWidget {
-  const ProServerRewardCard({super.key, this.margin = const EdgeInsets.symmetric(vertical: 8)});
+  const ProServerRewardCard({
+    super.key,
+    this.margin = const EdgeInsets.symmetric(vertical: 8),
+  });
 
   final EdgeInsetsGeometry margin;
 
@@ -45,11 +48,13 @@ class _ProServerRewardCardState extends State<ProServerRewardCard> {
 
       await AdmobService.instance.showProServerRewardAd(
         onRewardEarned: () async {
-          final updatedCredits = await ProServerRewardService.instance.addCredits(3);
+          final updatedCredits = await ProServerRewardService.instance
+              .addCredits(3);
           if (!mounted) return;
           showMicroToast(
             context,
-            message: '🎉 Tebrikler! 3 indirme boyunca Pro Sunucu aktif edildi! (Toplam hak: $updatedCredits)',
+            message:
+                '🎉 Tebrikler! 3 indirme boyunca Pro Sunucu aktif edildi! (Toplam hak: $updatedCredits)',
             isSuccess: true,
           );
         },
@@ -57,7 +62,9 @@ class _ProServerRewardCardState extends State<ProServerRewardCard> {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Pro hak kazanmak için videoyu sonuna kadar izlemelisiniz.'),
+              content: Text(
+                'Pro hak kazanmak için videoyu sonuna kadar izlemelisiniz.',
+              ),
               duration: Duration(seconds: 3),
             ),
           );
@@ -66,7 +73,9 @@ class _ProServerRewardCardState extends State<ProServerRewardCard> {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Reklam yüklenemedi. Lütfen internet bağlantınızı kontrol edin.'),
+              content: Text(
+                'Reklam yüklenemedi. Lütfen internet bağlantınızı kontrol edin.',
+              ),
               duration: Duration(seconds: 3),
             ),
           );
@@ -145,23 +154,33 @@ class _ProServerRewardCardState extends State<ProServerRewardCard> {
             ),
             const SizedBox(height: 12),
             ValueListenableBuilder<int>(
-              valueListenable: ProServerRewardService.instance.proCreditsNotifier,
+              valueListenable:
+                  ProServerRewardService.instance.proCreditsNotifier,
               builder: (context, credits, _) {
                 final isProActive = credits > 0;
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: isProActive
                         ? cyanAccent.withValues(alpha: 0.12)
-                        : (isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF4F6F8)),
+                        : (isDark
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : const Color(0xFFF4F6F8)),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        isProActive ? Icons.check_circle_rounded : Icons.flash_on_rounded,
+                        isProActive
+                            ? Icons.check_circle_rounded
+                            : Icons.flash_on_rounded,
                         size: 16,
-                        color: isProActive ? cyanAccent : const Color(0xFF87949D),
+                        color: isProActive
+                            ? cyanAccent
+                            : const Color(0xFF87949D),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -172,7 +191,9 @@ class _ProServerRewardCardState extends State<ProServerRewardCard> {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: isProActive ? cyanAccent : const Color(0xFF87949D),
+                            color: isProActive
+                                ? cyanAccent
+                                : const Color(0xFF87949D),
                           ),
                         ),
                       ),
@@ -193,12 +214,16 @@ class _ProServerRewardCardState extends State<ProServerRewardCard> {
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Icon(Icons.play_circle_fill_rounded, size: 20),
                 label: Text(
-                  _isLoading ? 'Reklam Hazırlanıyor…' : 'VİDEOYU İZLE & PRO\'YU AÇ (+3 HAK)',
+                  _isLoading
+                      ? 'Reklam Hazırlanıyor…'
+                      : 'VİDEOYU İZLE & PRO\'YU AÇ (+3 HAK)',
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,

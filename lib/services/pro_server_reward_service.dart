@@ -43,7 +43,9 @@ class ProServerRewardService {
       final updated = current + amount;
       await prefs.setInt(prefKeyProCredits, updated);
       proCreditsNotifier.value = updated;
-      debugPrint('ProServerRewardService: $amount Pro hak eklendi. Toplam: $updated');
+      debugPrint(
+        'ProServerRewardService: $amount Pro hak eklendi. Toplam: $updated',
+      );
       return updated;
     } catch (e) {
       proCreditsNotifier.value += amount;
@@ -61,7 +63,9 @@ class ProServerRewardService {
         final updated = current - 1;
         await prefs.setInt(prefKeyProCredits, updated);
         proCreditsNotifier.value = updated;
-        debugPrint('ProServerRewardService: 1 Pro hak kullanıldı. Kalan: $updated');
+        debugPrint(
+          'ProServerRewardService: 1 Pro hak kullanıldı. Kalan: $updated',
+        );
         return true;
       }
       return false;
