@@ -14,6 +14,7 @@ import '../storage_service.dart';
 import 'api_service.dart';
 import 'download_manager.dart';
 import '../youtube_restriction.dart';
+import 'pro_server_reward_service.dart';
 
 /// VidSave Evrensel Birleşik İndirme Motoru (Unified Download Engine)
 ///
@@ -356,6 +357,8 @@ class UnifiedDownloadEngine {
             );
           }
 
+          await ProServerRewardService.instance.consumeCredit();
+
           return downloadedFile;
         } catch (serverStreamErr) {
           debugPrint(
@@ -538,6 +541,8 @@ class UnifiedDownloadEngine {
           fileName: finalFileName,
         );
       }
+
+      await ProServerRewardService.instance.consumeCredit();
 
       return targetDownloadedFile;
     } catch (e) {

@@ -6,11 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vid_downloader_app/admob_banner_widget.dart';
 import 'package:vid_downloader_app/app_localizations.dart';
 import 'package:vid_downloader_app/auth_service.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/home_screen.dart';
 import 'package:vid_downloader_app/subscription_screen.dart';
+import 'package:vid_downloader_app/widgets/pro_server_reward_card.dart';
 
 class _MemoryTokenStore implements AuthTokenStore {
   String? token;
@@ -282,6 +284,26 @@ void main() {
 
         final prefs = await SharedPreferences.getInstance();
         expect(prefs.getBool(SubscriptionScreen.prefKeyIsPremium), isTrue);
+      },
+    );
+
+    testWidgets(
+      'HomeScreen renders ProServerRewardCard and AdmobBannerWidget at bottom',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 2;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: const HomeScreen(),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ProServerRewardCard), findsOneWidget);
+        expect(find.byType(AdmobBannerWidget), findsOneWidget);
       },
     );
   });

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'admob_banner_widget.dart';
+import 'admob_native_ad_widget.dart';
 import 'app_localizations.dart';
 import 'download_item_model.dart';
 import 'lyrics_bottom_sheet.dart';
@@ -346,7 +347,14 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                                   i++
                                 ) ...[
                                   _buildDownloadCard(context, storedItems[i]),
-                                  if (i < storedItems.length - 1)
+                                  if (i == (storedItems.length <= 1 ? 0 : (storedItems.length ~/ 2) - 1)) ...[
+                                    const SizedBox(height: 12),
+                                    const AdmobNativeAdWidget(
+                                      margin: EdgeInsets.zero,
+                                    ),
+                                    if (i < storedItems.length - 1)
+                                      const SizedBox(height: 12),
+                                  ] else if (i < storedItems.length - 1)
                                     const SizedBox(height: 12),
                                 ],
                               ],

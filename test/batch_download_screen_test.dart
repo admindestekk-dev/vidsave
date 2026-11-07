@@ -257,7 +257,7 @@ void main() {
         );
         await tester.enterText(
           textFields.at(1),
-          'https://youtube.com/watch?v=2',
+          'https://vimeo.com/video/2',
         );
         await tester.pumpAndSettle();
 
@@ -269,9 +269,9 @@ void main() {
         expect(find.text('Ücretsiz İndirme Hakkı Kazan!'), findsNothing);
 
         // Let queue finish
-        await tester.pump(const Duration(milliseconds: 50));
-        await tester.pump(const Duration(milliseconds: 50));
-        await tester.pumpAndSettle();
+        for (var i = 0; i < 40; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
 
         expect(fakeResolver.resolvedUrls.length, 2);
         expect(fakeDownloader.downloadedFiles.length, 2);

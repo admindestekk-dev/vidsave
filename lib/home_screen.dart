@@ -8,6 +8,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'admob_banner_widget.dart';
 import 'admob_service.dart';
 import 'auth_service.dart';
 import 'backend_settings.dart';
@@ -19,6 +20,7 @@ import 'clipboard_auto_download_service.dart';
 import 'services/api_service.dart';
 import 'services/micro_toast.dart';
 import 'services/unified_download_engine.dart';
+import 'widgets/pro_server_reward_card.dart';
 import 'app_localizations.dart';
 import 'l10n/l10n_extension.dart';
 import 'youtube_restriction.dart' as youtube_restriction;
@@ -557,6 +559,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 16),
               const QuickDownloadWindow(),
+              const SizedBox(height: 16),
+              const ProServerRewardCard(),
+              const SizedBox(height: 16),
+              const AdmobBannerWidget(
+                margin: EdgeInsets.symmetric(vertical: 8),
+              ),
             ],
           ),
         ),

@@ -907,13 +907,13 @@ class MediaDownloader {
 
   /// Checks if file has a valid MP3 header (ID3 tag or MPEG audio sync frame).
   static Future<bool> isGenuineMp3File(File file) async {
-    if (!await file.exists()) return false;
+    if (!file.existsSync()) return false;
     try {
-      final length = await file.length();
+      final length = file.lengthSync();
       if (length < 4) return false;
-      final raf = await file.open(mode: FileMode.read);
+      final raf = file.openSync(mode: FileMode.read);
       try {
-        final header = await raf.read(12);
+        final header = raf.readSync(12);
         if (header.length < 3) return false;
         // ID3v2 tag: "ID3" (0x49, 0x44, 0x33)
         if (header[0] == 0x49 && header[1] == 0x44 && header[2] == 0x33) {
@@ -925,7 +925,7 @@ class MediaDownloader {
         }
         return false;
       } finally {
-        await raf.close();
+        raf.closeSync();
       }
     } catch (_) {
       return false;

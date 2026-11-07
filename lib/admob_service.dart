@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import 'services/pro_server_reward_service.dart';
 import 'subscription_screen.dart';
 
 /// VidSave AdMob rewarded-ad manager.
@@ -16,14 +17,26 @@ class AdmobService {
   AdmobService._();
   static final AdmobService instance = AdmobService._();
 
+  /// Google Resmi Android Test Reklam Birimi Kimlikleri (Ad Unit IDs)
+  static const String androidBannerAdUnitId =
+      'ca-app-pub-3940256099942544/6300978111';
+  static const String androidInterstitialAdUnitId =
+      'ca-app-pub-3940256099942544/1033173712';
+  static const String androidRewardedAdUnitId =
+      'ca-app-pub-3940256099942544/5224354917';
+  static const String androidNativeAdUnitId =
+      'ca-app-pub-3940256099942544/2247696110';
+  static const String androidAppOpenAdUnitId =
+      'ca-app-pub-3940256099942544/9257395921';
+
   /// Official Google demo ad units, used only for testing.
   static const Map<String, Map<String, String>> testAdUnitIds = {
     'android': {
-      'banner': 'ca-app-pub-3940256099942544/6300978111',
-      'interstitial': 'ca-app-pub-3940256099942544/1033173712',
-      'rewarded': 'ca-app-pub-3940256099942544/5224354917',
-      'native': 'ca-app-pub-3940256099942544/2247696110',
-      'appOpen': 'ca-app-pub-3940256099942544/9257395921',
+      'banner': androidBannerAdUnitId,
+      'interstitial': androidInterstitialAdUnitId,
+      'rewarded': androidRewardedAdUnitId,
+      'native': androidNativeAdUnitId,
+      'appOpen': androidAppOpenAdUnitId,
     },
     'ios': {
       'banner': 'ca-app-pub-3940256099942544/2934735716',
@@ -58,9 +71,11 @@ class AdmobService {
     return adUnitId;
   }
 
-  static String get rewardedAdUnitId {
-    return testAdUnitId('rewarded');
-  }
+  static String get bannerAdUnitId => testAdUnitId('banner');
+  static String get interstitialAdUnitId => testAdUnitId('interstitial');
+  static String get rewardedAdUnitId => testAdUnitId('rewarded');
+  static String get nativeAdUnitId => testAdUnitId('native');
+  static String get appOpenAdUnitId => testAdUnitId('appOpen');
 
   RewardedAd? _rewardedAd;
   InterstitialAd? _interstitialAd;
@@ -503,12 +518,15 @@ class AdmobService {
     }
   }
 
-  /// Kullanıcının aktif Premium üyeliği olup olmadığını shared_preferences üzerinden sorgular
+  /// Kullanıcının aktif Premium üyeliği veya Pro indirme kredisi olup olmadığını sorgular
   Future<bool> checkIsPremium() async {
     try {
-      return await SubscriptionScreen.readPremiumStatus();
+      final isSubscribed = await SubscriptionScreen.readPremiumStatus();
+      if (isSubscribed) return true;
+      final credits = await ProServerRewardService.instance.getCredits();
+      return credits > 0;
     } catch (error, stackTrace) {
-      debugPrint('Premium durumu okunamadı: $error\n$stackTrace');
+      debugPrint('Premium / Pro kredi durumu okunamadı: $error\n$stackTrace');
       return false;
     }
   }
@@ -659,6 +677,115 @@ class AdmobService {
         await onRewardEarned();
       },
     );
+  }
+
+  /// Kullanıcı "1 Kısa Video İzle, 3 İndirme Boyunca Pro Sunucuyu Aktif Et!" butonuna
+  /// bastığında ödüllü reklamı gösterir. Kullanıcı videoyu sonuna kadar izlediğinde
+  /// [onRewardEarned] geri çağrısını çalıştırır.
+  Future<bool> showProServerRewardAd({
+    required VoidCallback onRewardEarned,
+    VoidCallback? onAdDismissedWithoutReward,
+    VoidCallback? onAdFailedToLoad,
+  }) async {
+    if (isRunningInTest || kIsWeb) {
+      debugPrint(
+        'AdmobService: Test ortamında ödüllü reklam simüle edildi, Pro hak verildi.',
+      );
+      onRewardEarned();
+      return true;
+    }
+
+    await initialize();
+    if (!_isInitialized) {
+      onAdFailedToLoad?.call();
+      return false;
+    }
+
+    if (!_consentGathered) {
+      await gatherConsentIfRequired();
+    }
+
+    final ad = _rewardedAd;
+    if (ad == null) {
+      final completer = Completer<bool>();
+      loadRewardedAd(
+        onLoaded: () {
+          if (!completer.isCompleted) {
+            completer.complete(
+              _presentProServerRewardedAd(
+                onRewardEarned: onRewardEarned,
+                onAdDismissedWithoutReward: onAdDismissedWithoutReward,
+              ),
+            );
+          }
+        },
+        onFailed: () {
+          if (!completer.isCompleted) {
+            completer.complete(false);
+            onAdFailedToLoad?.call();
+          }
+        },
+      );
+      unawaited(
+        Future.delayed(const Duration(seconds: 5), () {
+          if (!completer.isCompleted) {
+            completer.complete(false);
+            onAdFailedToLoad?.call();
+          }
+        }),
+      );
+      return completer.future;
+    }
+
+    return _presentProServerRewardedAd(
+      onRewardEarned: onRewardEarned,
+      onAdDismissedWithoutReward: onAdDismissedWithoutReward,
+    );
+  }
+
+  Future<bool> _presentProServerRewardedAd({
+    required VoidCallback onRewardEarned,
+    VoidCallback? onAdDismissedWithoutReward,
+  }) async {
+    final ad = _rewardedAd;
+    if (ad == null) return false;
+
+    final completer = Completer<bool>();
+    bool earnedReward = false;
+    _isShowingFullScreenAd = true;
+
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        _isShowingFullScreenAd = false;
+        ad.dispose();
+        _rewardedAd = null;
+        loadRewardedAd();
+        if (!earnedReward) {
+          onAdDismissedWithoutReward?.call();
+        }
+        if (!completer.isCompleted) completer.complete(earnedReward);
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        _isShowingFullScreenAd = false;
+        debugPrint('AdmobService: Rewarded reklam gösterilemedi: $error');
+        ad.dispose();
+        _rewardedAd = null;
+        loadRewardedAd();
+        if (!completer.isCompleted) completer.complete(false);
+      },
+    );
+
+    ad.show(
+      onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
+        debugPrint(
+          'AdmobService: Kullanıcı ödüllü videoyu sonuna kadar izledi, Pro ödülü onaylandı.',
+        );
+        earnedReward = true;
+        onRewardEarned();
+      },
+    );
+
+    return completer.future;
   }
 
   /// Bellek yönetimi: Kaynakları temizle

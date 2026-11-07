@@ -5,7 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vid_downloader_app/admob_banner_widget.dart';
 import 'package:vid_downloader_app/admob_native_ad_widget.dart';
 import 'package:vid_downloader_app/admob_service.dart';
+import 'package:vid_downloader_app/services/pro_server_reward_service.dart';
 import 'package:vid_downloader_app/subscription_screen.dart';
+import 'package:vid_downloader_app/widgets/pro_server_reward_card.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +18,22 @@ void main() {
     });
 
     test('all ad formats use official Google test unit IDs', () {
+      expect(
+        AdmobService.bannerAdUnitId,
+        'ca-app-pub-3940256099942544/6300978111',
+      );
+      expect(
+        AdmobService.interstitialAdUnitId,
+        'ca-app-pub-3940256099942544/1033173712',
+      );
+      expect(
+        AdmobService.rewardedAdUnitId,
+        'ca-app-pub-3940256099942544/5224354917',
+      );
+      expect(
+        AdmobService.nativeAdUnitId,
+        'ca-app-pub-3940256099942544/2247696110',
+      );
       expect(
         AdmobService.rewardedAdUnitId,
         AdmobService.testAdUnitId('rewarded'),
@@ -142,6 +160,57 @@ void main() {
 
       expect(find.byType(AdmobNativeAdWidget), findsOneWidget);
       expect(find.byType(AdWidget), findsNothing);
+    });
+
+    test('ProServerRewardService adds and consumes credits correctly', () async {
+      await ProServerRewardService.instance.clearCredits();
+      expect(await ProServerRewardService.instance.getCredits(), 0);
+      expect(await ProServerRewardService.instance.isProServerActive(), isFalse);
+
+      final added = await ProServerRewardService.instance.addCredits(3);
+      expect(added, 3);
+      expect(await ProServerRewardService.instance.getCredits(), 3);
+      expect(await ProServerRewardService.instance.isProServerActive(), isTrue);
+
+      // checkIsPremium Pro kredisi varken true dönmeli
+      expect(await AdmobService.instance.checkIsPremium(), isTrue);
+
+      // 1 kredi harca
+      final consumed = await ProServerRewardService.instance.consumeCredit();
+      expect(consumed, isTrue);
+      expect(await ProServerRewardService.instance.getCredits(), 2);
+
+      await ProServerRewardService.instance.consumeCredit();
+      await ProServerRewardService.instance.consumeCredit();
+      expect(await ProServerRewardService.instance.getCredits(), 0);
+      expect(await ProServerRewardService.instance.isProServerActive(), isFalse);
+
+      // 0 iken tekrar harcanamaz
+      expect(await ProServerRewardService.instance.consumeCredit(), isFalse);
+    });
+
+    testWidgets('ProServerRewardCard renders and watching ad grants 3 Pro credits', (tester) async {
+      await ProServerRewardService.instance.clearCredits();
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ProServerRewardCard(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('pro_server_reward_card')), findsOneWidget);
+      expect(find.text('1 Kısa Video İzle, 3 İndirme Boyunca Pro Sunucuyu Aktif Et!'), findsOneWidget);
+      expect(find.byKey(const ValueKey('watch_pro_reward_button')), findsOneWidget);
+
+      // Butona dokun ve ödülü kazan
+      await tester.tap(find.byKey(const ValueKey('watch_pro_reward_button')));
+      await tester.pumpAndSettle();
+
+      expect(await ProServerRewardService.instance.getCredits(), 3);
+      expect(find.text('Pro Sunucu Aktif • Kalan Hak: 3 İndirme'), findsOneWidget);
     });
   });
 }

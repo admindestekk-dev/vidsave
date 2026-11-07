@@ -738,6 +738,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
           },
         ),
       );
+      unawaited(AdmobService.instance.showInterstitialAd());
     } catch (error) {
       if (!mounted) return;
       setState(() {

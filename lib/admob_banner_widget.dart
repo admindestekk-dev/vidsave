@@ -64,7 +64,7 @@ class _AdmobBannerWidgetState extends State<AdmobBannerWidget> {
   void _loadBannerAd() {
     _bannerAd?.dispose();
     final ad = BannerAd(
-      adUnitId: AdmobService.testAdUnitId('banner'),
+      adUnitId: AdmobService.bannerAdUnitId,
       size: widget.adSize,
       request: const AdRequest(),
       listener: BannerAdListener(

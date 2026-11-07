@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vid_downloader_app/admob_native_ad_widget.dart';
 import 'package:vid_downloader_app/download_item_model.dart';
 import 'package:vid_downloader_app/downloads_screen.dart';
 import 'package:vid_downloader_app/music_player.dart';
@@ -89,6 +90,47 @@ void main() {
 
       expect(VideoPlayerScreen(file: videoFile, title: 'vid.mp4'), isNotNull);
       expect(MusicPlayerScreen(file: audioFile, title: 'aud.mp3'), isNotNull);
+
+      try {
+        tempDir.deleteSync(recursive: true);
+      } catch (_) {}
+    },
+  );
+
+  testWidgets(
+    'DownloadsScreen embeds AdmobNativeAdWidget in the middle of download history',
+    (WidgetTester tester) async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'vidsave_native_ad_test',
+      );
+      final file1 = File('${tempDir.path}/file1.mp4')..writeAsStringSync('1');
+      final file2 = File('${tempDir.path}/file2.mp4')..writeAsStringSync('2');
+
+      await StorageService.addItem(
+        DownloadItemModel(
+          id: '1',
+          name: 'file1.mp4',
+          type: 'video',
+          sizeInBytes: 100,
+          filePath: file1.path,
+          downloadedAt: DateTime.now(),
+        ),
+      );
+      await StorageService.addItem(
+        DownloadItemModel(
+          id: '2',
+          name: 'file2.mp4',
+          type: 'video',
+          sizeInBytes: 200,
+          filePath: file2.path,
+          downloadedAt: DateTime.now(),
+        ),
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: DownloadsScreen()));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AdmobNativeAdWidget), findsOneWidget);
 
       try {
         tempDir.deleteSync(recursive: true);

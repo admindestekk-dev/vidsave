@@ -61,7 +61,7 @@ class _AdmobNativeAdWidgetState extends State<AdmobNativeAdWidget> {
     final isDark = theme.brightness == Brightness.dark;
 
     final ad = NativeAd(
-      adUnitId: AdmobService.testAdUnitId('native'),
+      adUnitId: AdmobService.nativeAdUnitId,
       request: const AdRequest(),
       listener: NativeAdListener(
         onAdLoaded: (ad) {
