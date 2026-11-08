@@ -17,6 +17,7 @@ import 'client_media_resolver.dart';
 import 'clipboard_auto_download_service.dart';
 import 'external_app_download_overlay.dart';
 import 'download_exception_handler.dart';
+import 'download_format_sheet.dart';
 import 'download_item_model.dart';
 import 'download_notification_service.dart';
 import 'download_platforms.dart';
@@ -25,7 +26,6 @@ import 'media_downloader.dart';
 import 'media_library.dart';
 import 'more_screen.dart';
 import 'music_player.dart';
-import 'quick_download_dialog.dart';
 import 'storage_service.dart';
 import 'theme_service.dart';
 import 'locale_service.dart';
@@ -463,9 +463,8 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     }
   }
 
-  /// Kullanıcıya ekran ortasında açılan 'VidSave Algıladı' Quick Download Dialog penceresi.
-  /// Dahili tarayıcıdaki ayar gibi (InAppMediaBrowserScreen._triggerDownload) doğrudan
-  /// QuickDownloadDialog içinde canlı ilerleme çubuğuyla indirme yapar.
+  /// Kullanıcıya ekran ortasında açılan eski 'VidSave Algıladı' popup'ı yerine,
+  /// doğrudan alttan şık içerik bilgileri ve format seçenekleriyle açılan 'İndirme formatı' Modal Bottom Sheet penceresi.
   Future<void> _showClipboardPrompt(
     String? url, {
     bool allowUrlInput = false,
@@ -473,6 +472,36 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   }) async {
     if (_isClipboardPromptShowing) return;
     _isClipboardPromptShowing = true;
+
+    try {
+      await DownloadFormatBottomSheet.show(
+        context: context,
+        url: url ?? '',
+        allowUrlInput: allowUrlInput,
+        resolver: _mediaResolver,
+        onFormatSelected: (kind, selectedUrl) async {
+          await AdmobService.instance.showRewardedAdOrBypass(
+            onRewardEarned: () async {
+              if (!mounted) return;
+              await _executeDownloadFromFormatSheet(
+                selectedUrl: selectedUrl,
+                kind: kind,
+                returnToSourceApp: returnToSourceApp,
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      _isClipboardPromptShowing = false;
+    }
+  }
+
+  Future<void> _executeDownloadFromFormatSheet({
+    required String selectedUrl,
+    required DownloadKind kind,
+    required bool returnToSourceApp,
+  }) async {
     var lastReportedProgress = -1;
     void finishOverlayDownload({required bool success, String? message}) {
       if (!returnToSourceApp || !Platform.isAndroid) return;
@@ -485,31 +514,28 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     }
 
     try {
-      await QuickDownloadDialog.show(
-        context: context,
-        videoTitle: url ?? '',
-        allowUrlInput: allowUrlInput,
-        autoDismissOnStart: true,
-        onDownloadStarted: () async {
-          ClipboardAutoDownloadService.clearMemoryAndCache();
-          if (returnToSourceApp && Platform.isAndroid) {
-            await ExternalAppDownloadOverlay.beginBackgroundDownload();
-          }
-          if (mounted) {
-            showMicroToast(
-              context,
-              message: 'İndirme başlatılıyor…',
-              isLoading: true,
-            );
-          }
-        },
-        onDownloadProgress: returnToSourceApp && Platform.isAndroid
-            ? (progress, speed) {
-                final percent = progress.floor();
+      ClipboardAutoDownloadService.clearMemoryAndCache();
+      if (returnToSourceApp && Platform.isAndroid) {
+        await ExternalAppDownloadOverlay.beginBackgroundDownload();
+      }
+      if (mounted) {
+        showMicroToast(
+          context,
+          message: 'İndirme başlatılıyor…',
+          isLoading: true,
+        );
+      }
+
+      final file = await UnifiedDownloadEngine.instance.download(
+        rawUrl: selectedUrl,
+        type: kind == DownloadKind.audio ? 'mp3' : 'video',
+        onProgress: returnToSourceApp && Platform.isAndroid
+            ? (received, total, progress, speed, status) {
+                final percent = ((progress ?? 0) * 100).floor().clamp(0, 100);
                 if (percent == lastReportedProgress) return;
                 lastReportedProgress = percent;
                 ExternalAppDownloadOverlay.updateDownloadProgress(
-                  progress: progress,
+                  progress: percent.toDouble(),
                   speed: speed,
                 ).catchError((Object error) {
                   debugPrint(
@@ -518,46 +544,45 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
                 });
               }
             : null,
-        onDownloadFailed: (_) {
-          ClipboardAutoDownloadService.clearMemoryAndCache();
-          finishOverlayDownload(success: false, message: 'İndirme başarısız');
-        },
-        resolver: _mediaResolver,
-        downloader: _mediaDownloader,
-        onDownloadCompleted: (file, kind) {
-          ClipboardAutoDownloadService.clearMemoryAndCache();
-          finishOverlayDownload(
-            success: true,
-            message:
-                'İndirildi: ${file.path.split(Platform.pathSeparator).last}',
-          );
-          if (!mounted) return;
-          final isAudio = kind == DownloadKind.audio;
-          final fileName = file.path.split(Platform.pathSeparator).last;
-          showMicroToast(
-            context,
-            message: 'Başarıyla indirildi: $fileName',
-            isSuccess: true,
-            action: SnackBarAction(
-              label: 'GÖRÜNTÜLE',
-              textColor: Colors.white,
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => DownloadsScreen(
-                      initialFilter: isAudio ? 'audio' : 'video',
-                    ),
-                  ),
-                );
-              },
-            ),
-          );
-        },
+        fallbackResolver: _mediaResolver,
+        fallbackDownloader: _mediaDownloader,
       );
-    } finally {
-      _isClipboardPromptShowing = false;
+
+      ClipboardAutoDownloadService.clearMemoryAndCache();
+      finishOverlayDownload(
+        success: true,
+        message:
+            'İndirildi: ${file.path.split(Platform.pathSeparator).last}',
+      );
+
+      if (!mounted) return;
+      final isAudio = kind == DownloadKind.audio;
+      final fileName = file.path.split(Platform.pathSeparator).last;
+      showMicroToast(
+        context,
+        message: 'Başarıyla indirildi: $fileName',
+        isSuccess: true,
+        action: SnackBarAction(
+          label: 'GÖRÜNTÜLE',
+          textColor: Colors.white,
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => DownloadsScreen(
+                  initialFilter: isAudio ? 'audio' : 'video',
+                ),
+              ),
+            );
+          },
+        ),
+      );
       unawaited(AdmobService.instance.showInterstitialAd());
+    } catch (error) {
+      ClipboardAutoDownloadService.clearMemoryAndCache();
+      finishOverlayDownload(success: false, message: 'İndirme başarısız');
+      if (!mounted) return;
+      DownloadExceptionHandler.showErrorSnackBar(context, error);
     }
   }
 
