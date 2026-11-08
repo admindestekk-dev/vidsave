@@ -184,5 +184,27 @@ void main() {
 
       expect(find.byType(QuickDownloadWindow), findsOneWidget);
     });
+
+    testWidgets('5. Dismissing dialog does not re-detect same clipboard URL repeatedly', (
+      WidgetTester tester,
+    ) async {
+      const url = 'https://www.instagram.com/reel/C999999/';
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'Clipboard.getData') {
+              return {'text': url};
+            }
+            return null;
+          });
+
+      // First check detects the URL and marks it handled
+      final detected = await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
+      expect(detected, url);
+
+      // Dismissing dialog (without starting download) should NOT clear handled state
+      // Second check must return null because clipboard still holds the same URL
+      final rechecked = await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
+      expect(rechecked, isNull);
+    });
   });
 }

@@ -101,6 +101,11 @@ Future<void> _runExternalShareDownloads() async {
         }
       }
 
+      final extracted = ClipboardAutoDownloadService.extractUrl(url);
+      if (extracted != null && extracted.isNotEmpty) {
+        url = extracted;
+      }
+
       try {
         final file = await UnifiedDownloadEngine.instance.download(
           rawUrl: url,
@@ -377,7 +382,11 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   }
 
   Future<void> _checkPendingShareInterstitial() async {
-    if (!Platform.isAndroid || _isCheckingPendingShareInterstitial) return;
+    if (!Platform.isAndroid ||
+        _isCheckingPendingShareInterstitial ||
+        AdmobService.instance.isRunningInTest) {
+      return;
+    }
     _isCheckingPendingShareInterstitial = true;
     try {
       final pending = await _shareLifecycleChannel.invokeMethod<bool>(
@@ -548,7 +557,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       );
     } finally {
       _isClipboardPromptShowing = false;
-      ClipboardAutoDownloadService.clearMemoryAndCache();
       unawaited(AdmobService.instance.showInterstitialAd());
     }
   }

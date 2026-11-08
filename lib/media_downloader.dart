@@ -191,8 +191,13 @@ class ResolvedMedia {
 String evrenselTemizUrl(String hamUrl) {
   if (hamUrl.trim().isEmpty) return '';
 
-  // 1. Tırnak işaretlerini (" veya ') ve başta/sonda kalan boşlukları temizle
-  var link = hamUrl.replaceAll('"', '').replaceAll("'", '').trim();
+  final raw = hamUrl.trim();
+  final urlMatch =
+      RegExp(r'https?://[^\s<>"{}|\\^~\[\]`]+').firstMatch(raw);
+  var link = (urlMatch != null ? urlMatch.group(0)! : raw)
+      .replaceAll('"', '')
+      .replaceAll("'", '')
+      .trim();
 
   // 2. HTML kaçışları (&amp;)
   link = link.replaceAll('&amp;', '&');
@@ -1314,15 +1319,16 @@ class MediaDownloader {
         } catch (_) {}
       }
       final statusCode = e.response?.statusCode;
-      if (statusCode != null && (statusCode < 200 || statusCode >= 300)) {
-        throw MediaDownloadException('Medya indirilemedi (HTTP $statusCode).');
-      }
-    } catch (_) {
+      debugPrint(
+        'MediaDownloader Dio indirme hatası ($statusCode): $e. Yedek HTTP akışına geçiliyor...',
+      );
+    } catch (e) {
       if (await file.exists()) {
         try {
           await file.delete();
         } catch (_) {}
       }
+      debugPrint('MediaDownloader birincil akış hatası: $e. Yedek HTTP akışına geçiliyor...');
     }
 
     // 2. İkincil / Yedek İndirme Akışı (HTTP Client Streaming): Aynı başlık ve çerez maskesi ile
@@ -1524,6 +1530,9 @@ class MediaDownloader {
       return false;
     } on StateError catch (error) {
       debugPrint('MediaDownloader: Telefon depolama sonucu geçersiz: $error');
+      return false;
+    } catch (error) {
+      debugPrint('MediaDownloader: Dışa aktarma beklenmeyen hata: $error');
       return false;
     }
   }

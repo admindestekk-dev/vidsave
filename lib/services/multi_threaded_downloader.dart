@@ -152,7 +152,7 @@ class MultiThreadedDownloader {
       onProgress?.call(totalSize, totalSize);
       return targetFile;
     } catch (e) {
-      debugPrint('MultiThreadedDownloader hata: $e. Temizlik yapılıyor...');
+      debugPrint('MultiThreadedDownloader parçalı indirme hatası: $e. Standart tek parça indirmeye geçiliyor...');
       // Hata durumunda geçici parçaları temizle
       for (final chunk in chunkFiles) {
         if (chunk.existsSync()) {
@@ -161,7 +161,20 @@ class MultiThreadedDownloader {
           } catch (_) {}
         }
       }
-      rethrow;
+      // Parçalı indirme Range reddi veya kopma yaşadıysa tek parça akışla kurtar
+      await _dio.download(
+        url,
+        savePath,
+        options: Options(
+          headers: headers,
+          followRedirects: true,
+          maxRedirects: 10,
+        ),
+        onReceiveProgress: onProgress,
+        cancelToken: cancelToken,
+        deleteOnError: true,
+      );
+      return targetFile;
     }
   }
 }

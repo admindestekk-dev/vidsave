@@ -668,11 +668,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   }) async {
     if (!mounted) return;
 
-    // Diyalogları Otomatik Kapat (Auto-Dismiss UI)
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-
     // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing)
     // Bir indirme butonu tetiklendiği an, ilgili link değişkenini (_detectedVideoUrl)
     // derhal null veya boş metin haline getir.
@@ -740,6 +735,66 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       );
       unawaited(AdmobService.instance.showInterstitialAd());
     } catch (error) {
+      // Birincil link doğrudan CDN veya geçici token URL'si olup başarısız olduysa,
+      // adres çubuğundaki asıl sayfa/post URL'si üzerinden otomatik tekrar dene (Akıllı Emniyet Supabı)
+      final pageUrl = _urlBarController.text.trim();
+      final alternateUrl = (url != pageUrl &&
+              pageUrl.isNotEmpty &&
+              pageUrl.startsWith('http') &&
+              !isYouTubeUrl(pageUrl))
+          ? pageUrl
+          : null;
+
+      if (alternateUrl != null && mounted) {
+        try {
+          final file = await UnifiedDownloadEngine.instance.download(
+            rawUrl: alternateUrl,
+            type: isAudio ? 'mp3' : 'video',
+            onProgress: (received, total, progress, speed, status) {
+              if (!mounted) return;
+              final pct = ((progress ?? 0) * 100).clamp(0.0, 100.0);
+              setState(() {
+                _inlineDownloadProgress = pct;
+                _inlineDownloadSpeed = speed;
+              });
+            },
+          );
+
+          if (!mounted) return;
+          setState(() {
+            _detectedVideoUrl = null;
+            _isVideoActive = false;
+            _isInlineDownloading = false;
+            _inlineDownloadProgress = 0.0;
+            _inlineDownloadSpeed = '';
+          });
+          ClipboardAutoDownloadService.clearMemoryAndCache();
+
+          final fileName = file.path.split(Platform.pathSeparator).last;
+          showMicroToast(
+            context,
+            message: 'Başarıyla indirildi: $fileName',
+            isSuccess: true,
+            action: SnackBarAction(
+              label: 'GÖRÜNTÜLE',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => DownloadsScreen(
+                      initialFilter: isAudio ? 'audio' : 'video',
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+          unawaited(AdmobService.instance.showInterstitialAd());
+          return;
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       setState(() {
         _detectedVideoUrl = null;

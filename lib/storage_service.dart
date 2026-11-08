@@ -21,7 +21,7 @@ class StorageService {
   static Future<SharedPreferences?> _getPrefs() async {
     try {
       return await SharedPreferences.getInstance().timeout(
-        const Duration(milliseconds: 250),
+        const Duration(seconds: 10),
       );
     } catch (_) {
       return null;

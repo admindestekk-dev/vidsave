@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../backend_media_resolver.dart';
 import '../client_media_resolver.dart';
+import '../clipboard_auto_download_service.dart';
 import '../download_item_model.dart';
 import '../download_notification_service.dart';
 import '../ffmpeg_service.dart';
@@ -120,9 +121,11 @@ class UnifiedDownloadEngine {
     MediaDownloader? fallbackDownloader,
     bool showSystemNotifications = true,
   }) async {
-    ensureNotYouTubeUrl(rawUrl);
-    final cleanUrl = evrenselTemizUrl(rawUrl);
-    final targetUrl = cleanUrl.isNotEmpty ? cleanUrl : rawUrl.trim();
+    final extractedUrl = ClipboardAutoDownloadService.extractUrl(rawUrl);
+    final urlToDownload = (extractedUrl != null && extractedUrl.isNotEmpty) ? extractedUrl : rawUrl.trim();
+    ensureNotYouTubeUrl(urlToDownload);
+    final cleanUrl = evrenselTemizUrl(urlToDownload);
+    final targetUrl = cleanUrl.isNotEmpty ? cleanUrl : urlToDownload;
     final isAudio =
         type.toLowerCase() == 'mp3' || type.toLowerCase() == 'audio';
     final normalizedType = isAudio ? 'mp3' : 'video';

@@ -41,8 +41,13 @@ const Map<String, String> kUniversalDefaultHeaders = {
 String evrenselTemizUrlShield(String hamUrl) {
   if (hamUrl.trim().isEmpty) return '';
 
-  // 1. Tırnak işaretlerini (" veya ') ve başta/sonda kalan boşlukları temizle
-  var link = hamUrl.replaceAll('"', '').replaceAll("'", '').trim();
+  final raw = hamUrl.trim();
+  final urlMatch =
+      RegExp(r'https?://[^\s<>"{}|\\^~\[\]`]+').firstMatch(raw);
+  var link = (urlMatch != null ? urlMatch.group(0)! : raw)
+      .replaceAll('"', '')
+      .replaceAll("'", '')
+      .trim();
 
   // 2. HTML kaçışları (&amp;)
   link = link.replaceAll('&amp;', '&');

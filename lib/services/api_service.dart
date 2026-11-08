@@ -359,12 +359,16 @@ class ApiService {
     void Function(int received, int total)? onProgress,
     CancelToken? cancelToken,
   }) async {
-    // Relative URL geldiyse (örn. /download?job=xyz) baseUrl ile birleştir
+    // Relative URL geldiyse (örn. /download?job=xyz veya //cdn.com/...) baseUrl ile birleştir
     String effectiveUrl = downloadUrl.trim();
     if (!effectiveUrl.startsWith('http://') &&
         !effectiveUrl.startsWith('https://')) {
-      final leadingSlash = effectiveUrl.startsWith('/') ? '' : '/';
-      effectiveUrl = '$_baseUrl$leadingSlash$effectiveUrl';
+      if (effectiveUrl.startsWith('//')) {
+        effectiveUrl = 'https:$effectiveUrl';
+      } else {
+        final leadingSlash = effectiveUrl.startsWith('/') ? '' : '/';
+        effectiveUrl = '$_baseUrl$leadingSlash$effectiveUrl';
+      }
     }
 
     final targetFile = File(savePath);
