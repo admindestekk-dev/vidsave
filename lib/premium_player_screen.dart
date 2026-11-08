@@ -54,6 +54,8 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   double _dragValue = 0;
   bool _isDragging = false;
   bool _isSeeking = false;
+  DateTime? _lastAudioSeekTime;
+  Duration? _pendingAudioSeekTarget;
   bool _isLoading = true;
   bool _isRenaming = false;
   bool _isHandlingOrientation = false;
@@ -137,12 +139,28 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
       _updateWaveAnimation(state);
     });
     _audioPositionSubscription = player.onPositionChanged.listen((position) {
-      if (!mounted ||
-          _isDragging ||
-          _isSeeking ||
-          _audioState != PlayerState.playing) {
+      if (!mounted || _isDragging || _isSeeking) {
         return;
       }
+
+      // Android yerel MediaPlayer tamponundan gecikmeli gelen eski konumları yut
+      if (_lastAudioSeekTime != null && _pendingAudioSeekTarget != null) {
+        final elapsed = DateTime.now().difference(_lastAudioSeekTime!);
+        if (elapsed < const Duration(milliseconds: 650)) {
+          if ((position - _pendingAudioSeekTarget!).abs() > const Duration(seconds: 2)) {
+            return;
+          }
+        }
+      }
+
+      if (_audioDuration <= Duration.zero) {
+        player.getDuration().then((dur) {
+          if (dur != null && dur > Duration.zero && mounted) {
+            setState(() => _audioDuration = dur);
+          }
+        });
+      }
+
       setState(() => _audioPosition = position);
     });
     _audioDurationSubscription = player.onDurationChanged.listen((duration) {
@@ -276,8 +294,6 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
           if (_audioState == PlayerState.completed) {
             await player.seek(Duration.zero);
             if (mounted) setState(() => _audioPosition = Duration.zero);
-          } else if (_audioPosition > Duration.zero) {
-            await player.seek(_audioPosition);
           }
           if (mounted) setState(() => _audioState = PlayerState.playing);
           _updateWaveAnimation(PlayerState.playing);
@@ -302,12 +318,18 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
     final player = _audioPlayer;
     if (player == null) return;
     _isSeeking = true;
+    _pendingAudioSeekTarget = position;
+    _lastAudioSeekTime = DateTime.now();
+
     setState(() {
       _audioPosition = position;
       _dragValue = position.inMilliseconds.toDouble();
     });
+
     try {
       await player.seek(position);
+    } catch (e) {
+      debugPrint('PremiumPlayer seekAudio error: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -322,12 +344,14 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   }
 
   Future<void> _seekAudioBy(int seconds) async {
-    if (_audioDuration <= Duration.zero) return;
+    final effectiveDuration = _audioDuration > Duration.zero
+        ? _audioDuration
+        : const Duration(hours: 1);
     final target = _audioPosition + Duration(seconds: seconds);
     final boundedTarget = target < Duration.zero
         ? Duration.zero
-        : target > _audioDuration
-        ? _audioDuration
+        : target > effectiveDuration
+        ? effectiveDuration
         : target;
     await _seekAudio(boundedTarget);
   }
@@ -647,7 +671,12 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   }
 
   Widget _buildAudioPlayer() {
-    final maxMilliseconds = math.max(1, _audioDuration.inMilliseconds);
+    final effectiveDuration = _audioDuration > Duration.zero
+        ? _audioDuration
+        : (_audioPosition > Duration.zero
+            ? _audioPosition + const Duration(minutes: 1)
+            : const Duration(minutes: 3));
+    final maxMilliseconds = math.max(1000, effectiveDuration.inMilliseconds);
     final position = _isDragging
         ? _dragValue.clamp(0.0, maxMilliseconds.toDouble())
         : _audioPosition.inMilliseconds
@@ -714,21 +743,16 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
             max: maxMilliseconds.toDouble(),
             activeColor: _accent,
             inactiveColor: Colors.white24,
-            onChangeStart: _audioDuration <= Duration.zero
-                ? null
-                : (value) => setState(() {
-                    _isDragging = true;
-                    _dragValue = value;
-                  }),
-            onChanged: _audioDuration <= Duration.zero
-                ? null
-                : (value) => setState(() {
-                    _isDragging = true;
-                    _dragValue = value;
-                  }),
-            onChangeEnd: _audioDuration <= Duration.zero
-                ? null
-                : (value) => _seekAudio(Duration(milliseconds: value.round())),
+            onChangeStart: (value) => setState(() {
+              _isDragging = true;
+              _dragValue = value;
+            }),
+            onChanged: (value) => setState(() {
+              _isDragging = true;
+              _dragValue = value;
+            }),
+            onChangeEnd: (value) =>
+                _seekAudio(Duration(milliseconds: value.round())),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -757,9 +781,7 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
               IconButton(
                 key: const Key('premium_player_seek_backward'),
                 tooltip: '10 saniye geri',
-                onPressed: _audioDuration <= Duration.zero
-                    ? null
-                    : () => _seekAudioBy(-10),
+                onPressed: () => _seekAudioBy(-10),
                 icon: const Icon(Icons.replay_10_rounded),
                 color: Colors.white,
                 iconSize: 32,
@@ -782,9 +804,7 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
               IconButton(
                 key: const Key('premium_player_seek_forward'),
                 tooltip: '10 saniye ileri',
-                onPressed: _audioDuration <= Duration.zero
-                    ? null
-                    : () => _seekAudioBy(10),
+                onPressed: () => _seekAudioBy(10),
                 icon: const Icon(Icons.forward_10_rounded),
                 color: Colors.white,
                 iconSize: 32,

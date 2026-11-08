@@ -228,6 +228,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   double _dragValue = 0;
   bool _isDragging = false;
   bool _isSeeking = false;
+  DateTime? _lastSeekTime;
+  Duration? _pendingSeekTarget;
   bool _isPlaybackCommandPending = false;
   bool _isLoading = true;
   Object? _error;
@@ -316,12 +318,29 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       });
     });
     _positionSub = player.onPositionChanged.listen((position) {
-      if (!mounted ||
-          _isDragging ||
-          _isSeeking ||
-          _playerState != PlayerState.playing) {
+      if (!mounted || _isDragging || _isSeeking) {
         return;
       }
+
+      // Android'in asenkron yerel tamponundan gelen eski seek öncesi konumları yut
+      if (_lastSeekTime != null && _pendingSeekTarget != null) {
+        final elapsed = DateTime.now().difference(_lastSeekTime!);
+        if (elapsed < const Duration(milliseconds: 650)) {
+          if ((position - _pendingSeekTarget!).abs() > const Duration(seconds: 2)) {
+            return;
+          }
+        }
+      }
+
+      // Eğer süre henüz belirlenmemişse oynatıcıdan tekrar sorgula
+      if (_duration == _kFallbackDuration || _duration <= Duration.zero) {
+        player.getDuration().then((dur) {
+          if (dur != null && dur > Duration.zero && mounted) {
+            setState(() => _duration = dur);
+          }
+        });
+      }
+
       setState(() => _position = position);
     });
     _durationSub = player.onDurationChanged.listen((duration) {
@@ -365,8 +384,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       if (_playerState == PlayerState.completed) {
         await player.seek(Duration.zero);
         if (mounted) setState(() => _position = Duration.zero);
-      } else if (_position > Duration.zero) {
-        await player.seek(_position);
       }
       if (mounted) setState(() => _playerState = PlayerState.playing);
       await player.resume();
@@ -386,14 +403,20 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   Future<void> _seekTo(double seconds) async {
     final player = _player;
     if (player == null) return;
-    final target = Duration(seconds: seconds.round());
+    final target = Duration(milliseconds: (seconds * 1000).round());
     _isSeeking = true;
+    _pendingSeekTarget = target;
+    _lastSeekTime = DateTime.now();
+
     setState(() {
       _position = target;
       _dragValue = seconds;
     });
+
     try {
       await player.seek(target);
+    } catch (e) {
+      debugPrint('MusicPlayer seek error: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -428,11 +451,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final player = _player;
-    final durationSeconds = _duration.inSeconds.toDouble();
+    final durationSeconds = _duration.inMilliseconds / 1000.0;
     final maxSeconds = durationSeconds > 0 ? durationSeconds : 1.0;
     final displaySeconds = _isDragging
         ? _dragValue
-        : _position.inSeconds.toDouble().clamp(0.0, maxSeconds);
+        : (_position.inMilliseconds / 1000.0).clamp(0.0, maxSeconds);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F1E25),
@@ -706,15 +729,17 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     if (player == null) return;
     final target = _position - const Duration(seconds: 10);
     final boundedTarget = target < Duration.zero ? Duration.zero : target;
-    await _seekTo(boundedTarget.inSeconds.toDouble());
+    await _seekTo(boundedTarget.inMilliseconds / 1000.0);
   }
 
   Future<void> _seekForward() async {
     final player = _player;
     if (player == null) return;
+    final effectiveDuration =
+        _duration > Duration.zero ? _duration : const Duration(hours: 1);
     final target = _position + const Duration(seconds: 10);
-    final boundedTarget = target > _duration ? _duration : target;
-    await _seekTo(boundedTarget.inSeconds.toDouble());
+    final boundedTarget = target > effectiveDuration ? effectiveDuration : target;
+    await _seekTo(boundedTarget.inMilliseconds / 1000.0);
   }
 }
 
