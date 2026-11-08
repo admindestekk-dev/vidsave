@@ -400,8 +400,13 @@ class MainActivity : FlutterActivity() {
         return ext in setOf("mp3", "m4a", "wav", "aac", "ogg", "flac", "opus")
     }
 
+    private fun isImageFile(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        return ext in setOf("jpg", "jpeg", "png", "webp", "gif")
+    }
+
     private fun relativePathFor(fileName: String): String {
-        val subDir = if (isAudioFile(fileName)) "Mp3" else "Video"
+        val subDir = if (isAudioFile(fileName)) "Mp3" else if (isImageFile(fileName)) "Photo" else "Video"
         return "${Environment.DIRECTORY_DOWNLOADS}/VidSave/$subDir"
     }
 
@@ -441,7 +446,7 @@ class MainActivity : FlutterActivity() {
         fileName: String,
         mimeType: String,
     ): String {
-        val subDir = if (isAudioFile(fileName)) "Mp3" else "Video"
+        val subDir = if (isAudioFile(fileName)) "Mp3" else if (isImageFile(fileName)) "Photo" else "Video"
         val directory = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
             "VidSave/$subDir",

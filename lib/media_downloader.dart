@@ -1496,7 +1496,14 @@ class MediaDownloader {
           'flac',
           'opus',
         }.contains(ext);
-        final subFolder = isAudio ? 'Mp3' : 'Video';
+        final isImage = {
+          'jpg',
+          'jpeg',
+          'png',
+          'webp',
+          'gif',
+        }.contains(ext);
+        final subFolder = isAudio ? 'Mp3' : (isImage ? 'Photo' : 'Video');
 
         for (final basePath in [
           '/storage/emulated/0/Download/VidSave/$subFolder',

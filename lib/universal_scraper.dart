@@ -610,17 +610,28 @@ class UniversalScraper {
       }
       videoPatterns.addAll([
         RegExp(r'"download_url":"(.*?)"'),
-        RegExp(r'"url":\s*"(https://[^"]+\.mp4[^"]*)"'),
+        RegExp(r'"url":\s*"(https?://[^"]+\.mp4[^"]*)"'),
         RegExp(r'<video[^>]+src="([^"]+)"'),
         RegExp(r'<meta\s+property="og:video"\s+content="([^"]+)"'),
+        RegExp(r'"(https?://[^"]*(?:v1?\.pinimg\.com|pinimg\.com)/videos/mc/[^"]+)"'),
+        RegExp(r'"url":\s*"(https?://[^"]+\.m3u8[^"]*)"'),
+        RegExp(r'<source[^>]+src="([^"]+)"'),
       ]);
 
       for (final pattern in videoPatterns) {
         final match = pattern.firstMatch(html);
         if (match != null) {
           final rawUrl = (match.groupCount >= 1 ? match.group(1) : null) ?? match.group(0)!;
-          final cleanUrl = evrenselTemizUrlShield(rawUrl);
-          if (cleanUrl.isNotEmpty && cleanUrl.contains('.mp4')) {
+          var cleanUrl = evrenselTemizUrlShield(rawUrl);
+
+          // HLS .m3u8 akışı tespit edilirse doğrudan 720p/1080p MP4 tekil dosya adresine dönüştür
+          if (cleanUrl.contains('.m3u8') || cleanUrl.contains('/hls/')) {
+            cleanUrl = cleanUrl
+                .replaceAll('/hls/', '/720p/')
+                .replaceAll('.m3u8', '.mp4');
+          }
+
+          if (cleanUrl.isNotEmpty && (cleanUrl.contains('.mp4') || cleanUrl.contains('/videos/mc/'))) {
             return ResolvedMedia(
               url: Uri.parse(cleanUrl),
               fileName:

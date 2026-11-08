@@ -318,7 +318,7 @@ class ExternalShareDownloadService : Service() {
                 ?.takeIf { it.isNotBlank() }
                 ?: source.name
 
-            val subDir = if (isAudioFile(name)) "Mp3" else "Video"
+            val subDir = if (isAudioFile(name)) "Mp3" else if (isImageFile(name)) "Photo" else "Video"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/VidSave/$subDir"
                 val values = ContentValues().apply {
@@ -368,6 +368,11 @@ class ExternalShareDownloadService : Service() {
     private fun isAudioFile(fileName: String): Boolean {
         val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
         return ext in setOf("mp3", "m4a", "wav", "aac", "ogg", "flac", "opus")
+    }
+
+    private fun isImageFile(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        return ext in setOf("jpg", "jpeg", "png", "webp", "gif")
     }
 
     private fun uniqueName(fileName: String, relativePath: String): String {

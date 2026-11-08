@@ -2003,6 +2003,7 @@ def _unshorten_redirects(url: str) -> str:
                 "t.co",
                 "vm.tiktok.com",
                 "vt.tiktok.com",
+                "pin.it",
             )
         ):
             headers = {
@@ -2193,6 +2194,61 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                                 }
                     except Exception:
                         continue
+
+        # Pinterest High-Speed Video & Image Fallback Scraper
+        if "pinterest." in url or "pin.it" in url:
+            pin_headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Referer": "https://www.pinterest.com/",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Sec-Fetch-Mode": "navigate",
+            }
+            clean_pin = clean_pinterest_url(url)
+            pin_resp = requests.get(clean_pin, headers=pin_headers, allow_redirects=True, timeout=12)
+            if pin_resp.status_code == 200:
+                p_html = pin_resp.text
+                # 1. Direct .mp4 or .m3u8 video stream
+                v_patterns = [
+                    r'"download_url":"(.*?)"',
+                    r'"url":\s*"(https?://[^"]+\.mp4[^"]*)"',
+                    r'<video[^>]+src="([^"]+)"',
+                    r'<meta\s+property="og:video"\s+content="([^"]+)"',
+                    r'"(https?://[^"]*(?:v1?\.pinimg\.com|pinimg\.com)/videos/mc/[^"]+)"',
+                    r'"url":\s*"(https?://[^"]+\.m3u8[^"]*)"',
+                ]
+                for vp in v_patterns:
+                    vm = re.search(vp, p_html)
+                    if vm:
+                        raw_v = vm.group(1).replace(r"\/", "/").replace(r"\u0026", "&")
+                        if ".m3u8" in raw_v or "/hls/" in raw_v:
+                            raw_v = raw_v.replace("/hls/", "/720p/").replace(".m3u8", ".mp4")
+                        if ".mp4" in raw_v or "/videos/mc/" in raw_v:
+                            return {
+                                "url": raw_v,
+                                "title": "Pinterest Video",
+                                "ext": "mp4",
+                            }
+
+                # 2. Original / High-Res Image
+                img_patterns = [
+                    r'"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
+                    r'"url":\s*"(https://i\.pinimg\.com/[^"]+)"',
+                    r'<meta\s+property="og:image"\s+content="([^"]+)"',
+                ]
+                for ip in img_patterns:
+                    im = re.search(ip, p_html)
+                    if im:
+                        raw_img = im.group(1).replace(r"\/", "/").replace(r"\u0026", "&")
+                        return {
+                            "url": raw_img,
+                            "title": "Pinterest Image",
+                            "ext": "jpg",
+                        }
     except Exception as exc:
         logging.warning("Fallback regex scrape error: %s", exc)
     return None
