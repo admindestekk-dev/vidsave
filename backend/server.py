@@ -2212,12 +2212,35 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
             pin_resp = requests.get(clean_pin, headers=pin_headers, allow_redirects=True, timeout=12)
             if pin_resp.status_code == 200:
                 p_html = pin_resp.text
+
+                # If kind is photo/image, prioritize high-res image first!
+                if kind in ("photo", "image"):
+                    img_patterns = [
+                        r'"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
+                        r'"(https://i\.pinimg\.com/originals/[^"]+)"',
+                        r'"url":\s*"(https://i\.pinimg\.com/[^"]+)"',
+                        r'<meta\s+property="og:image"\s+content="([^"]+)"',
+                    ]
+                    for ip in img_patterns:
+                        im = re.search(ip, p_html)
+                        if im:
+                            raw_img = im.group(1).replace(r"\/", "/").replace(r"\u0026", "&")
+                            for size in ("/236x/", "/474x/", "/564x/", "/736x/"):
+                                raw_img = raw_img.replace(size, "/originals/")
+                            return {
+                                "url": raw_img,
+                                "title": "Pinterest Image",
+                                "ext": "jpg",
+                            }
+
                 # 1. Direct .mp4 or .m3u8 video stream
                 v_patterns = [
                     r'"download_url":"(.*?)"',
+                    r'"contentUrl":\s*"(https?://[^"]+\.mp4[^"]*)"',
                     r'"url":\s*"(https?://[^"]+\.mp4[^"]*)"',
                     r'<video[^>]+src="([^"]+)"',
                     r'<meta\s+property="og:video"\s+content="([^"]+)"',
+                    r'<meta\s+property="og:video:secure_url"\s+content="([^"]+)"',
                     r'"(https?://[^"]*(?:v1?\.pinimg\.com|pinimg\.com)/videos/mc/[^"]+)"',
                     r'"url":\s*"(https?://[^"]+\.m3u8[^"]*)"',
                 ]
@@ -2237,6 +2260,7 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                 # 2. Original / High-Res Image
                 img_patterns = [
                     r'"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
+                    r'"(https://i\.pinimg\.com/originals/[^"]+)"',
                     r'"url":\s*"(https://i\.pinimg\.com/[^"]+)"',
                     r'<meta\s+property="og:image"\s+content="([^"]+)"',
                 ]
@@ -2244,6 +2268,8 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                     im = re.search(ip, p_html)
                     if im:
                         raw_img = im.group(1).replace(r"\/", "/").replace(r"\u0026", "&")
+                        for size in ("/236x/", "/474x/", "/564x/", "/736x/"):
+                            raw_img = raw_img.replace(size, "/originals/")
                         return {
                             "url": raw_img,
                             "title": "Pinterest Image",
@@ -2371,7 +2397,7 @@ def api_analyze() -> Response | tuple[Response, int]:
                         ext = valid[0].get("ext") or "mp4"
 
     # 2. Fallback regex scraper if yt-dlp returned no stream URL
-    if not clean_download_url and not is_audio:
+    if not clean_download_url:
         fallback = _fallback_regex_scrape(target_url, kind)
         if fallback and fallback.get("url"):
             clean_download_url = fallback["url"]

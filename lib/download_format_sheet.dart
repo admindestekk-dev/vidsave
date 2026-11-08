@@ -100,6 +100,11 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
         });
   }
 
+  bool get _isPinterest {
+    final lower = widget.url.toLowerCase();
+    return lower.contains('pinterest.com') || lower.contains('pin.it');
+  }
+
   String _detectPlatformName(String url) {
     final lower = url.toLowerCase();
     if (lower.contains('instagram.com') || lower.contains('instagr.am')) {
@@ -423,6 +428,26 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
                   );
                 },
               ),
+              if (_isPinterest) ...[
+                const SizedBox(height: 10),
+                // 3. Görsel / Fotoğraf Seçeneği (Pinterest Özel)
+                _buildFormatOptionButton(
+                  key: const ValueKey('browser_download_photo_option'),
+                  icon: Icons.photo_library_rounded,
+                  iconColor: const Color(0xFFE60023),
+                  title: 'Görsel / Fotoğraf (Orijinal HD)',
+                  subtitle: 'Pinterest Orijinal Fotoğraf Dosyası (Photo)',
+                  onTap: () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
+                    widget.onFormatSelected(
+                      DownloadKind.photo,
+                      _urlController.text.trim(),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),

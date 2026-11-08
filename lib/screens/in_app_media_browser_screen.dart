@@ -518,10 +518,12 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   }
 
   bool _isFormatSheetOpen = false;
+  String? _lastDismissedClipboardUrl;
 
   void triggerDownloadForUrl(String? url) {
     if (!mounted) return;
     if (url != null && url.trim().isNotEmpty) {
+      if (url.trim() == _lastDismissedClipboardUrl) return;
       setState(() {
         _detectedVideoUrl = url.trim();
         _isVideoActive = true;
@@ -533,7 +535,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   }
 
   Future<void> _checkLocalClipboard() async {
-    if (!mounted || _isInlineDownloading) return;
+    if (!mounted || _isInlineDownloading || _isFormatSheetOpen) return;
     try {
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       final text = data?.text?.trim();
@@ -541,7 +543,8 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         final extracted = ClipboardAutoDownloadService.extractUrl(text);
         if (extracted != null &&
             extracted.isNotEmpty &&
-            extracted != _detectedVideoUrl) {
+            extracted != _detectedVideoUrl &&
+            extracted != _lastDismissedClipboardUrl) {
           triggerDownloadForUrl(extracted);
         }
       }
@@ -587,6 +590,8 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       },
     ).whenComplete(() {
       _isFormatSheetOpen = false;
+      _lastDismissedClipboardUrl = targetUrl;
+      ClipboardAutoDownloadService.markUrlAsHandled(targetUrl);
     });
   }
 
@@ -609,18 +614,21 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     ClipboardAutoDownloadService.clearMemoryAndCache();
 
     final isAudio = kind == DownloadKind.audio;
+    final isPhoto = kind == DownloadKind.photo;
 
     // Profesyonel Mikro Bildirim (Micro Toast): 2 saniyelik minimal turuncu toast
     showMicroToast(
       context,
-      message: isAudio ? 'MP3 indirmesi başlatılıyor…' : 'Video indirmesi başlatılıyor…',
+      message: isAudio
+          ? 'MP3 indirmesi başlatılıyor…'
+          : (isPhoto ? 'Fotoğraf indirmesi başlatılıyor…' : 'Video indirmesi başlatılıyor…'),
       isLoading: true,
     );
 
     try {
       final file = await UnifiedDownloadEngine.instance.download(
         rawUrl: url,
-        type: isAudio ? 'mp3' : 'video',
+        type: isAudio ? 'mp3' : (isPhoto ? 'photo' : 'video'),
         onProgress: (received, total, progress, speed, status) {
           if (!mounted) return;
           final pct = ((progress ?? 0) * 100).clamp(0.0, 100.0);

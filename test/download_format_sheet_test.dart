@@ -70,5 +70,56 @@ void main() {
         expect(find.text('İndirme formatı'), findsNothing);
       },
     );
+
+    testWidgets(
+      'shows Pinterest photo option when Pinterest URL is provided, selecting photo triggers DownloadKind.photo',
+      (WidgetTester tester) async {
+        DownloadKind? selectedKind;
+        String? selectedUrl;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => ElevatedButton(
+                  onPressed: () {
+                    DownloadFormatBottomSheet.show(
+                      context: context,
+                      url: 'https://www.pinterest.com/pin/123456789/',
+                      initialTitle: 'Pinterest Tasarım Postu',
+                      onFormatSelected: (kind, url) {
+                        selectedKind = kind;
+                        selectedUrl = url;
+                      },
+                    );
+                  },
+                  child: const Text('Open Pinterest Sheet'),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('Open Pinterest Sheet'));
+        await tester.pumpAndSettle();
+
+        // 1. Verify Pinterest badge
+        expect(find.text('Pinterest • Pin'), findsOneWidget);
+        expect(find.text('Pinterest Tasarım Postu'), findsOneWidget);
+
+        // 2. Verify photo option exists specifically for Pinterest
+        final photoOption = find.byKey(const ValueKey('browser_download_photo_option'));
+        expect(photoOption, findsOneWidget);
+        expect(find.text('Görsel / Fotoğraf (Orijinal HD)'), findsOneWidget);
+
+        // 3. Select Photo option
+        await tester.tap(photoOption);
+        await tester.pumpAndSettle();
+
+        expect(selectedKind, DownloadKind.photo);
+        expect(selectedUrl, 'https://www.pinterest.com/pin/123456789/');
+        expect(find.text('İndirme formatı'), findsNothing);
+      },
+    );
   });
 }

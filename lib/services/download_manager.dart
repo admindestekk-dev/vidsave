@@ -66,6 +66,13 @@ class DownloadManager {
 
   final Map<String, ActiveDownloadTask> _tasks = {};
 
+  List<ActiveDownloadTask> get activeTasks => _tasks.values.toList();
+
+  void clearAllTasks() {
+    _tasks.clear();
+    _notify();
+  }
+
   /// Dinleyiciye aktif görevlerin listesini fırlatır.
   final ValueNotifier<List<ActiveDownloadTask>> activeTasksNotifier =
       ValueNotifier<List<ActiveDownloadTask>>([]);

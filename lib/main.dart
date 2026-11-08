@@ -336,6 +336,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       widget.mediaDownloader ?? MediaDownloader();
 
   Timer? _clipboardPollingTimer;
+  String? _lastDismissedUrl;
 
   @override
   void initState() {
@@ -344,11 +345,11 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     _requestMediaPermission();
     // Uygulama açılışında panoyu ilk kez kontrol et
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkClipboard();
+      _checkClipboard(checkOverlayRequest: true);
       _checkPendingShareInterstitial();
     });
     // Kullanıcı uygulama içindeyken (tarayıcıda veya başka sekmedeyken)
-    // bir bağlantıyı kopyaladığı an indirme penceresinin hemen açılabilmesi için
+    // yeni bir bağlantıyı kopyaladığı an indirme penceresinin hemen açılabilmesi için
     // düzenli pano kontrolü başlat (test ortamı haricinde)
     if (!AdmobService.instance.isRunningInTest) {
       _clipboardPollingTimer = Timer.periodic(
@@ -356,7 +357,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
         (_) {
           if (mounted &&
               WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
-            _checkClipboard();
+            _checkClipboard(checkOverlayRequest: false);
           }
         },
       );
@@ -375,7 +376,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Kullanıcı Instagram veya TikTok'tan link kopyalayıp uygulamaya geri döndüğünde (resumed)
     if (state == AppLifecycleState.resumed) {
-      _checkClipboard();
+      _checkClipboard(checkOverlayRequest: true);
       _checkPendingShareInterstitial();
       unawaited(AdmobService.instance.showAppOpenAdIfAvailable());
     }
@@ -414,14 +415,15 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   }
 
   /// Pano içeriğini ve dış overlay isteğini kontrol eder.
-  Future<void> _checkClipboard() async {
-    if (_isCheckingClipboard) return;
+  Future<void> _checkClipboard({bool checkOverlayRequest = false}) async {
+    if (_isCheckingClipboard || _isClipboardPromptShowing) return;
     _isCheckingClipboard = true;
     try {
       // 1. Dış overlay butonundan gelen doğrudan bir bağlantı var mı?
+      // Yalnızca uygulama ilk açıldığında veya öne getirildiğinde kontrol edilir.
       String? url;
       var openDownloadFromOverlay = false;
-      if (Platform.isAndroid) {
+      if (checkOverlayRequest && Platform.isAndroid) {
         try {
           final pendingRequest =
               await ExternalAppDownloadOverlay.getPendingDownloadRequest();
@@ -439,6 +441,11 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
 
       // 2. Yoksa panodaki kopyalanmış desteklenen URL'yi kontrol et
       url ??= await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
+
+      // Kullanıcının daha önce 'X' ile kapattığı link ise tekrar açma
+      if (url != null && url == _lastDismissedUrl) {
+        return;
+      }
 
       if ((url != null || openDownloadFromOverlay) && mounted) {
         if (_selectedIndex == 0) {
@@ -472,11 +479,12 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   }) async {
     if (_isClipboardPromptShowing) return;
     _isClipboardPromptShowing = true;
+    final targetUrl = url;
 
     try {
       await DownloadFormatBottomSheet.show(
         context: context,
-        url: url ?? '',
+        url: targetUrl ?? '',
         allowUrlInput: allowUrlInput,
         resolver: _mediaResolver,
         onFormatSelected: (kind, selectedUrl) async {
@@ -494,6 +502,12 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       );
     } finally {
       _isClipboardPromptShowing = false;
+      // Kullanıcı pencereyi 'X' veya dışa dokunarak kapattıysa
+      // aynı URL'nin tekrar tekrar art arda açılmasını engelle
+      if (targetUrl != null && targetUrl.isNotEmpty) {
+        _lastDismissedUrl = targetUrl;
+        unawaited(ClipboardAutoDownloadService.markUrlAsHandled(targetUrl));
+      }
     }
   }
 
@@ -528,7 +542,9 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
 
       final file = await UnifiedDownloadEngine.instance.download(
         rawUrl: selectedUrl,
-        type: kind == DownloadKind.audio ? 'mp3' : 'video',
+        type: kind == DownloadKind.audio
+            ? 'mp3'
+            : (kind == DownloadKind.photo ? 'photo' : 'video'),
         onProgress: returnToSourceApp && Platform.isAndroid
             ? (received, total, progress, speed, status) {
                 final percent = ((progress ?? 0) * 100).floor().clamp(0, 100);

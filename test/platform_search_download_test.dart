@@ -9,6 +9,7 @@ import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/media_downloader.dart';
 import 'package:vid_downloader_app/media_library.dart';
+import 'package:vid_downloader_app/services/download_manager.dart';
 
 class _MockMediaLibrary implements MediaLibrary {
   const _MockMediaLibrary();
@@ -116,6 +117,11 @@ class _MockDownloader extends MediaDownloader {
 void main() {
   setUp(() {
     AdmobService.instance.disableAdsForTesting = true;
+    DownloadManager.instance.clearAllTasks();
+  });
+
+  tearDown(() {
+    DownloadManager.instance.clearAllTasks();
   });
 
   testWidgets('tapping platform tile opens search modal and allows downloading specific quality directly', (

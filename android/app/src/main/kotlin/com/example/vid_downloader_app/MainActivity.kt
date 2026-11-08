@@ -282,6 +282,8 @@ class MainActivity : FlutterActivity() {
                     intent?.removeExtra(
                         ExternalAppDownloadOverlayService.EXTRA_OPEN_DOWNLOAD,
                     )
+                    val cleanIntent = Intent(this, MainActivity::class.java)
+                    setIntent(cleanIntent)
                     result.success(
                         mapOf(
                             "openDownload" to (shouldOpen || url != null),

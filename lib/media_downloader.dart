@@ -40,8 +40,8 @@ abstract class MediaResolver {
   Future<List<SearchResultItem>> search(String query);
 }
 
-/// Whether we want the original video or an extracted audio track.
-enum DownloadKind { video, audio }
+/// Whether we want the original video, an extracted audio track, or a photo/image.
+enum DownloadKind { video, audio, photo }
 
 /// One selectable resolution of a previewed link.
 class VideoQuality {

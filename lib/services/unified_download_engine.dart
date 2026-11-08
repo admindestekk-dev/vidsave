@@ -128,12 +128,17 @@ class UnifiedDownloadEngine {
     final targetUrl = cleanUrl.isNotEmpty ? cleanUrl : urlToDownload;
     final isAudio =
         type.toLowerCase() == 'mp3' || type.toLowerCase() == 'audio';
-    final normalizedType = isAudio ? 'mp3' : 'video';
+    final isPhoto =
+        type.toLowerCase() == 'photo' ||
+        type.toLowerCase() == 'image' ||
+        type.toLowerCase() == 'picture' ||
+        type.toLowerCase() == 'foto';
+    final normalizedType = isAudio ? 'mp3' : (isPhoto ? 'photo' : 'video');
 
     final notifService = DownloadNotificationService.instance;
     final notificationId = notifService.allocateNotificationId();
     final defaultTitle =
-        preferredTitle ?? (isAudio ? 'MP3 İndirme' : 'Video İndirme');
+        preferredTitle ?? (isAudio ? 'MP3 İndirme' : (isPhoto ? 'Görsel İndirme' : 'Video İndirme'));
     int lastNotifPercent = -1;
 
     DateTime? lastProgressTime;
@@ -204,7 +209,7 @@ class UnifiedDownloadEngine {
               .trim();
           final safeName = cleanFileName.isNotEmpty
               ? cleanFileName
-              : 'vidsave_media.${normalizedType == 'mp3' ? 'mp3' : 'mp4'}';
+              : 'vidsave_media.${normalizedType == 'mp3' ? 'mp3' : (isPhoto ? 'jpg' : 'mp4')}';
 
           var uniqueName = safeName;
           var copyIndex = 1;
@@ -336,7 +341,7 @@ class UnifiedDownloadEngine {
             DownloadItemModel(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               name: finalFileName,
-              type: normalizedType == 'mp3' ? 'audio' : 'video',
+              type: normalizedType == 'mp3' ? 'audio' : (isPhoto ? 'photo' : 'video'),
               sizeInBytes: fileSize,
               filePath: downloadedFile.path,
               downloadedAt: DateTime.now(),
@@ -373,7 +378,9 @@ class UnifiedDownloadEngine {
       // -----------------------------------------------------------------------
       // 2. AŞAMA: CİHAZ İÇİ EMNİYET MOTORU (ClientMediaResolver & MediaDownloader)
       // -----------------------------------------------------------------------
-      final kind = isAudio ? DownloadKind.audio : DownloadKind.video;
+      final kind = isAudio
+          ? DownloadKind.audio
+          : (isPhoto ? DownloadKind.photo : DownloadKind.video);
       final effectiveUri = Uri.tryParse(targetUrl) ?? Uri.parse(rawUrl);
 
       final resolver =
@@ -527,7 +534,7 @@ class UnifiedDownloadEngine {
         DownloadItemModel(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           name: finalFileName,
-          type: normalizedType == 'mp3' ? 'audio' : 'video',
+          type: normalizedType == 'mp3' ? 'audio' : (isPhoto ? 'photo' : 'video'),
           sizeInBytes: fileSize,
           filePath: targetDownloadedFile.path,
           downloadedAt: DateTime.now(),

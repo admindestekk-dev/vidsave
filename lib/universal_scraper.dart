@@ -591,10 +591,41 @@ class UniversalScraper {
 
   /// C) PINTEREST: Kısa link yönlendirmesinden gelen HTML sayfa kaynağını
   /// indirip, <script> etiketlerindeki gizli .mp4 veya orijinal .jpg adreslerini ayıklar.
-  Future<ResolvedMedia> extractPinterest(Uri source) async {
+  Future<ResolvedMedia> extractPinterest(
+    Uri source, {
+    DownloadKind kind = DownloadKind.video,
+  }) async {
     try {
       final res = await _dio.get<String>(source.toString());
       final html = res.data ?? '';
+
+      // Eğer kullanıcı fotoğraf/resim formatı istediyse önce yüksek çözünürlüklü görselleri çek
+      if (kind == DownloadKind.photo) {
+        final imgPatterns = [
+          RegExp(r'"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"'),
+          RegExp(r'"url":\s*"(https://i\.pinimg\.com/[^"]+)"'),
+          RegExp(r'<meta\s+property="og:image"\s+content="([^"]+)"'),
+        ];
+        for (final pattern in imgPatterns) {
+          final match = pattern.firstMatch(html);
+          if (match != null) {
+            final rawUrl = match.group(1)!;
+            final cleanUrl = evrenselTemizUrlShield(rawUrl);
+            if (cleanUrl.isNotEmpty) {
+              return ResolvedMedia(
+                url: Uri.parse(cleanUrl),
+                fileName:
+                    'pinterest_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                mimeType: 'image/jpeg',
+                downloadHeaders: {
+                  'Referer': 'https://www.pinterest.com/',
+                  'User-Agent': kUniversalDesktopUserAgent,
+                },
+              );
+            }
+          }
+        }
+      }
 
       // 1. Video URL Regex Kalıpları
       final videoPatterns = <RegExp>[];
@@ -657,13 +688,21 @@ class UniversalScraper {
       for (final pattern in imagePatterns) {
         final match = pattern.firstMatch(html);
         if (match != null) {
-          final rawUrl = match.group(1)!;
-          final cleanUrl = evrenselTemizUrlShield(rawUrl);
+          final rawUrl = (match.groupCount >= 1 ? match.group(1) : null) ?? match.group(0)!;
+          var cleanUrl = evrenselTemizUrlShield(rawUrl);
+          // 564x/736x/236x gibi küçük önizlemeleri en yüksek kaliteli originals klasörüne yükselt
+          cleanUrl = cleanUrl
+              .replaceAll('/236x/', '/originals/')
+              .replaceAll('/474x/', '/originals/')
+              .replaceAll('/564x/', '/originals/')
+              .replaceAll('/736x/', '/originals/');
+
           if (cleanUrl.isNotEmpty) {
             return ResolvedMedia(
               url: Uri.parse(cleanUrl),
               fileName:
                   'pinterest_${DateTime.now().millisecondsSinceEpoch}.jpg',
+              mimeType: 'image/jpeg',
               downloadHeaders: {
                 'Referer': 'https://www.pinterest.com/',
                 'User-Agent': kUniversalDesktopUserAgent,
@@ -1655,7 +1694,7 @@ class UniversalScraper {
           host.contains('fb.com')) {
         result = await extractFacebook(effectiveSource);
       } else if (host.contains('pinterest.com') || host.contains('pin.it')) {
-        result = await extractPinterest(effectiveSource);
+        result = await extractPinterest(effectiveSource, kind: kind);
       } else if (host.contains('twitter.com') ||
           host.contains('x.com') ||
           host.contains('t.co')) {

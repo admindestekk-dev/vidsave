@@ -133,4 +133,14 @@ class ClipboardAutoDownloadService {
   static void resetLastHandled() {
     _lastHandledUrl = null;
   }
+
+  /// Kullanıcı pencereyi 'X' ile kapattığında veya indirmek istemediğinde,
+  /// aynı bağlantının art arda tekrar açılmaması için işlenmiş olarak kaydeder.
+  static Future<void> markUrlAsHandled(String url) async {
+    _lastHandledUrl = url;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(_lastHandledUrlKey, _fingerprint(url));
+    } catch (_) {}
+  }
 }
