@@ -279,7 +279,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       function findPostUrl(videoEl) {
         if (!videoEl) return window.location.href;
         try {
-          var anchor = videoEl.closest('a[href*="/reel/"], a[href*="/p/"], a[href*="/watch"], a[href*="/video/"], a[href*="/shorts/"]');
+          var anchor = videoEl.closest('a[href*="/reel/"], a[href*="/p/"], a[href*="/watch"], a[href*="/video/"], a[href*="/status/"], a[href*="/shorts/"]');
           if (anchor && anchor.href) {
             return anchor.href;
           }

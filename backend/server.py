@@ -2257,7 +2257,63 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                                 "ext": "mp4",
                             }
 
-                # 2. Original / High-Res Image
+                # Twitter (X) High-Speed Bridge Fallback (FxTwitter API)
+                if "twitter.com" in url or "x.com" in url:
+                    tw_match = re.search(r"status/(\d+)", url)
+                    if tw_match:
+                        tw_id = tw_match.group(1)
+                        try:
+                            fx_resp = requests.get(
+                                f"https://api.fxtwitter.com/status/{tw_id}",
+                                headers={"User-Agent": "Mozilla/5.0"},
+                                timeout=10,
+                            )
+                            if fx_resp.status_code == 200:
+                                fx_data = fx_resp.json().get("tweet", {})
+                                fx_media = fx_data.get("media", {})
+                                if isinstance(fx_media, dict):
+                                    fx_videos = fx_media.get("videos", [])
+                                    if fx_videos:
+                                        best_v = max(
+                                            fx_videos,
+                                            key=lambda v: (v.get("bitrate") or 0) if isinstance(v, dict) else 0,
+                                        )
+                                        v_url = best_v.get("url") if isinstance(best_v, dict) else None
+                                        if v_url:
+                                            return {
+                                                "url": v_url,
+                                                "title": fx_data.get("text") or f"Twitter Video {tw_id}",
+                                                "ext": "mp4",
+                                            }
+                        except Exception:
+                            pass
+
+                # Dailymotion Metadata Fallback Scraper
+                if "dailymotion.com" in url or "dai.ly" in url:
+                    dm_match = re.search(r"(?:dailymotion\.com/video/|dai\.ly/)([a-zA-Z0-9]+)", url)
+                    if dm_match:
+                        dm_id = dm_match.group(1)
+                        try:
+                            dm_meta = requests.get(
+                                f"https://www.dailymotion.com/player/metadata/video/{dm_id}",
+                                headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.dailymotion.com/"},
+                                timeout=10,
+                            )
+                            if dm_meta.status_code == 200:
+                                dm_json = dm_meta.json()
+                                auto_streams = dm_json.get("qualities", {}).get("auto", [])
+                                if auto_streams:
+                                    stream_url = auto_streams[0].get("url")
+                                    if stream_url:
+                                        return {
+                                            "url": stream_url,
+                                            "title": dm_json.get("title") or f"Dailymotion Video {dm_id}",
+                                            "ext": "mp4",
+                                        }
+                        except Exception:
+                            pass
+
+                # Original / High-Res Image
                 img_patterns = [
                     r'"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
                     r'"(https://i\.pinimg\.com/originals/[^"]+)"',

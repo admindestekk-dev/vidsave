@@ -264,10 +264,24 @@ class UniversalScraper {
             options.headers['Origin'] = '${uri.scheme}://${uri.host}';
           }
 
+          // Dailymotion / Akamai CDN (.dmcdn.net) gibi korumalı CDN sunucularına tarayıcı gezinme başlıkları (Sec-Fetch-*, Upgrade-Insecure-Requests) ve çerez gönderildiğinde 403 Forbidden döner
+          final isDm = host.contains('dmcdn.net') || host.contains('dailymotion.com');
+          if (isDm) {
+            options.headers.remove('Sec-Fetch-Mode');
+            options.headers.remove('Sec-Fetch-Site');
+            options.headers.remove('Sec-Fetch-Dest');
+            options.headers.remove('Upgrade-Insecure-Requests');
+            options.headers['User-Agent'] = 'okhttp/4.9.2';
+          }
+
           // B) Cihaz Hafızasından Oturum Çerezlerinin (Cookie) Enjeksiyonu
-          final cookieHeader = await _cookieManager.getCookieHeader(uri);
-          if (cookieHeader != null && cookieHeader.isNotEmpty) {
-            options.headers['Cookie'] = cookieHeader;
+          // Eğer istek 'no_cookie' bayrağı taşıyorsa veya Dailymotion CDN'e gidiyorsa çerez gönderme
+          final skipCookie = isDm || options.extra['no_cookie'] == true;
+          if (!skipCookie) {
+            final cookieHeader = await _cookieManager.getCookieHeader(uri);
+            if (cookieHeader != null && cookieHeader.isNotEmpty) {
+              options.headers['Cookie'] = cookieHeader;
+            }
           }
 
           handler.next(options);
@@ -721,14 +735,63 @@ class UniversalScraper {
     }
   }
 
-  /// D) TWITTER (X): t.co kısa linklerinin HTML sayfasını veya açık
-  /// VxTwitter/FxTwitter API'sini kullanarak ham video adresini ayıklar.
+  /// D) TWITTER (X): FxTwitter / VxTwitter API, tweet-embed ve yedek köprüleri
+  /// kullanarak ham MP4 video veya ses adresini ayıklar.
   Future<ResolvedMedia> extractTwitter(Uri source) async {
     try {
-      // 1. VxTwitter / FxTwitter istemci taraflı ücretsiz JSON köprüsü (Sıfır Maliyet)
       final tweetMatch = RegExp(r'status/(\d+)').firstMatch(source.toString());
       if (tweetMatch != null) {
         final tweetId = tweetMatch.group(1)!;
+
+        // 1. FxTwitter API (https://api.fxtwitter.com/status/{id})
+        try {
+          final fxRes = await _dio.get<Map<String, dynamic>>(
+            'https://api.fxtwitter.com/status/$tweetId',
+            options: Options(
+              headers: {
+                'User-Agent': kUniversalDesktopUserAgent,
+                'Accept': 'application/json',
+              },
+              validateStatus: (status) => status != null && status < 400,
+            ),
+          );
+          final tweet = fxRes.data?['tweet'];
+          if (tweet is Map) {
+            final media = tweet['media'];
+            if (media is Map) {
+              final videos = media['videos'] as List<dynamic>?;
+              if (videos != null && videos.isNotEmpty) {
+                // En yüksek kaliteli videoyu seç
+                String? bestUrl;
+                int bestBitrate = -1;
+                for (final v in videos) {
+                  if (v is Map) {
+                    final u = v['url']?.toString();
+                    final bitrate = (v['bitrate'] as num?)?.toInt() ?? 0;
+                    if (u != null && u.isNotEmpty && bitrate >= bestBitrate) {
+                      bestBitrate = bitrate;
+                      bestUrl = u;
+                    }
+                  }
+                }
+                bestUrl ??= (videos.first as Map?)?['url']?.toString();
+                if (bestUrl != null && bestUrl.isNotEmpty) {
+                  final cleanUrl = evrenselTemizUrlShield(bestUrl);
+                  return ResolvedMedia(
+                    url: Uri.parse(cleanUrl),
+                    fileName: 'twitter_${tweetId}_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                    downloadHeaders: {
+                      'Referer': 'https://twitter.com/',
+                      'User-Agent': kUniversalDesktopUserAgent,
+                    },
+                  );
+                }
+              }
+            }
+          }
+        } catch (_) {}
+
+        // 2. VxTwitter API (https://api.vxtwitter.com/Twitter/status/{id})
         try {
           final vxRes = await _dio.get<Map<String, dynamic>>(
             'https://api.vxtwitter.com/Twitter/status/$tweetId',
@@ -737,6 +800,7 @@ class UniversalScraper {
                 'User-Agent': kUniversalDesktopUserAgent,
                 'Sec-Fetch-Mode': 'navigate',
               },
+              validateStatus: (status) => status != null && status < 400,
             ),
           );
           final data = vxRes.data;
@@ -747,8 +811,7 @@ class UniversalScraper {
               final cleanUrl = evrenselTemizUrlShield(videoUrl);
               return ResolvedMedia(
                 url: Uri.parse(cleanUrl),
-                fileName:
-                    'twitter_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                fileName: 'twitter_${tweetId}_${DateTime.now().millisecondsSinceEpoch}.mp4',
                 downloadHeaders: {
                   'Referer': 'https://twitter.com/',
                   'User-Agent': kUniversalDesktopUserAgent,
@@ -757,9 +820,51 @@ class UniversalScraper {
             }
           }
         } catch (_) {}
+
+        // 3. FxTwitter / Fixupx Discord Bot Meta Tag Köprüsü
+        final bridgeUrls = [
+          'https://fxtwitter.com/status/$tweetId',
+          'https://fixupx.com/status/$tweetId',
+          'https://vxtwitter.com/status/$tweetId',
+        ];
+        for (final bUrl in bridgeUrls) {
+          try {
+            final bRes = await _dio.get<String>(
+              bUrl,
+              options: Options(
+                headers: {
+                  'User-Agent':
+                      'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)',
+                  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                },
+                validateStatus: (status) => status != null && status < 400,
+              ),
+            );
+            final bHtml = bRes.data ?? '';
+            final videoMatch = RegExp(
+                  r'''<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']''',
+                ).firstMatch(bHtml) ??
+                RegExp(
+                  r'''<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:video(?::secure_url)?["']''',
+                ).firstMatch(bHtml);
+            if (videoMatch != null) {
+              final cleanUrl = evrenselTemizUrlShield(videoMatch.group(1)!);
+              if (cleanUrl.isNotEmpty && (cleanUrl.contains('.mp4') || cleanUrl.contains('twimg'))) {
+                return ResolvedMedia(
+                  url: Uri.parse(cleanUrl),
+                  fileName: 'twitter_${tweetId}_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                  downloadHeaders: {
+                    'Referer': 'https://twitter.com/',
+                    'User-Agent': kUniversalDesktopUserAgent,
+                  },
+                );
+              }
+            }
+          } catch (_) {}
+        }
       }
 
-      // 2. Doğrudan HTML ve Script Kaynağı Taraması
+      // 4. Doğrudan HTML ve Script Kaynağı Taraması
       final res = await _dio.get<String>(source.toString());
       final html = res.data ?? '';
 
@@ -1187,17 +1292,18 @@ class UniversalScraper {
           }
 
           // 4. HLS (.m3u8) Akışı Adayı: Progressive MP4 yoksa parçalı HLS yayınını MP4 olarak akıt
+          // Not: DRM korumalı (cbcs, cenc) akışlar hariç tutulur
           final hlsPatterns = [
             RegExp(r'"url":\s*"(https://[^"]*(?:skyfire|vimeocdn|akfire|fastly)[^"]*\.m3u8[^"]*)"'),
             RegExp(r'"default_cdn":\s*"[^"]*",.*?"url":\s*"(https://[^"]+\.m3u8[^"]*)"'),
             RegExp(r'"avc_url":\s*"(https://[^"]+\.m3u8[^"]*)"'),
           ];
           for (final pattern in hlsPatterns) {
-            final hlsMatch = pattern.firstMatch(hamMetin);
-            if (hlsMatch != null) {
-              final rawHls = hlsMatch.group(1);
+            for (final match in pattern.allMatches(hamMetin)) {
+              final rawHls = match.group(1);
               if (rawHls != null && rawHls.isNotEmpty) {
                 final cleanHlsUrl = evrenselTemizUrlShield(rawHls);
+                if (cleanHlsUrl.contains('/drm/')) continue; // Şifreli DRM akışlarını geç
                 final fileSuffix = videoId ?? DateTime.now().millisecondsSinceEpoch.toString();
                 return ResolvedMedia(
                   url: Uri.parse(cleanHlsUrl),
@@ -1240,6 +1346,13 @@ class UniversalScraper {
         final videoId = dmMatch.group(1)!;
         final metaRes = await _dio.get<Map<String, dynamic>>(
           'https://www.dailymotion.com/player/metadata/video/$videoId',
+          options: Options(
+            headers: {
+              'User-Agent': 'okhttp/4.9.2',
+              'Referer': 'https://www.dailymotion.com/',
+            },
+            extra: {'no_cookie': true},
+          ),
         );
         final qualities = metaRes.data?['qualities'];
         if (qualities is Map) {
@@ -1253,9 +1366,16 @@ class UniversalScraper {
                 fileName: 'dailymotion_$videoId.mp4',
                 downloadHeaders: {
                   'Referer': 'https://www.dailymotion.com/',
-                  'User-Agent': kUniversalDesktopUserAgent,
+                  'User-Agent': 'okhttp/4.9.2',
                 },
-              byteStreamProvider: () => _streamHlsSegments(cleanUrl),
+                byteStreamProvider: () => _streamHlsSegments(
+                  cleanUrl,
+                  customHeaders: {
+                    'User-Agent': 'okhttp/4.9.2',
+                    'Referer': 'https://www.dailymotion.com/',
+                    'Origin': 'https://www.dailymotion.com',
+                  },
+                ),
               );
             }
           }
@@ -1301,23 +1421,57 @@ class UniversalScraper {
 
     final masterRes = await _dio.get<String>(
       masterM3u8Url,
-      options: Options(headers: headers),
+      options: Options(headers: headers, extra: {'no_cookie': true}),
     );
     final masterLines = (masterRes.data ?? '').split('\n');
 
     // 1. En yüksek kaliteli alt playlist'i seç
+    // Video veya ses yayını olan playlist'leri tespit et (alt yazı playlist'lerini hariç tut)
     String? chosenPlaylistUrl;
+    final candidatePlaylists = <Map<String, dynamic>>[];
+    String? currentStreamInf;
+
     for (final line in masterLines) {
       final t = line.trim();
-      if (t.startsWith('http')) {
-        chosenPlaylistUrl = t;
-        if (t.contains('1080') || t.contains('720')) {
-          break;
-        }
+      if (t.startsWith('#EXT-X-STREAM-INF:')) {
+        currentStreamInf = t;
       } else if (t.isNotEmpty && !t.startsWith('#')) {
-        chosenPlaylistUrl = masterUri.resolve(t).toString();
-        if (t.contains('1080') || t.contains('720')) {
-          break;
+        final resolved = t.startsWith('http') ? t : masterUri.resolve(t).toString();
+        candidatePlaylists.add({
+          'url': resolved,
+          'inf': currentStreamInf ?? '',
+        });
+        currentStreamInf = null;
+      }
+    }
+
+    if (candidatePlaylists.isNotEmpty) {
+      // Çözünürlük ve bitrate'e göre en yüksek kaliteli olanı seç
+      candidatePlaylists.sort((a, b) {
+        final infA = (a['inf'] as String).toLowerCase();
+        final infB = (b['inf'] as String).toLowerCase();
+        int score(String inf) {
+          if (inf.contains('1080')) return 1080;
+          if (inf.contains('720')) return 720;
+          if (inf.contains('540')) return 540;
+          if (inf.contains('480')) return 480;
+          if (inf.contains('360')) return 360;
+          if (inf.contains('240')) return 240;
+          return 100;
+        }
+        return score(infB).compareTo(score(infA));
+      });
+      chosenPlaylistUrl = candidatePlaylists.first['url'] as String;
+    } else {
+      // Klasik satır satır tarama fallback
+      for (final line in masterLines) {
+        final t = line.trim();
+        if (t.startsWith('http')) {
+          chosenPlaylistUrl = t;
+          if (t.contains('1080') || t.contains('720')) break;
+        } else if (t.isNotEmpty && !t.startsWith('#')) {
+          chosenPlaylistUrl = masterUri.resolve(t).toString();
+          if (t.contains('1080') || t.contains('720')) break;
         }
       }
     }
@@ -1329,7 +1483,7 @@ class UniversalScraper {
     final subUri = Uri.parse(chosenPlaylistUrl);
     final subRes = await _dio.get<String>(
       chosenPlaylistUrl,
-      options: Options(headers: headers),
+      options: Options(headers: headers, extra: {'no_cookie': true}),
     );
     final subLines = (subRes.data ?? '').split('\n');
 
@@ -1356,6 +1510,7 @@ class UniversalScraper {
         options: Options(
           responseType: ResponseType.bytes,
           headers: headers,
+          extra: {'no_cookie': true},
         ),
       );
       if (initRes.data != null && initRes.data!.isNotEmpty) {
@@ -1371,6 +1526,7 @@ class UniversalScraper {
         options: Options(
           responseType: ResponseType.bytes,
           headers: headers,
+          extra: {'no_cookie': true},
         ),
       );
       if (segRes.data != null && segRes.data!.isNotEmpty) {
