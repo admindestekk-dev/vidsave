@@ -1409,6 +1409,7 @@ class VidSaveBrandTitle extends StatelessWidget {
               height: 36,
               width: 36,
               fit: BoxFit.cover,
+              filterQuality: FilterQuality.high,
             ),
           ),
         ),

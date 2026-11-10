@@ -323,6 +323,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                       width: 42,
                       height: 42,
                       fit: BoxFit.cover,
+                      filterQuality: FilterQuality.high,
                       errorBuilder: (context, error, stackTrace) => Container(
                         width: 42,
                         height: 42,
