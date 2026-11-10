@@ -435,6 +435,24 @@ class MainActivity : FlutterActivity() {
                 put(MediaStore.MediaColumns.IS_PENDING, 0)
             }
             resolver.update(uri, publishedValues, null, null)
+
+            // Cihaz genelinde medya tarayıcısını tetikle (cihazın Müzik/Dosyalar listesinde anında görünsün)
+            try {
+                val subDir = if (isAudioFile(fileName)) "Mp3" else if (isImageFile(fileName)) "Photo" else "Video"
+                val physicalFile = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "VidSave/$subDir/$uniqueName",
+                )
+                if (physicalFile.exists()) {
+                    MediaScannerConnection.scanFile(
+                        this,
+                        arrayOf(physicalFile.absolutePath),
+                        arrayOf(mimeType),
+                        null,
+                    )
+                }
+            } catch (_: Exception) {}
+
             return uri.toString()
         } catch (error: Exception) {
             resolver.delete(uri, null, null)

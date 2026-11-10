@@ -343,6 +343,23 @@ class ExternalShareDownloadService : Service() {
                         null,
                         null,
                     )
+
+                    // Cihaz genelinde medya tarayıcısını tetikle (cihazın Müzik/Dosyalar listesinde anında görünsün)
+                    try {
+                        val physicalFile = File(
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                            "VidSave/$subDir/${uniqueName(name, relativePath)}",
+                        )
+                        if (physicalFile.exists()) {
+                            MediaScannerConnection.scanFile(
+                                this,
+                                arrayOf(physicalFile.absolutePath),
+                                arrayOf(mimeTypeFor(name)),
+                                null,
+                            )
+                        }
+                    } catch (_: Exception) {}
+
                     result.success(uri.toString())
                 } catch (error: Exception) {
                     contentResolver.delete(uri, null, null)

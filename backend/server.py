@@ -2111,8 +2111,16 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                 )
                 if tik_resp.status_code == 200:
                     tik_data = tik_resp.json().get("data", {})
+                    music_url = tik_data.get("music")
                     play_url = tik_data.get("play") or tik_data.get("wmplay")
-                    if play_url:
+                    if kind == "audio" and music_url:
+                        full_music = music_url if music_url.startswith("http") else f"https://www.tikwm.com{music_url}"
+                        return {
+                            "url": full_music,
+                            "title": tik_data.get("title") or "TikTok Audio",
+                            "ext": "mp3",
+                        }
+                    if play_url and kind != "audio":
                         full_url = play_url if play_url.startswith("http") else f"https://www.tikwm.com{play_url}"
                         return {
                             "url": full_url,
@@ -2133,7 +2141,7 @@ def _fallback_regex_scrape(url: str, kind: str) -> dict[str, Any] | None:
                     tm_data = tm_resp.json()
                     token = tm_data.get("token")
                     vid_id = tm_data.get("id")
-                    if token and vid_id:
+                    if token and vid_id and kind != "audio":
                         return {
                             "url": f"https://tikmate.app/download/{token}/{vid_id}.mp4?hd=1",
                             "title": tm_data.get("author_name") or "TikTok Video",
@@ -2453,7 +2461,7 @@ def api_analyze() -> Response | tuple[Response, int]:
                         ext = valid[0].get("ext") or "mp4"
 
     # 2. Fallback regex scraper if yt-dlp returned no stream URL
-    if not clean_download_url:
+    if not clean_download_url and not is_audio:
         fallback = _fallback_regex_scrape(target_url, kind)
         if fallback and fallback.get("url"):
             clean_download_url = fallback["url"]
@@ -2500,6 +2508,9 @@ def api_analyze() -> Response | tuple[Response, int]:
                 ),
             },
         ), 422
+
+    if is_audio and not ext.lower().endswith("mp3"):
+        ext = "mp3"
 
     filename = _safe_filename(title, "vidsave", ext)
 

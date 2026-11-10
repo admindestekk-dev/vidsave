@@ -305,10 +305,10 @@ class UnifiedDownloadEngine {
                 : fileBaseName;
             final mp3Path = '${appDir.path}${Platform.pathSeparator}';
             final mp3FileName = '$mp3BaseName.mp3';
-            finalFileName = mp3FileName;
+            var mp3TargetName = mp3FileName;
             var mp3CopyIndex = 1;
-            while (File('$mp3Path$finalFileName').existsSync()) {
-              finalFileName = '${mp3BaseName}_$mp3CopyIndex.mp3';
+            while (File('$mp3Path$mp3TargetName').existsSync()) {
+              mp3TargetName = '${mp3BaseName}_$mp3CopyIndex.mp3';
               mp3CopyIndex++;
             }
 
@@ -316,7 +316,7 @@ class UnifiedDownloadEngine {
               final convertedFile = await LocalFFmpegService.instance
                   .convertToMp3(
                     inputFile: downloadedFile,
-                    outputFile: File('$mp3Path$finalFileName'),
+                    outputFile: File('$mp3Path$mp3TargetName'),
                     startTime: startTime,
                     endTime: endTime,
                     audioEffect: audioEffect,
@@ -326,8 +326,18 @@ class UnifiedDownloadEngine {
                 await downloadedFile.delete();
               }
               downloadedFile = convertedFile;
+              finalFileName = convertedFile.path.split(Platform.pathSeparator).last;
             } catch (convErr) {
               debugPrint('UnifiedDownloadEngine Stage 1 MP3 conversion recovery fallback: $convErr');
+              // FFmpeg dönüştürme başarısız olsa veya ortam desteklenmese dahi
+              // dosyanın adı ve uzantısı MP3 olarak güncellenir
+              try {
+                if (await downloadedFile.exists() && !downloadedFile.path.toLowerCase().endsWith('.mp3')) {
+                  final renamedFile = await downloadedFile.rename('$mp3Path$mp3TargetName');
+                  downloadedFile = renamedFile;
+                  finalFileName = mp3TargetName;
+                }
+              } catch (_) {}
             }
           }
 
@@ -517,6 +527,16 @@ class UnifiedDownloadEngine {
           debugPrint(
             'UnifiedDownloadEngine Stage 2 MP3 conversion error: $convErr',
           );
+          // FFmpeg dönüştürme başarısız olsa veya ortam desteklenmese dahi
+          // dosyanın adı ve uzantısı MP3 olarak güncellenir
+          try {
+            if (await targetDownloadedFile.exists() &&
+                !targetDownloadedFile.path.toLowerCase().endsWith('.mp3')) {
+              final renamedFile =
+                  await targetDownloadedFile.rename('$mp3Path$mp3FileName');
+              targetDownloadedFile = renamedFile;
+            }
+          } catch (_) {}
         }
       }
 

@@ -471,15 +471,26 @@ class UniversalScraper {
       final tikData = jsonMap?['data'];
       if (tikData != null && tikData is Map) {
         final playUrl = tikData['play'] ?? tikData['wmplay'];
+        final musicUrl = tikData['music'];
         final title = tikData['title'] as String? ?? 'tiktok_video';
         if (playUrl != null) {
           final uriStr = playUrl.toString().startsWith('http')
               ? playUrl.toString()
               : 'https://www.tikwm.com$playUrl';
           final cleanUrl = evrenselTemizUrlShield(uriStr);
+
+          String? cleanAudio;
+          if (musicUrl != null && musicUrl.toString().isNotEmpty) {
+            final rawMusic = musicUrl.toString().startsWith('http')
+                ? musicUrl.toString()
+                : 'https://www.tikwm.com$musicUrl';
+            cleanAudio = evrenselTemizUrlShield(rawMusic);
+          }
+
           return ResolvedMedia(
             url: Uri.parse(cleanUrl),
             fileName: '${_sanitizeFileName(title)}.mp4',
+            audioUrl: cleanAudio != null ? Uri.tryParse(cleanAudio) : null,
             downloadHeaders: {
               'Referer': 'https://www.tiktok.com/',
               'User-Agent': kUniversalMobileUserAgent,
@@ -1957,20 +1968,31 @@ class UniversalScraper {
               result.audioUrl)
         : null;
 
+    var resolvedUrl = cleanMediaUrl;
+    var resolvedAudioUrl = cleanAudioUrl;
     var resolvedFileName = result.fileName;
+
     if (kind == DownloadKind.audio) {
       final base = resolvedFileName.replaceAll(RegExp(r'\.[^.]+$'), '').trim();
       final safeBase = base.isNotEmpty ? base : 'vidsave_audio';
       resolvedFileName = '$safeBase.mp3';
+
+      // Eğer doğrudan saf ses bağlantısı (audioUrl) varsa, onu doğrudan indirme URL'si olarak ata
+      if (cleanAudioUrl != null && cleanAudioUrl.hasScheme) {
+        resolvedUrl = cleanAudioUrl;
+        resolvedAudioUrl = null;
+      }
     }
 
     return ResolvedMedia(
-      url: cleanMediaUrl,
+      url: resolvedUrl,
       fileName: resolvedFileName,
       mimeType: kind == DownloadKind.audio ? 'audio/mpeg' : result.mimeType,
-      fileSizeInBytes: result.fileSizeInBytes,
+      fileSizeInBytes: kind == DownloadKind.audio && cleanAudioUrl != null
+          ? result.audioFileSizeInBytes
+          : result.fileSizeInBytes,
       downloadHeaders: result.downloadHeaders,
-      audioUrl: cleanAudioUrl,
+      audioUrl: resolvedAudioUrl,
       audioFileSizeInBytes: result.audioFileSizeInBytes,
       startTime: result.startTime,
       endTime: result.endTime,

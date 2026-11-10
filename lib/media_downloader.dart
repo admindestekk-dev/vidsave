@@ -1508,6 +1508,7 @@ class MediaDownloader {
         for (final basePath in [
           '/storage/emulated/0/Download/VidSave/$subFolder',
           '/storage/emulated/0/VidSave/$subFolder',
+          if (isAudio) '/storage/emulated/0/Music/VidSave',
         ]) {
           try {
             final targetDir = Directory(basePath);
