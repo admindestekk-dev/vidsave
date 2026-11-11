@@ -1276,33 +1276,45 @@ class UniversalScraper {
                 .toList();
 
             if (validUrls.isNotEmpty) {
-              int qualityScore(String url) {
-                final lower = url.toLowerCase();
-                if (lower.contains('1080p') || lower.contains('1080')) return 1080;
-                if (lower.contains('720p') || lower.contains('720')) return 720;
-                if (lower.contains('540p') || lower.contains('540')) return 540;
-                if (lower.contains('480p') || lower.contains('480')) return 480;
-                if (lower.contains('360p') || lower.contains('360')) return 360;
-                if (lower.contains('240p') || lower.contains('240')) return 240;
-                return 100;
+              final nonExpiringUrls = validUrls.where((u) {
+                if (!u.contains('exp=')) return true;
+                final match = RegExp(r'exp=(\d+)').firstMatch(u);
+                if (match == null) return true;
+                final expSeconds = int.tryParse(match.group(1)!);
+                if (expSeconds == null) return true;
+                final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+                return expSeconds > (nowSeconds + 60);
+              }).toList();
+
+              if (nonExpiringUrls.isNotEmpty) {
+                int qualityScore(String url) {
+                  final lower = url.toLowerCase();
+                  if (lower.contains('1080p') || lower.contains('1080')) return 1080;
+                  if (lower.contains('720p') || lower.contains('720')) return 720;
+                  if (lower.contains('540p') || lower.contains('540')) return 540;
+                  if (lower.contains('480p') || lower.contains('480')) return 480;
+                  if (lower.contains('360p') || lower.contains('360')) return 360;
+                  if (lower.contains('240p') || lower.contains('240')) return 240;
+                  return 100;
+                }
+
+                nonExpiringUrls.sort((a, b) => qualityScore(b).compareTo(qualityScore(a)));
+                final bestUrl = nonExpiringUrls.first;
+
+                final fileSuffix = videoId ?? DateTime.now().millisecondsSinceEpoch.toString();
+                return ResolvedMedia(
+                  url: Uri.parse(bestUrl),
+                  fileName: 'vimeo_${fileSuffix}_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                  downloadHeaders: {
+                    'Referer': 'https://vimeo.com/',
+                    'User-Agent': kUniversalDesktopUserAgent,
+                  },
+                );
               }
-
-              validUrls.sort((a, b) => qualityScore(b).compareTo(qualityScore(a)));
-              final bestUrl = validUrls.first;
-
-              final fileSuffix = videoId ?? DateTime.now().millisecondsSinceEpoch.toString();
-              return ResolvedMedia(
-                url: Uri.parse(bestUrl),
-                fileName: 'vimeo_${fileSuffix}_${DateTime.now().millisecondsSinceEpoch}.mp4',
-                downloadHeaders: {
-                  'Referer': 'https://vimeo.com/',
-                  'User-Agent': kUniversalDesktopUserAgent,
-                },
-              );
             }
           }
 
-          // 4. HLS (.m3u8) Akışı Adayı: Progressive MP4 yoksa parçalı HLS yayınını MP4 olarak akıt
+          // 4. HLS (.m3u8) veya Master JSON Akışı Adayı: Progressive MP4 yoksa akış yayınını MP4 olarak akıt
           // Not: DRM korumalı (cbcs, cenc) akışlar hariç tutulur
           final hlsPatterns = [
             RegExp(r'"url":\s*"(https://[^"]*(?:skyfire|vimeocdn|akfire|fastly)[^"]*\.m3u8[^"]*)"'),
@@ -1313,9 +1325,27 @@ class UniversalScraper {
             for (final match in pattern.allMatches(hamMetin)) {
               final rawHls = match.group(1);
               if (rawHls != null && rawHls.isNotEmpty) {
-                final cleanHlsUrl = evrenselTemizUrlShield(rawHls);
+                var cleanHlsUrl = evrenselTemizUrlShield(rawHls)
+                    .replaceAll(r'\/', '/')
+                    .replaceAll(r'\u0026', '&')
+                    .replaceAll(r'\u003D', '=')
+                    .replaceAll(r'\u003d', '=');
                 if (cleanHlsUrl.contains('/drm/')) continue; // Şifreli DRM akışlarını geç
                 final fileSuffix = videoId ?? DateTime.now().millisecondsSinceEpoch.toString();
+
+                // Eğer master.json endpoint'i türetilebiliyorsa Vimeo fMP4 doğrudan akışını kullan
+                final canUseMasterJson = cleanHlsUrl.contains('/playlist.m3u8') || cleanHlsUrl.contains('/master.m3u8');
+                final streamProvider = canUseMasterJson
+                    ? () => _streamVimeoMasterJson(cleanHlsUrl)
+                    : () => _streamHlsSegments(
+                        cleanHlsUrl,
+                        customHeaders: {
+                          'User-Agent': kUniversalDesktopUserAgent,
+                          'Referer': 'https://player.vimeo.com/',
+                          'Origin': 'https://player.vimeo.com',
+                        },
+                      );
+
                 return ResolvedMedia(
                   url: Uri.parse(cleanHlsUrl),
                   fileName: 'vimeo_${fileSuffix}_${DateTime.now().millisecondsSinceEpoch}.mp4',
@@ -1323,14 +1353,7 @@ class UniversalScraper {
                     'Referer': 'https://player.vimeo.com/',
                     'User-Agent': kUniversalDesktopUserAgent,
                   },
-                  byteStreamProvider: () => _streamHlsSegments(
-                    cleanHlsUrl,
-                    customHeaders: {
-                      'User-Agent': kUniversalDesktopUserAgent,
-                      'Referer': 'https://player.vimeo.com/',
-                      'Origin': 'https://player.vimeo.com',
-                    },
-                  ),
+                  byteStreamProvider: streamProvider,
                 );
               }
             }
@@ -1540,6 +1563,95 @@ class UniversalScraper {
           extra: {'no_cookie': true},
         ),
       );
+      if (segRes.data != null && segRes.data!.isNotEmpty) {
+        yield segRes.data!;
+      }
+    }
+  }
+
+  /// Vimeo master.json endpoint'inden fMP4 init segmenti ve video segmentlerini akıtır.
+  Stream<List<int>> _streamVimeoMasterJson(String hlsUrl) async* {
+    var masterJsonUrl = hlsUrl;
+    if (masterJsonUrl.contains('/playlist.m3u8')) {
+      masterJsonUrl = masterJsonUrl.replaceAll(
+        '/playlist.m3u8',
+        '/master.json?base64_init=1',
+      );
+    } else if (masterJsonUrl.contains('/master.m3u8')) {
+      masterJsonUrl = masterJsonUrl.replaceAll(
+        '/master.m3u8',
+        '/master.json?base64_init=1',
+      );
+    }
+
+    final headers = {
+      'User-Agent': kUniversalDesktopUserAgent,
+      'Referer': 'https://player.vimeo.com/',
+      'Origin': 'https://player.vimeo.com',
+    };
+
+    final mjRes = await _dio.get<dynamic>(
+      masterJsonUrl,
+      options: Options(headers: headers, extra: {'no_cookie': true}),
+    );
+
+    Map<String, dynamic> mjData;
+    if (mjRes.data is Map<String, dynamic>) {
+      mjData = mjRes.data as Map<String, dynamic>;
+    } else if (mjRes.data is String) {
+      mjData = jsonDecode(mjRes.data as String) as Map<String, dynamic>;
+    } else {
+      throw const MediaResolverException('Vimeo akış verisi okunamadı.');
+    }
+
+    final baseUrlStr = mjData['base_url']?.toString() ?? '';
+    final masterUri = Uri.parse(masterJsonUrl);
+    final baseUri = masterUri.resolve(baseUrlStr);
+
+    final rawVideoList = mjData['video'];
+    if (rawVideoList is! List || rawVideoList.isEmpty) {
+      throw const MediaResolverException('Vimeo video akışı listelenemedi.');
+    }
+
+    final videoList = List<Map<String, dynamic>>.from(
+      rawVideoList.whereType<Map<dynamic, dynamic>>().map(
+            (e) => Map<String, dynamic>.from(e),
+          ),
+    )..sort(
+        (a, b) =>
+            ((b['height'] as int?) ?? 0).compareTo((a['height'] as int?) ?? 0),
+      );
+
+    final bestVideo = videoList.first;
+    final videoBaseUrl = bestVideo['base_url']?.toString() ?? '';
+    final videoTargetBaseUri = baseUri.resolve(videoBaseUrl);
+
+    // 1. Base64 kodlu fMP4 Init Segment'ini gönder (ftyp kutusunu taşır)
+    final initSegmentB64 = bestVideo['init_segment'] as String?;
+    if (initSegmentB64 != null && initSegmentB64.isNotEmpty) {
+      final initBytes = base64Decode(initSegmentB64);
+      if (initBytes.isNotEmpty) {
+        yield initBytes;
+      }
+    }
+
+    // 2. Sıralı video segmentlerini çek ve kesintisiz akıt
+    final segments = (bestVideo['segments'] as List<dynamic>?) ?? [];
+    for (final seg in segments) {
+      if (seg is! Map) continue;
+      final segUrl = seg['url']?.toString();
+      if (segUrl == null || segUrl.isEmpty) continue;
+
+      final fullSegUri = videoTargetBaseUri.resolve(segUrl);
+      final segRes = await _dio.get<List<int>>(
+        fullSegUri.toString(),
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: headers,
+          extra: {'no_cookie': true},
+        ),
+      );
+
       if (segRes.data != null && segRes.data!.isNotEmpty) {
         yield segRes.data!;
       }
