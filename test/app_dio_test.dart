@@ -43,7 +43,12 @@ void main() {
         jar.saveFromResponse(cdnUri, [
           'GPS=1; Path=/; Domain=.googlevideo.com',
         ]);
-        expect(jar.getCookieHeader(cdnUri), contains('GPS=1'));
+        final cdnCookies = jar.getCookieHeader(cdnUri);
+        expect(cdnCookies, contains('GPS=1'));
+        // YouTube session cookies must never leak to a signed CDN request:
+        // that header makes googlevideo answer 403.
+        expect(cdnCookies, isNot(contains('VISITOR_INFO1_LIVE')));
+        expect(cdnCookies, isNot(contains('YSC')));
       },
     );
 
@@ -76,18 +81,22 @@ void main() {
       expect(capturedOptions?.headers['Referer'], 'https://youtube.com');
       expect(capturedOptions?.headers['Origin'], 'https://youtube.com');
 
-      // 2. TikTok request
+      // 2. TikTok CDN request: masked headers, but no tiktok.com cookie.
       await dio.get<dynamic>(
         'https://v16-webapp-prime.tiktokcdn.com/video/mp4',
       );
       expect(capturedOptions?.headers['Referer'], 'https://www.tiktok.com/');
       expect(capturedOptions?.headers['Origin'], 'https://www.tiktok.com');
+      expect(capturedOptions?.headers['Cookie'], isNull);
+
+      // 3. TikTok site request still receives its own session cookie.
+      await dio.get<dynamic>('https://www.tiktok.com/api/item/detail');
       expect(
         capturedOptions?.headers['Cookie'],
         contains('tt_webid_v2=723456789'),
       );
 
-      // 3. Instagram request
+      // 4. Instagram CDN request
       await dio.get<dynamic>(
         'https://scontent.cdninstagram.com/v/t50.2886-16/test.mp4',
       );

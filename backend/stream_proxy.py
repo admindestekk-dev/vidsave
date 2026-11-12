@@ -151,6 +151,19 @@ class _UrllibSession:
         pass
 
 
+def _egress_proxies() -> dict[str, str] | None:
+    """Proxy config for CDN fetches, matching the resolver's egress where set."""
+    single = os.environ.get("VIDSAVE_PROXY_URL", "").strip()
+    pool = os.environ.get("VIDSAVE_PROXY_LIST", "").strip()
+    candidates = [entry for entry in re.split(r"[,\s;]+", pool) if entry] or (
+        [single] if single else []
+    )
+    if not candidates:
+        return None
+    proxy = candidates[0]
+    return {"http": proxy, "https": proxy}
+
+
 def _open_upstream(
     url: str,
     range_header: str | None,
@@ -169,7 +182,14 @@ def _open_upstream(
         if range_header and re.fullmatch(r"bytes=\d*-\d*", range_header.strip()):
             headers["Range"] = range_header.strip()
         req = urllib.request.Request(url, headers=headers)
-        raw_resp = urllib.request.urlopen(req, timeout=CONNECT_TIMEOUT_SECONDS)
+        proxy_map = _egress_proxies()
+        if proxy_map:
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler(proxy_map)
+            )
+            raw_resp = opener.open(req, timeout=CONNECT_TIMEOUT_SECONDS)
+        else:
+            raw_resp = urllib.request.urlopen(req, timeout=CONNECT_TIMEOUT_SECONDS)
         return _UrllibSession(), _UrllibUpstreamResponse(raw_resp)
 
     session = requests.Session()
@@ -211,6 +231,7 @@ def _open_upstream(
         headers["Range"] = range_header.strip()
 
     current_url = url
+    egress = _egress_proxies()
     try:
         for redirect_count in range(MAX_REDIRECTS + 1):
             validate_public_http_url(current_url)
@@ -220,6 +241,7 @@ def _open_upstream(
                 stream=True,
                 allow_redirects=False,
                 timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
+                proxies=egress,
             )
             if response.status_code in REDIRECT_STATUSES:
                 location = response.headers.get("Location")

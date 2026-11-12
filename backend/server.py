@@ -30,6 +30,7 @@ import hmac
 from contextlib import closing
 import json
 import logging
+import random
 import secrets
 import os
 import re
@@ -157,6 +158,77 @@ COOKIES_BROWSER = os.environ.get("VIDSAVE_COOKIES_BROWSER", "").strip() or None
 YT_PLAYER_CLIENT = (
     os.environ.get("VIDSAVE_YT_PLAYER_CLIENT", "ios,android,web").strip()
     or "ios,android,web"
+)
+
+# --- anti-bot resilience ---------------------------------------------------
+#
+# No setup can promise "never blocked": platforms ship new countermeasures all
+# the time. What we can do is fail over quickly and cheaply:
+#   * rotate the egress IP (proxy pool) instead of hammering one address,
+#   * walk a ladder of YouTube player clients when a bot check fires,
+#   * back off with jitter so retries do not look like a script,
+#   * pump CDN bytes through the same egress that resolved them.
+
+# `VIDSAVE_PROXY_LIST="http://u:p@host:port, http://host2:port"` or a single
+# `VIDSAVE_PROXY_URL`. Empty means "direct connection".
+_PROXY_LIST_RAW = os.environ.get("VIDSAVE_PROXY_LIST", "").strip()
+_SINGLE_PROXY = os.environ.get("VIDSAVE_PROXY_URL", "").strip()
+PROXY_POOL: list[str] = [
+    entry for entry in re.split(r"[,\s;]+", _PROXY_LIST_RAW) if entry
+] or ([_SINGLE_PROXY] if _SINGLE_PROXY else [])
+
+# Ordered fallbacks for the YouTube extractor. The first entry is the default
+# requested by YT_PLAYER_CLIENT; the rest are tried on bot/format failures.
+YT_CLIENT_LADDER: list[str] = [
+    client.strip()
+    for client in os.environ.get(
+        "VIDSAVE_YT_CLIENT_LADDER",
+        "android,tv,mweb,web,android_vr,ios",
+    ).split(",")
+    if client.strip()
+]
+
+try:
+    MAX_ATTEMPTS = max(1, int(os.environ.get("VIDSAVE_MAX_ATTEMPTS", "6")))
+except (TypeError, ValueError):
+    MAX_ATTEMPTS = 6
+
+try:
+    BACKOFF_BASE_SECONDS = max(
+        0.0, float(os.environ.get("VIDSAVE_BACKOFF_BASE", "0.8"))
+    )
+except (TypeError, ValueError):
+    BACKOFF_BASE_SECONDS = 0.8
+
+try:
+    BACKOFF_MAX_SECONDS = max(
+        BACKOFF_BASE_SECONDS, float(os.environ.get("VIDSAVE_BACKOFF_MAX", "8"))
+    )
+except (TypeError, ValueError):
+    BACKOFF_MAX_SECONDS = 8.0
+
+# Substrings that mean "you are being fingerprinted / throttled", not "the
+# request was malformed". These trigger an egress rotation and a longer wait.
+_RATE_LIMIT_MARKERS = (
+    "403",
+    "429",
+    "too many requests",
+    "rate limit",
+    "temporarily blocked",
+    "forbidden",
+    "unusual traffic",
+    "access denied",
+)
+
+_BOT_CHECK_MARKERS = (
+    "sign in to confirm you're not a bot",
+    "sign in to confirm you’re not a bot",
+    "confirm you're not a bot",
+    "some ios client https formats have been skipped",
+    "requested format is not available",
+    "no video formats found",
+    "not a bot",
+    "bot",
 )
 
 # SQLite database for storing persistent user cookies (e.g. Instagram session)
@@ -989,11 +1061,43 @@ def _format_selector(kind: str, height: int | None = None) -> str:
     )
 
 
+def _proxy_for_attempt(attempt: int) -> str | None:
+    """Pick the egress proxy for a retry, rotating across the configured pool."""
+    if not PROXY_POOL:
+        return None
+    return PROXY_POOL[attempt % len(PROXY_POOL)]
+
+
+def _replace_youtube_client(cmd: list[str], client: str) -> list[str]:
+    """Replace (or add) the `youtube:player_client` extractor argument."""
+    cleaned: list[str] = []
+    index = 0
+    while index < len(cmd):
+        if (
+            cmd[index] == "--extractor-args"
+            and index + 1 < len(cmd)
+            and "youtube:player_client=" in cmd[index + 1]
+        ):
+            index += 2
+            continue
+        cleaned.append(cmd[index])
+        index += 1
+
+    insert_at = cleaned.index("--") if "--" in cleaned else len(cleaned)
+    cleaned[insert_at:insert_at] = [
+        "--extractor-args",
+        f"youtube:player_client={client}",
+    ]
+    return cleaned
+
+
 def _base_args(
     *,
     allow_playlist_items: bool = False,
     cookiefile: str | None = None,
     source_url: str | None = None,
+    proxy: str | None = None,
+    youtube_client: str | None = None,
 ) -> list[str]:
     """Shared yt-dlp flags, tuned for universal bot-bypass and high throughput.
 
@@ -1038,11 +1142,16 @@ def _base_args(
         args += ["--cookies", cookiefile]
     elif COOKIES_BROWSER:
         args += ["--cookies-from-browser", COOKIES_BROWSER]
-    if IMPERSONATE_TARGET:
+    # yt-dlp aborts every extraction with "impersonate target not available"
+    # when curl-cffi is missing, so only opt in when it can actually work.
+    if IMPERSONATE_TARGET and HAS_CURL_CFFI:
         args += ["--impersonate", IMPERSONATE_TARGET]
-    if YT_PLAYER_CLIENT:
-        args += ["--extractor-args", f"youtube:player_client={YT_PLAYER_CLIENT}"]
+    effective_client = youtube_client or YT_PLAYER_CLIENT
+    if effective_client:
+        args += ["--extractor-args", f"youtube:player_client={effective_client}"]
     args += ["--extractor-args", "tiktok:web_search="]
+    if proxy:
+        args += ["--proxy", proxy]
 
     args += [
         # --- speed knobs -----------------------------------------------------
@@ -1056,9 +1165,9 @@ def _base_args(
         "10",
         "--fragment-retries",
         "10",
-        # Smaller buffers + keep-alive avoid stalling on slow sockets (1MB chunk balance).
-        "--buffersize",
-        "16384",
+        # 1MB chunk balance keeps slow sockets from stalling. NOTE: `buffersize`
+        # is a Python-API-only yt-dlp option; passing it on the CLI makes yt-dlp
+        # print its usage and fail every extraction.
         "--http-chunk-size",
         "1048576",
         "--hls-use-mpegts",
@@ -1066,6 +1175,10 @@ def _base_args(
         "aria2c:--min-chunk-size=1M",
         "--socket-timeout",
         "15",
+        # A small pause between extractor requests avoids the burst pattern that
+        # bot heuristics look for without noticeably slowing a single download.
+        "--sleep-requests",
+        "0.3",
         # Reuse one connection and prefer IPv4 (avoids happy-eyeballs stalls).
         "--force-ipv4",
     ]
@@ -1076,15 +1189,59 @@ def _base_args(
     return args
 
 
+def _backoff_seconds(attempt: int) -> float:
+    """Exponential backoff with +/-30% jitter so retries look human."""
+    delay = min(BACKOFF_MAX_SECONDS, BACKOFF_BASE_SECONDS * (2 ** attempt))
+    return max(0.0, delay * (0.7 + random.random() * 0.6))
+
+
+def _drop_flag(cmd: list[str], flag: str) -> list[str]:
+    """Return a copy of `cmd` with a single-value flag (and its value) removed."""
+    result: list[str] = []
+    skip = False
+    for arg in cmd:
+        if skip:
+            skip = False
+            continue
+        if arg == flag:
+            skip = True
+            continue
+        result.append(arg)
+    return result
+
+
+def _set_proxy(cmd: list[str], proxy: str | None) -> list[str]:
+    """Return a copy of `cmd` with `--proxy` set to `proxy` (or removed)."""
+    without = _drop_flag(cmd, "--proxy")
+    if not proxy:
+        return without
+    insert_at = without.index("--") if "--" in without else len(without)
+    without[insert_at:insert_at] = ["--proxy", proxy]
+    return without
+
+
 def _execute_ytdlp(
     cmd: list[str],
     timeout: int,
     progress_callback: Any = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Execute yt-dlp command with automatic resilience, transparent fallbacks,
-    and optional real-time stdout progress streaming."""
+    """Run yt-dlp with anti-bot failover.
+
+    Strategy per attempt:
+      1. drop an unusable `--impersonate` (curl-cffi missing),
+      2. drop an unusable `--cookies-from-browser`,
+      3. walk the YouTube player-client ladder on bot/format failures,
+      4. rotate the egress proxy on 403/429/rate-limit failures,
+      5. back off exponentially with jitter between attempts.
+    """
     current_cmd = list(cmd)
-    for _ in range(4):
+    ladder_index = -1
+    last_proc: subprocess.CompletedProcess[str] | None = None
+
+    for attempt in range(MAX_ATTEMPTS):
+        if PROXY_POOL:
+            current_cmd = _set_proxy(current_cmd, _proxy_for_attempt(attempt))
+
         proc = subprocess.run(
             current_cmd,
             capture_output=True,
@@ -1100,67 +1257,54 @@ def _execute_ytdlp(
         if proc.returncode == 0:
             return proc
 
+        last_proc = proc
         err = (proc.stderr or proc.stdout or "").lower()
         modified = False
 
-        # 1. If Chrome cookies database was not found on this machine, retry without cookies-from-browser
-        if ("could not find" in err and "cookies database" in err) and "--cookies-from-browser" in current_cmd:
-            logging.warning("Browser cookie database not found. Retrying without --cookies-from-browser.")
-            new_cmd = []
-            skip = False
-            for arg in current_cmd:
-                if skip:
-                    skip = False
-                    continue
-                if arg == "--cookies-from-browser":
-                    skip = True
-                    continue
-                new_cmd.append(arg)
-            current_cmd = new_cmd
+        # 0. Impersonation is optional; a runtime without curl-cffi must not
+        #    block every download, so drop the flag and retry.
+        if "impersonate" in err and "--impersonate" in current_cmd:
+            logging.warning("Impersonation unavailable. Retrying without --impersonate.")
+            current_cmd = _drop_flag(current_cmd, "--impersonate")
             modified = True
 
-        # 2. If YouTube bot check / format unavailable / SABR token restriction: fallback player clients
-        elif any(
-            k in err
-            for k in [
-                "sign in to confirm you're not a bot",
-                "sign in to confirm you’re not a bot",
-                "some ios client https formats have been skipped",
-                "requested format is not available",
-                "no video formats found",
-                "bot",
-            ]
-        ):
-            for alt in ["android,web", "android", "mweb,tv"]:
-                if f"youtube:player_client={alt}" not in " ".join(current_cmd):
-                    logging.warning("Retrying YouTube with player_client=%s", alt)
-                    new_cmd = []
-                    skip = False
-                    found_client = False
-                    for i, a in enumerate(current_cmd):
-                        if skip:
-                            skip = False
-                            continue
-                        if (
-                            a == "--extractor-args"
-                            and i + 1 < len(current_cmd)
-                            and "youtube:player_client=" in current_cmd[i + 1]
-                        ):
-                            new_cmd.extend(["--extractor-args", f"youtube:player_client={alt}"])
-                            skip = True
-                            found_client = True
-                            continue
-                        new_cmd.append(a)
-                    if not found_client:
-                        new_cmd.extend(["--extractor-args", f"youtube:player_client={alt}"])
-                    current_cmd = new_cmd
-                    modified = True
-                    break
+        # 1. Browser cookie database can be absent on a server runtime.
+        elif (
+            "could not find" in err and "cookies database" in err
+        ) and "--cookies-from-browser" in current_cmd:
+            logging.warning(
+                "Browser cookie database not found. Retrying without --cookies-from-browser."
+            )
+            current_cmd = _drop_flag(current_cmd, "--cookies-from-browser")
+            modified = True
+
+        # 2. Throttling / IP-level blocks: rotate the egress proxy.
+        elif PROXY_POOL and any(marker in err for marker in _RATE_LIMIT_MARKERS):
+            logging.warning(
+                "Rate limited or blocked; rotating egress proxy (attempt %d/%d).",
+                attempt + 1,
+                MAX_ATTEMPTS,
+            )
+            modified = True
+
+        # 3. YouTube bot check or format restriction: next player client.
+        elif any(marker in err for marker in _BOT_CHECK_MARKERS):
+            ladder_index += 1
+            if ladder_index < len(YT_CLIENT_LADDER):
+                client = YT_CLIENT_LADDER[ladder_index]
+                logging.warning(
+                    "Bot check hit; retrying YouTube with player_client=%s.", client
+                )
+                current_cmd = _replace_youtube_client(current_cmd, client)
+                modified = True
 
         if not modified:
             return proc
 
-    return proc
+        if attempt < MAX_ATTEMPTS - 1:
+            time.sleep(_backoff_seconds(attempt))
+
+    return last_proc if last_proc is not None else proc
 
 
 def _run_json(
@@ -1368,7 +1512,21 @@ def _is_direct_url_accessible(url: str | None, headers: dict[str, Any] | None) -
                 if k.lower() not in ("host", "content-length"):
                     test_h[k] = str(v)
         if requests is not None:
-            res = requests.get(url, headers=test_h, stream=True, timeout=5, allow_redirects=True)
+            # Probe through the same egress that yt-dlp used, otherwise the
+            # check says "reachable" for an IP the CDN will block later.
+            proxies = (
+                {"http": PROXY_POOL[0], "https": PROXY_POOL[0]}
+                if PROXY_POOL
+                else None
+            )
+            res = requests.get(
+                url,
+                headers=test_h,
+                stream=True,
+                timeout=5,
+                allow_redirects=True,
+                proxies=proxies,
+            )
             status = res.status_code
             res.close()
             return status in (200, 206)
@@ -1378,6 +1536,46 @@ def _is_direct_url_accessible(url: str | None, headers: dict[str, Any] | None) -
                 return res.getcode() in (200, 206)
     except Exception:
         return False
+
+
+def _direct_proxy_job(
+    *,
+    kind: str,
+    source: str,
+    direct_url: str,
+    direct_headers: dict[str, str],
+    title: str | None,
+    duration: int | None,
+    ext: str,
+    host_url: str,
+) -> str | None:
+    """Expose a CDN stream as a `/download?job=` URL served by this backend.
+
+    CDN links returned by yt-dlp (googlevideo, tiktokcdn, fbcdn, ...) are bound
+    to the requesting IP and headers. Returning them to the phone makes the
+    device fetch them on its own IP and every platform answers 403, so the
+    bytes must always be relayed by the server that resolved them.
+    """
+    if not direct_url:
+        return None
+    if not _is_direct_url_accessible(direct_url, direct_headers):
+        logging.warning(
+            "Direct stream is not reachable from the server; falling back to a server-side download."
+        )
+        return None
+
+    job = _new_job(kind, source)
+    job.title = title
+    job.duration = duration
+    job.direct_url = direct_url
+    job.direct_headers = dict(direct_headers or {})
+    job.ext = ext
+    job.mime = _mime_for(ext, kind)
+    job.filename = _safe_filename(title or "vidsave", "vidsave", ext)
+    job.progress = 1.0
+    job.status = "ready"
+    _update_job_in_db(job)
+    return f"{host_url.rstrip('/')}/download?job={job.id}"
 
 
 def _download_job_to_disk(job: Job, target_source: str | None = None) -> str:
@@ -2398,6 +2596,7 @@ def api_analyze() -> Response | tuple[Response, int]:
                 pass
 
     clean_download_url: str | None = None
+    clean_download_headers: dict[str, str] = {}
     title = (info.get("title") if info else None) or "vidsave_media"
     duration = info.get("duration") if info else None
     thumbnail = info.get("thumbnail") if info else None
@@ -2408,6 +2607,10 @@ def api_analyze() -> Response | tuple[Response, int]:
         direct_format = _pick_direct_format(info, kind)
         if direct_format and direct_format.get("url"):
             clean_download_url = direct_format["url"]
+            if isinstance(direct_format.get("http_headers"), dict):
+                clean_download_headers = {
+                    str(k): str(v) for k, v in direct_format["http_headers"].items()
+                }
             if direct_format.get("ext"):
                 ext = direct_format["ext"]
 
@@ -2434,6 +2637,11 @@ def api_analyze() -> Response | tuple[Response, int]:
                         reverse=True,
                     )
                     clean_download_url = candidates[0].get("url")
+                    if isinstance(candidates[0].get("http_headers"), dict):
+                        clean_download_headers = {
+                            str(k): str(v)
+                            for k, v in candidates[0]["http_headers"].items()
+                        }
                     ext = candidates[0].get("ext") or "mp3"
             else:
                 prog_formats = [
@@ -2449,6 +2657,11 @@ def api_analyze() -> Response | tuple[Response, int]:
                         reverse=True,
                     )
                     clean_download_url = prog_formats[0].get("url")
+                    if isinstance(prog_formats[0].get("http_headers"), dict):
+                        clean_download_headers = {
+                            str(k): str(v)
+                            for k, v in prog_formats[0]["http_headers"].items()
+                        }
                     ext = prog_formats[0].get("ext") or "mp4"
                 elif formats:
                     valid = [f for f in formats if f.get("url")]
@@ -2458,6 +2671,11 @@ def api_analyze() -> Response | tuple[Response, int]:
                             reverse=True,
                         )
                         clean_download_url = valid[0].get("url")
+                        if isinstance(valid[0].get("http_headers"), dict):
+                            clean_download_headers = {
+                                str(k): str(v)
+                                for k, v in valid[0]["http_headers"].items()
+                            }
                         ext = valid[0].get("ext") or "mp4"
 
     # 2. Fallback regex scraper if yt-dlp returned no stream URL
@@ -2468,11 +2686,41 @@ def api_analyze() -> Response | tuple[Response, int]:
             title = fallback.get("title") or title
             ext = fallback.get("ext") or ext
 
-    # 3. If direct stream is still not found or is a segmented manifest (e.g. .m3u8 / .mpd or YouTube DASH),
-    # start a server job to merge/transcode and return the server stream endpoint!
-    is_segmented_manifest = clean_download_url and (
+    # 3. Never hand a raw CDN link to the device: those links are signed for the
+    # resolver's IP/headers and answer 403 everywhere else. Wrap the stream in a
+    # /download job so the backend relays the bytes. Manifests (.m3u8/.mpd) and
+    # audio that still needs MP3 conversion keep using the server download path.
+    is_segmented_manifest = bool(clean_download_url) and (
         ".m3u8" in clean_download_url.lower() or ".mpd" in clean_download_url.lower()
     )
+    is_proxied = False
+
+    if clean_download_url and not is_segmented_manifest:
+        if _is_tiktok_url(target_url) or _is_tiktok_url(clean_download_url):
+            merged_headers = dict(TIKTOK_HTTP_HEADERS)
+            merged_headers.update(clean_download_headers)
+            clean_download_headers = merged_headers
+        if kind == "video" or not FFMPEG_PATH:
+            proxied_url = _direct_proxy_job(
+                kind=kind,
+                source=target_url,
+                direct_url=clean_download_url,
+                direct_headers=clean_download_headers,
+                title=title,
+                duration=duration if isinstance(duration, int) else None,
+                ext=ext,
+                host_url=request.host_url,
+            )
+            if proxied_url:
+                clean_download_url = proxied_url
+                is_proxied = True
+            else:
+                # The stream is not reachable from the server either; let the
+                # slow path below download/transcode it with yt-dlp.
+                clean_download_url = None
+        else:
+            # Audio with ffmpeg available: convert on the server for a real MP3.
+            clean_download_url = None
 
     if not clean_download_url or is_segmented_manifest:
         try:
@@ -2524,16 +2772,24 @@ def api_analyze() -> Response | tuple[Response, int]:
         "type": "mp3" if is_audio else "video",
         "ext": ext,
         "headers": (
-            dict(TIKTOK_HTTP_HEADERS)
-            if (_is_tiktok_url(target_url) or _is_tiktok_url(clean_download_url or ""))
-            else {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                "Referer": target_url,
-            }
+            # Served by this backend: it applies the upstream CDN headers itself.
+            {}
+            if is_proxied
+            else (
+                dict(TIKTOK_HTTP_HEADERS)
+                if (
+                    _is_tiktok_url(target_url)
+                    or _is_tiktok_url(clean_download_url or "")
+                )
+                else {
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    "Referer": target_url,
+                }
+            )
         ),
     }), 200
 
@@ -3213,6 +3469,7 @@ def download() -> Response | tuple[Response, int]:
         # If stream proxy failed with 502, seamlessly recover by downloading on server with yt-dlp!
         if isinstance(result, tuple) and len(result) == 2 and result[1] == 502:
             logging.warning("Stream proxy returned 502 for job %s. Recovering with server-side download.", job.id)
+            original_direct_url = job.direct_url
             try:
                 job.direct_url = None
                 path = _download_job_to_disk(job)
@@ -3225,6 +3482,9 @@ def download() -> Response | tuple[Response, int]:
                     conditional=True,
                 )
             except Exception as exc:
+                # Keep the job usable for the next Range request of the same
+                # download instead of degrading it to "not ready".
+                job.direct_url = original_direct_url
                 logging.error("Fallback server download failed: %s", exc)
                 return result
         return result
@@ -3255,6 +3515,35 @@ def root_status() -> Response:
             "health": "/api/health",
         },
     }), 200
+
+
+@app.get("/api/anti-bot/status")
+def api_anti_bot_status() -> Response:
+    """Report the active anti-bot strategy without exposing proxy credentials."""
+    if not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+    return jsonify(
+        status="ok",
+        egress={
+            "proxyConfigured": bool(PROXY_POOL),
+            "proxyCount": len(PROXY_POOL),
+            "rotatesOnRateLimit": bool(PROXY_POOL),
+        },
+        extractor={
+            "curlCffi": HAS_CURL_CFFI,
+            "impersonate": IMPERSONATE_TARGET if HAS_CURL_CFFI else None,
+            "cookiesFromBrowser": COOKIES_BROWSER,
+            "youtubePlayerClient": YT_PLAYER_CLIENT,
+            "youtubeClientLadder": YT_CLIENT_LADDER,
+            "streamProxyUsesEgress": bool(PROXY_POOL),
+        },
+        retries={
+            "maxAttempts": MAX_ATTEMPTS,
+            "backoffBaseSeconds": BACKOFF_BASE_SECONDS,
+            "backoffMaxSeconds": BACKOFF_MAX_SECONDS,
+            "jitterPercent": 30,
+        },
+    )
 
 
 @app.route("/api/ping", methods=["GET", "HEAD"])

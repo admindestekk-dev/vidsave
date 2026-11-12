@@ -144,7 +144,8 @@ class SearchDownloadArgsTests(unittest.TestCase):
         self.assertIn("--no-playlist", args)
 
     def test_universal_bypass_options_present(self):
-        args = server._base_args()
+        with patch.object(server, "HAS_CURL_CFFI", True):
+            args = server._base_args()
         if server.COOKIES_BROWSER:
             self.assertIn("--cookies-from-browser", args)
             self.assertEqual(args[args.index("--cookies-from-browser") + 1], server.COOKIES_BROWSER)
@@ -154,6 +155,15 @@ class SearchDownloadArgsTests(unittest.TestCase):
         self.assertEqual(args[args.index("--impersonate") + 1], "chrome")
         self.assertIn("--extractor-args", args)
         self.assertTrue(args[args.index("--extractor-args") + 1].startswith("youtube:player_client=ios"))
+
+    def test_base_args_only_uses_real_ytdlp_cli_flags(self):
+        # `buffersize` is a Python-API option. Passing it on the CLI makes
+        # yt-dlp exit with "Usage: ..." and breaks every platform.
+        args = server._base_args()
+        self.assertNotIn("--buffersize", args)
+        self.assertNotIn("buffersize", args)
+        for flag in ("--concurrent-fragments", "--retries", "--socket-timeout"):
+            self.assertIn(flag, args)
 
     def test_is_search_source_detection(self):
         self.assertTrue(server._is_search_source("ytsearch1:Sagopa"))

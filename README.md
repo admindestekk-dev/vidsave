@@ -31,6 +31,36 @@ Set `VIDSAVE_MAX_DOWNLOAD_BYTES` on the backend to change the default maximum
 stream size (4 GiB). A key stored on a user's device is not secret from that
 device's owner; use per-user or short-lived credentials for distributed apps.
 
+## Anti-bot resilience (backend)
+
+Platforms change their bot defences continuously, so no configuration can
+guarantee that every link resolves. The backend instead fails over quickly:
+
+| Variable | Purpose |
+| --- | --- |
+| `VIDSAVE_PROXY_URL` | Single egress proxy (`http://user:pass@host:port`). |
+| `VIDSAVE_PROXY_LIST` | Comma/space separated proxy pool, rotated on 403/429. |
+| `VIDSAVE_MAX_ATTEMPTS` | Total extraction attempts (default `6`). |
+| `VIDSAVE_BACKOFF_BASE` | First retry delay in seconds (default `0.8`). |
+| `VIDSAVE_BACKOFF_MAX` | Delay ceiling in seconds (default `8`). |
+| `VIDSAVE_YT_CLIENT_LADDER` | YouTube player clients tried in order (default `android,tv,mweb,web,android_vr,ios`). |
+| `VIDSAVE_COOKIES_BROWSER` | Browser to read session cookies from (server runtimes usually cannot). |
+| `VIDSAVE_IMPERSONATE` | TLS impersonation target; applied only when `curl-cffi` is installed. |
+
+Behaviour:
+
+1. A bot/format failure advances to the next YouTube player client.
+2. A `403`/`429`/rate-limit failure rotates to the next proxy in the pool and
+   backs off exponentially with ±30% jitter.
+3. Direct CDN streams are always relayed through the backend, using the same
+   egress that resolved them, so device IP and headers never trigger a CDN 403.
+4. `GET /api/anti-bot/status` (with the API key) reports the active strategy and
+   proxy count without exposing proxy URLs or credentials.
+
+Session cookies for private Instagram/TikTok content must still be supplied
+through the app's Instagram login panel; the proxy layer does not bypass
+authentication. Respect each platform's terms of service.
+
 ## AdMob international consent testing
 
 The app currently uses Google's official sample AdMob app IDs and test ad-unit

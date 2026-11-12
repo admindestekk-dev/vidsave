@@ -27,10 +27,18 @@ class InMemoryCookieJar {
               if (attr.toLowerCase().startsWith('domain=')) {
                 var d = attr.substring(7).trim().toLowerCase();
                 if (d.startsWith('.')) d = d.substring(1);
-                if (d.isNotEmpty) targetDomain = d;
+                if (d.isNotEmpty) {
+                  // A server may only set cookies for its own domain; anything
+                  // else would let a CDN poison another platform's session.
+                  targetDomain = (host == d || host.endsWith('.$d')) ? d : '';
+                }
               }
             }
-            _cookiesByDomain.putIfAbsent(targetDomain, () => <String, String>{});
+            if (targetDomain.isEmpty) continue;
+            _cookiesByDomain.putIfAbsent(
+              targetDomain,
+              () => <String, String>{},
+            );
             _cookiesByDomain[targetDomain]![name] = value;
           }
         }
@@ -38,63 +46,68 @@ class InMemoryCookieJar {
     }
   }
 
+  /// Second-level labels that are part of a public suffix (example: `com.tr`).
+  static const Set<String> _compoundPublicSuffixLabels = {
+    'co',
+    'com',
+    'org',
+    'net',
+    'gov',
+    'edu',
+    'ac',
+    'or',
+    'ne',
+    'go',
+  };
+
+  /// Registrable site of a host (`rr1---sn.googlevideo.com` → `googlevideo.com`).
+  ///
+  /// Cookies are exchanged per site, never per CDN. A YouTube session cookie
+  /// must not travel to `googlevideo.com`: signed CDN URLs reject requests that
+  /// carry an unexpected `Cookie` header, which is exactly the 403 users saw.
+  static String _siteOf(String host) {
+    final labels = host
+        .toLowerCase()
+        .split('.')
+        .where((label) => label.isNotEmpty)
+        .toList();
+    if (labels.length <= 2) return labels.join('.');
+    final take = _compoundPublicSuffixLabels.contains(labels[labels.length - 2])
+        ? 3
+        : 2;
+    final chosen = labels.length < take
+        ? labels
+        : labels.sublist(labels.length - take);
+    return chosen.join('.');
+  }
+
   /// Builds a combined "name1=val1; name2=val2" Cookie header for a given target URI.
+  ///
+  /// Only cookies that belong to the request's own site are returned. There is
+  /// deliberately no cross-CDN sharing: cookies from `youtube.com`,
+  /// `tiktok.com`, `instagram.com` etc. are never sent to `googlevideo.com`,
+  /// `tiktokcdn.com` or `fbcdn.net`.
   String? getCookieHeader(Uri uri) {
     final host = uri.host.toLowerCase();
+    if (host.isEmpty) return null;
+    final targetSite = _siteOf(host);
     final matchedCookies = <String, String>{};
 
     for (final entry in _cookiesByDomain.entries) {
       final domain = entry.key;
-
-      // 1. Direct or subdomain match
-      if (host == domain ||
+      final isSameOrParentDomain =
+          host == domain ||
           host.endsWith('.$domain') ||
-          domain.endsWith('.$host')) {
-        matchedCookies.addAll(entry.value);
-        continue;
-      }
+          domain.endsWith('.$host');
+      final isSameSite = _siteOf(domain) == targetSite;
 
-      // 2. Platform-aware cross-CDN cookie sharing (YouTube, TikTok, Instagram, Facebook)
-      if ((host.contains('googlevideo.com') || host.contains('youtube.com')) &&
-          (domain.contains('googlevideo.com') || domain.contains('youtube.com'))) {
-        matchedCookies.addAll(entry.value);
-      } else if ((host.contains('tiktok.com') ||
-              host.contains('tiktokcdn.com') ||
-              host.contains('byteoversea.com')) &&
-          (domain.contains('tiktok.com') ||
-              domain.contains('tiktokcdn.com') ||
-              domain.contains('byteoversea.com'))) {
-        matchedCookies.addAll(entry.value);
-      } else if ((host.contains('instagram.com') ||
-              host.contains('cdninstagram.com') ||
-              host.contains('fbcdn.net')) &&
-          (domain.contains('instagram.com') ||
-              domain.contains('cdninstagram.com') ||
-              domain.contains('fbcdn.net'))) {
-        matchedCookies.addAll(entry.value);
-      } else if ((host.contains('facebook.com') || host.contains('fbcdn.net')) &&
-          (domain.contains('facebook.com') || domain.contains('fbcdn.net'))) {
-        matchedCookies.addAll(entry.value);
-      } else if ((host.contains('twitter.com') ||
-              host.contains('x.com') ||
-              host.contains('twimg.com')) &&
-          (domain.contains('twitter.com') ||
-              domain.contains('x.com') ||
-              domain.contains('twimg.com'))) {
-        matchedCookies.addAll(entry.value);
-      } else if ((host.contains('vimeo.com') || host.contains('vimeocdn.com')) &&
-          (domain.contains('vimeo.com') || domain.contains('vimeocdn.com'))) {
-        matchedCookies.addAll(entry.value);
-      } else if ((host.contains('dailymotion.com') || host.contains('dmcdn.net')) &&
-          (domain.contains('dailymotion.com') || domain.contains('dmcdn.net'))) {
+      if (isSameOrParentDomain || isSameSite) {
         matchedCookies.addAll(entry.value);
       }
     }
 
     if (matchedCookies.isEmpty) return null;
-    return matchedCookies.entries
-        .map((e) => '${e.key}=${e.value}')
-        .join('; ');
+    return matchedCookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
   }
 
   /// Manually saves or overrides a cookie key-value pair for a domain.
@@ -230,8 +243,7 @@ class AppDio {
         maxRedirects: 8,
         validateStatus: (status) => status != null && status < 500,
         headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'Accept': 'video/webm,video/mp4,video/*,audio/*,*/*',
           'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
           'Referer': 'https://youtube.com', // Platform taklidi için dinamik değişebilir
@@ -248,13 +260,12 @@ class AppDio {
 
   /// Helper to get default legal browser headers map.
   static Map<String, String> get defaultHeaders => {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'video/webm,video/mp4,video/*,audio/*,*/*',
-        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Referer': 'https://youtube.com',
-        'Origin': 'https://youtube.com',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'cross-site',
-      };
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'video/webm,video/mp4,video/*,audio/*,*/*',
+    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Referer': 'https://youtube.com',
+    'Origin': 'https://youtube.com',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'cross-site',
+  };
 }

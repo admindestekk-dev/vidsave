@@ -27,7 +27,12 @@ class FfmpegShieldTests(unittest.TestCase):
         root_dir = Path(__file__).resolve().parent.parent.parent
         for req_path in (root_dir / "requirements.txt", root_dir / "backend" / "requirements.txt"):
             lines = [line.strip().lower() for line in req_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-            self.assertEqual(lines, ["flask", "flask-cors", "requests", "yt-dlp", "gunicorn"])
+            # curl-cffi backs yt-dlp's --impersonate flag; without it every
+            # extraction is retried without impersonation.
+            self.assertEqual(
+                lines,
+                ["flask", "flask-cors", "requests", "yt-dlp", "curl-cffi", "gunicorn"],
+            )
 
     def test_audio_format_selector_uses_bestaudio(self):
         selector = server._format_selector("audio")
