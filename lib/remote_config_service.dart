@@ -31,7 +31,7 @@ class RemoteConfigService {
     'twitter_regex': r'"download_url":"(.*?)"|(https://video\.twimg\.com/[^"\\]+\.mp4[^"\\]*)|"video_url":\s*"([^"]+)"|<meta\s+property="og:video:url"\s+content="([^"]+)"',
     'pinterest_regex': r'"download_url":"(.*?)"|"url":\s*"(https://[^"]+\.mp4[^"]*)"|"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
     'user_agent_string': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'backup_api_url': '',
+    'backup_api_url': 'https://vidsave-q7ut.onrender.com',
   };
 
   /// Bellekteki aktif konfigürasyon önbelleği

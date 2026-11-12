@@ -1087,7 +1087,7 @@ class UniversalScraper {
       }
 
       throw const MediaResolverException(
-        'Instagram medya URL\'si korumalı veya oturum çerezi gerektiriyor.',
+        'Instagram medya URL\'si korumalı veya oturum çerezi gerektiriyor. Bu videoyu Web Tarayıcısı sekmesinden Instagram\'a giriş yaparak doğrudan ve hatasız indirebilirsiniz.',
       );
     } catch (e) {
       if (e is MediaResolverException) rethrow;

@@ -596,7 +596,8 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       unawaited(AdmobService.instance.showInterstitialAd());
     } catch (error) {
       ClipboardAutoDownloadService.clearMemoryAndCache();
-      finishOverlayDownload(success: false, message: 'İndirme başarısız');
+      final friendlyMsg = DownloadExceptionHandler.getFriendlyMessage(error, null);
+      finishOverlayDownload(success: false, message: friendlyMsg);
       if (!mounted) return;
       DownloadExceptionHandler.showErrorSnackBar(context, error);
     }
