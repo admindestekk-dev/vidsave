@@ -359,6 +359,9 @@ class _FakeMusicPlayer implements MusicPlayerController {
   Duration? lastSeek;
 
   @override
+  PlayerState get state => isPlaying ? PlayerState.playing : PlayerState.paused;
+
+  @override
   Stream<PlayerState> get onPlayerStateChanged => _stateController.stream;
 
   @override

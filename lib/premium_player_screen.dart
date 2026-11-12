@@ -64,7 +64,8 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   Object? _error;
 
   bool get _isPlaying => _isAudio
-      ? _audioState == PlayerState.playing
+      ? (_audioState == PlayerState.playing ||
+          (_audioPlayer?.state == PlayerState.playing))
       : (_videoController?.value.isPlaying ?? false);
 
   @override
@@ -183,6 +184,9 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
         setState(() => _audioDuration = initialDuration);
       }
     } catch (_) {}
+    if (mounted) {
+      setState(() => _audioState = PlayerState.playing);
+    }
     await player.resume();
     _updateWaveAnimation(PlayerState.playing);
   }
@@ -271,32 +275,31 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
       if (_isAudio) {
         final player = _audioPlayer;
         if (player == null) return;
-        if (_audioState == PlayerState.playing) {
+        final isCurrentlyPlaying = _audioState == PlayerState.playing ||
+            player.state == PlayerState.playing ||
+            _waveAnimation.isAnimating;
+
+        if (isCurrentlyPlaying) {
+          if (mounted) {
+            setState(() => _audioState = PlayerState.paused);
+            _updateWaveAnimation(PlayerState.paused);
+          }
           await player.pause();
           try {
             final currentPos = await player.getCurrentPosition();
-            if (mounted) {
-              setState(() {
-                _audioState = PlayerState.paused;
-                if (currentPos != null && currentPos > Duration.zero) {
-                  _audioPosition = currentPos;
-                }
-              });
-              _updateWaveAnimation(PlayerState.paused);
+            if (mounted && currentPos != null && currentPos > Duration.zero) {
+              setState(() => _audioPosition = currentPos);
             }
-          } catch (_) {
-            if (mounted) {
-              setState(() => _audioState = PlayerState.paused);
-              _updateWaveAnimation(PlayerState.paused);
-            }
-          }
+          } catch (_) {}
         } else {
           if (_audioState == PlayerState.completed) {
             await player.seek(Duration.zero);
             if (mounted) setState(() => _audioPosition = Duration.zero);
           }
-          if (mounted) setState(() => _audioState = PlayerState.playing);
-          _updateWaveAnimation(PlayerState.playing);
+          if (mounted) {
+            setState(() => _audioState = PlayerState.playing);
+            _updateWaveAnimation(PlayerState.playing);
+          }
           await player.resume();
         }
         return;

@@ -2700,26 +2700,23 @@ def api_analyze() -> Response | tuple[Response, int]:
             merged_headers = dict(TIKTOK_HTTP_HEADERS)
             merged_headers.update(clean_download_headers)
             clean_download_headers = merged_headers
-        if kind == "video" or not FFMPEG_PATH:
-            proxied_url = _direct_proxy_job(
-                kind=kind,
-                source=target_url,
-                direct_url=clean_download_url,
-                direct_headers=clean_download_headers,
-                title=title,
-                duration=duration if isinstance(duration, int) else None,
-                ext=ext,
-                host_url=request.host_url,
-            )
-            if proxied_url:
-                clean_download_url = proxied_url
-                is_proxied = True
-            else:
-                # The stream is not reachable from the server either; let the
-                # slow path below download/transcode it with yt-dlp.
-                clean_download_url = None
+        # Direct audio stream proxy (when accessible) or video stream proxy
+        proxied_url = _direct_proxy_job(
+            kind=kind,
+            source=target_url,
+            direct_url=clean_download_url,
+            direct_headers=clean_download_headers,
+            title=title,
+            duration=duration if isinstance(duration, int) else None,
+            ext=ext,
+            host_url=request.host_url,
+        )
+        if proxied_url:
+            clean_download_url = proxied_url
+            is_proxied = True
         else:
-            # Audio with ffmpeg available: convert on the server for a real MP3.
+            # The stream is not reachable from the server or direct stream unavailable;
+            # let the background job path below download/transcode it with yt-dlp.
             clean_download_url = None
 
     if not clean_download_url or is_segmented_manifest:

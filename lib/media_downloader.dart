@@ -979,16 +979,24 @@ class MediaDownloader {
 
       await _publishToMediaStore(converted);
       return converted;
-    } catch (_) {
+    } catch (ffmpegErr) {
+      debugPrint('MediaDownloader MP3 conversion fallback: $ffmpegErr');
       if (await outputFile.exists()) {
         try {
           await outputFile.delete();
         } catch (_) {}
       }
-      // Recovery fallback: if raw inputFile exists, publish and return it rather than failing
+      // Recovery fallback: if raw inputFile exists, ensure it has .mp3 extension and publish it
       if (await inputFile.exists()) {
-        await _publishToMediaStore(inputFile);
-        return inputFile;
+        File finalAudioFile = inputFile;
+        if (!finalAudioFile.path.toLowerCase().endsWith('.mp3')) {
+          try {
+            final renamed = await finalAudioFile.rename(outputFile.path);
+            finalAudioFile = renamed;
+          } catch (_) {}
+        }
+        await _publishToMediaStore(finalAudioFile);
+        return finalAudioFile;
       }
       rethrow;
     }

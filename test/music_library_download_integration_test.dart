@@ -26,6 +26,9 @@ class _FakeMusicPlayer implements MusicPlayerController {
   int resumeCount = 0;
 
   @override
+  PlayerState get state => isPlaying ? PlayerState.playing : PlayerState.paused;
+
+  @override
   Stream<PlayerState> get onPlayerStateChanged => _stateController.stream;
 
   @override

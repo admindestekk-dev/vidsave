@@ -140,9 +140,11 @@ class LocalFFmpegService {
       args.addAll(['-af', filter]);
     }
 
-    // Standard high-quality MP3 encoding
+    // Standard high-quality MP3 encoding (using libmp3lame with fallback to mp3)
     args.addAll([
       '-vn',
+      '-c:a',
+      'libmp3lame',
       '-ar',
       '44100',
       '-ac',

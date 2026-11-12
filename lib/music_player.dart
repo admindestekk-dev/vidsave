@@ -13,6 +13,7 @@ abstract interface class MusicPlayerController {
   Stream<Duration> get onPositionChanged;
   Stream<Duration> get onDurationChanged;
   Stream<void> get onPlayerComplete;
+  PlayerState get state;
 
   Future<void> setReleaseMode(ReleaseMode releaseMode);
   Future<void> setSource(Source source);
@@ -92,6 +93,9 @@ class _AudioplayersMusicController implements MusicPlayerController {
   Stream<void> get onPlayerComplete => _player.onPlayerComplete;
 
   @override
+  PlayerState get state => _player.state;
+
+  @override
   Future<void> setReleaseMode(ReleaseMode releaseMode) =>
       _player.setReleaseMode(releaseMode);
 
@@ -99,10 +103,22 @@ class _AudioplayersMusicController implements MusicPlayerController {
   Future<void> setSource(Source source) => _player.setSource(source);
 
   @override
-  Future<void> resume() => _player.resume();
+  Future<void> resume() async {
+    try {
+      await _player.resume();
+    } catch (e) {
+      debugPrint('AudioPlayer resume error: $e');
+    }
+  }
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() async {
+    try {
+      await _player.pause();
+    } catch (e) {
+      debugPrint('AudioPlayer pause error: $e');
+    }
+  }
 
   @override
   Future<void> seek(Duration position) => _player.seek(position);
@@ -114,7 +130,13 @@ class _AudioplayersMusicController implements MusicPlayerController {
   Future<Duration?> getDuration() => _player.getDuration();
 
   @override
-  Future<void> stop() => _player.stop();
+  Future<void> stop() async {
+    try {
+      await _player.stop();
+    } catch (e) {
+      debugPrint('AudioPlayer stop error: $e');
+    }
+  }
 
   @override
   Future<void> dispose() => _player.dispose();
@@ -286,6 +308,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       if (widget.autoStart && widget.player == null) {
+        if (mounted) setState(() => _playerState = PlayerState.playing);
         await _player?.resume();
       }
     } catch (error, stackTrace) {
@@ -359,26 +382,26 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     _duration = await player.getDuration() ?? _duration;
   }
 
+  bool get _isPlaying =>
+      _playerState == PlayerState.playing || _player?.state == PlayerState.playing;
+
   Future<void> _togglePlayPause() async {
     final player = _player;
     if (player == null || _isPlaybackCommandPending) return;
     _isPlaybackCommandPending = true;
     try {
-      if (_playerState == PlayerState.playing) {
+      final isCurrentlyPlaying = _playerState == PlayerState.playing ||
+          player.state == PlayerState.playing;
+
+      if (isCurrentlyPlaying) {
+        if (mounted) setState(() => _playerState = PlayerState.paused);
         await player.pause();
         try {
           final currentPos = await player.getCurrentPosition();
-          if (mounted) {
-            setState(() {
-              _playerState = PlayerState.paused;
-              if (currentPos != null && currentPos > Duration.zero) {
-                _position = currentPos;
-              }
-            });
+          if (mounted && currentPos != null && currentPos > Duration.zero) {
+            setState(() => _position = currentPos);
           }
-        } catch (_) {
-          if (mounted) setState(() => _playerState = PlayerState.paused);
-        }
+        } catch (_) {}
         return;
       }
       if (_playerState == PlayerState.completed) {
@@ -663,7 +686,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   }
 
   Widget _buildControls() {
-    final isPlaying = _playerState == PlayerState.playing;
+    final isPlaying = _isPlaying;
     final enabled = _player != null && _error == null;
 
     return Row(
@@ -853,15 +876,17 @@ class _MiniPlayPauseButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<PlayerState>(
       stream: player.onPlayerStateChanged,
-      initialData: PlayerState.stopped,
+      initialData: player.state,
       builder: (context, snapshot) {
-        final isPlaying = snapshot.data == PlayerState.playing;
+        final currentState = snapshot.data ?? player.state;
+        final isPlaying =
+            currentState == PlayerState.playing || player.state == PlayerState.playing;
         return IconButton(
           onPressed: () async {
             if (isPlaying) {
               await player.pause();
             } else {
-              if (snapshot.data == PlayerState.completed) {
+              if (currentState == PlayerState.completed) {
                 await player.seek(Duration.zero);
               }
               await player.resume();

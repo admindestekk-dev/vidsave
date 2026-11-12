@@ -126,6 +126,9 @@ class _FakeMusicPlayer implements MusicPlayerController {
   bool isPlaying = false;
 
   @override
+  PlayerState get state => isPlaying ? PlayerState.playing : PlayerState.paused;
+
+  @override
   Stream<PlayerState> get onPlayerStateChanged => _state.stream;
   @override
   Stream<Duration> get onPositionChanged => _position.stream;
