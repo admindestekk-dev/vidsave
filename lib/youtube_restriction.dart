@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'media_downloader.dart';
 
 const String youtubeRestrictionMessage =
-    'YouTube bağlantılarından video veya ses indirme desteklenmiyor. '
-    'Lütfen desteklenen başka bir platform bağlantısı kullanın.';
+    'Yasal kısıtlamalar nedeniyle YouTube videoları İNDİRİLEMEMEKTEDİR.';
 
 bool isYouTubeUrl(String input) {
   final value = input.trim();
