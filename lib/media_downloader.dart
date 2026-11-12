@@ -143,16 +143,14 @@ class ResolvedMedia {
     this.audioByteStreamProvider,
     String? title,
     List<MediaStreamInfo>? streams,
-  })  : url = url ??
-            (streams != null && streams.isNotEmpty
-                ? streams.first.url
-                : Uri()),
-        fileName = fileName ??
-            (title != null && title.isNotEmpty
-                ? '$title.mp4'
-                : 'media.mp4'),
-        title = title ?? fileName,
-        streams = streams ?? const [];
+  }) : url =
+           url ??
+           (streams != null && streams.isNotEmpty ? streams.first.url : Uri()),
+       fileName =
+           fileName ??
+           (title != null && title.isNotEmpty ? '$title.mp4' : 'media.mp4'),
+       title = title ?? fileName,
+       streams = streams ?? const [];
 
   final Uri url;
   final String fileName;
@@ -192,8 +190,7 @@ String evrenselTemizUrl(String hamUrl) {
   if (hamUrl.trim().isEmpty) return '';
 
   final raw = hamUrl.trim();
-  final urlMatch =
-      RegExp(r'https?://[^\s<>"{}|\\^~\[\]`]+').firstMatch(raw);
+  final urlMatch = RegExp(r'https?://[^\s<>"{}|\\^~\[\]`]+').firstMatch(raw);
   var link = (urlMatch != null ? urlMatch.group(0)! : raw)
       .replaceAll('"', '')
       .replaceAll("'", '')
@@ -884,7 +881,11 @@ class MediaDownloader {
               : null);
 
     if (audioFile == null) {
-      return videoFile;
+      // Shipping the video-only stream produces a muted file, so treat a
+      // missing audio track as a failure instead of a successful download.
+      throw const MediaDownloadException(
+        'Video akışının sesi indirilemedi. Lütfen tekrar deneyin.',
+      );
     }
 
     // 3. Merge streams locally with FFmpeg on CPU
@@ -986,17 +987,12 @@ class MediaDownloader {
           await outputFile.delete();
         } catch (_) {}
       }
-      // Recovery fallback: if raw inputFile exists, ensure it has .mp3 extension and publish it
+      // Recovery: keep the untouched download with its REAL container
+      // extension (m4a/aac/opus). Renaming those bytes to .mp3 is what makes
+      // the saved track unplayable, so never do it.
       if (await inputFile.exists()) {
-        File finalAudioFile = inputFile;
-        if (!finalAudioFile.path.toLowerCase().endsWith('.mp3')) {
-          try {
-            final renamed = await finalAudioFile.rename(outputFile.path);
-            finalAudioFile = renamed;
-          } catch (_) {}
-        }
-        await _publishToMediaStore(finalAudioFile);
-        return finalAudioFile;
+        await _publishToMediaStore(inputFile);
+        return inputFile;
       }
       rethrow;
     }
@@ -1218,8 +1214,9 @@ class MediaDownloader {
             targetFileName.toLowerCase().endsWith('.png') ||
             targetFileName.toLowerCase().endsWith('.webp') ||
             targetFileName.toLowerCase().endsWith('.gif');
-        final minAllowedBytes =
-            (isAudioTarget || isImageTarget) ? 5 * 1024 : kMinValidMediaBytes;
+        final minAllowedBytes = (isAudioTarget || isImageTarget)
+            ? 5 * 1024
+            : kMinValidMediaBytes;
 
         if (contentLengthVal != null &&
             contentLengthVal > 0 &&
@@ -1292,8 +1289,9 @@ class MediaDownloader {
             targetFileName.toLowerCase().endsWith('.png') ||
             targetFileName.toLowerCase().endsWith('.webp') ||
             targetFileName.toLowerCase().endsWith('.gif');
-        final minAllowedBytes =
-            (isAudioTarget || isImageTarget) ? 5 * 1024 : kMinValidMediaBytes;
+        final minAllowedBytes = (isAudioTarget || isImageTarget)
+            ? 5 * 1024
+            : kMinValidMediaBytes;
 
         if (downloadedLength < minAllowedBytes) {
           try {
@@ -1336,7 +1334,9 @@ class MediaDownloader {
           await file.delete();
         } catch (_) {}
       }
-      debugPrint('MediaDownloader birincil akış hatası: $e. Yedek HTTP akışına geçiliyor...');
+      debugPrint(
+        'MediaDownloader birincil akış hatası: $e. Yedek HTTP akışına geçiliyor...',
+      );
     }
 
     // 2. İkincil / Yedek İndirme Akışı (HTTP Client Streaming): Aynı başlık ve çerez maskesi ile
@@ -1411,8 +1411,9 @@ class MediaDownloader {
         targetFileName.toLowerCase().endsWith('.png') ||
         targetFileName.toLowerCase().endsWith('.webp') ||
         targetFileName.toLowerCase().endsWith('.gif');
-    final minStreamAllowedBytes =
-        (isAudioStreamTarget || isImageStreamTarget) ? 5 * 1024 : kMinValidMediaBytes;
+    final minStreamAllowedBytes = (isAudioStreamTarget || isImageStreamTarget)
+        ? 5 * 1024
+        : kMinValidMediaBytes;
 
     if (downloadedLength < minStreamAllowedBytes) {
       if (await file.exists()) {
@@ -1421,7 +1422,8 @@ class MediaDownloader {
       unawaited(
         RemoteConfigService.instance.reportBotBlockSignal(
           failedUrl: effectiveUri,
-          reason: 'Streamed file smaller than minimum ($minStreamAllowedBytes): $downloadedLength bytes',
+          reason:
+              'Streamed file smaller than minimum ($minStreamAllowedBytes): $downloadedLength bytes',
           contentLength: downloadedLength,
         ),
       );
@@ -1504,13 +1506,7 @@ class MediaDownloader {
           'flac',
           'opus',
         }.contains(ext);
-        final isImage = {
-          'jpg',
-          'jpeg',
-          'png',
-          'webp',
-          'gif',
-        }.contains(ext);
+        final isImage = {'jpg', 'jpeg', 'png', 'webp', 'gif'}.contains(ext);
         final subFolder = isAudio ? 'Mp3' : (isImage ? 'Photo' : 'Video');
 
         for (final basePath in [

@@ -108,6 +108,8 @@ os.makedirs(WORK_DIR, exist_ok=True)
 # yt-dlp can be invoked as a module or as a standalone binary.
 YTDLP_CMD = os.environ.get("VIDSAVE_YTDLP", "").strip() or None
 FFMPEG_PATH = shutil.which("ffmpeg")
+# Used to verify that a delivered file really contains the streams we promise.
+FFPROBE_PATH = shutil.which("ffprobe")
 
 # Browser impersonation support (requires curl_cffi)
 try:
@@ -1424,6 +1426,15 @@ def _clean_error(message: str) -> str:
     return re.sub(r"^(ERROR|WARNING):\s*", "", lines[0])[:300]
 
 
+def _format_has_audio(fmt: dict[str, Any]) -> bool:
+    """Whether a yt-dlp format carries an audio track at all."""
+    return (fmt.get("acodec") or "none") != "none"
+
+
+def _format_is_audio_only(fmt: dict[str, Any]) -> bool:
+    return _format_has_audio(fmt) and (fmt.get("vcodec") or "none") == "none"
+
+
 def _pick_direct_format(
     info: dict[str, Any], kind: str
 ) -> dict[str, Any] | None:
@@ -1433,25 +1444,79 @@ def _pick_direct_format(
     streams; in that case there is no single direct URL and we must download
     server-side instead.
 
-    For audio mode we ONLY accept a true audio-only stream. A progressive
-    video+audio file is not a valid mp3 substitute, so we must not hand it over
-    as one just because ffmpeg is unavailable.
+    Both modes only accept a *complete* stream:
+
+    * audio needs a true audio-only track, otherwise the player would receive
+      video bytes renamed to .mp3;
+    * video needs a track that already contains audio. A video-only DASH
+      stream plays silently on the device, which users report as "the
+      downloaded video has no sound". Those must be merged on the server.
     """
     requested = info.get("requested_formats") or []
     if len(requested) == 1 and requested[0].get("url"):
         candidate = requested[0]
-        if kind == "audio" and (candidate.get("vcodec") or "none") != "none":
-            return None  # a video file cannot stand in for audio-only
-        return candidate
+        if kind == "audio":
+            return candidate if _format_is_audio_only(candidate) else None
+        return candidate if _format_has_audio(candidate) else None
     if not requested and info.get("url"):
         has_video = (info.get("vcodec") or "none") != "none"
-        has_audio = (info.get("acodec") or "none") != "none"
         if kind == "audio":
-            return info if has_audio and not has_video else None
+            return info if _format_is_audio_only(info) else None
         # A progressive format: one URL already contains video + audio.
-        if has_video and has_audio:
+        if has_video and _format_has_audio(info):
             return info
     return None
+
+
+def _stream_types(path: str) -> set[str]:
+    """Codec types (`video`, `audio`) actually present in a delivered file.
+
+    Returns an empty set when ffprobe is unavailable, so callers can treat the
+    check as best-effort instead of blocking downloads on a missing binary.
+    """
+    if not FFPROBE_PATH or not path or not os.path.exists(path):
+        return set()
+    try:
+        proc = subprocess.run(
+            [
+                FFPROBE_PATH,
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "csv=p=0",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except Exception:  # noqa: BLE001 - probing must never break a download
+        return set()
+    if proc.returncode != 0:
+        return set()
+    return {
+        line.strip().lower()
+        for line in (proc.stdout or "").splitlines()
+        if line.strip()
+    }
+
+
+def _is_mp3_file(path: str) -> bool:
+    """True when the file really starts like MP3 (ID3 tag or MPEG sync word)."""
+    try:
+        with open(path, "rb") as handle:
+            header = handle.read(12)
+    except Exception:  # noqa: BLE001
+        return False
+    if len(header) < 3:
+        return False
+    if header[:3] == b"ID3":
+        return True
+    if header[0] == 0xFF and (header[1] & 0xE0) == 0xE0:
+        return True
+    return False
 
 
 def _safe_filename(name: str, fallback: str, ext: str) -> str:
@@ -1557,6 +1622,11 @@ def _direct_proxy_job(
     bytes must always be relayed by the server that resolved them.
     """
     if not direct_url:
+        return None
+    if kind == "audio" and (ext or "").strip().lower() != "mp3":
+        logging.info(
+            "Refusing to relay %s bytes as an MP3 deliverable.", ext or "unknown"
+        )
         return None
     if not _is_direct_url_accessible(direct_url, direct_headers):
         logging.warning(
@@ -1715,6 +1785,20 @@ def _work(job: Job) -> None:
         path = _download_job_to_disk(job, target_source)
         ext = os.path.splitext(path)[1].lstrip(".").lower() or "mp4"
 
+        # A merged file that silently lost its audio track is exactly the
+        # "downloaded video has no sound" report, so refuse to publish it.
+        stream_types = _stream_types(path)
+        if stream_types and job.kind == "video" and "audio" not in stream_types:
+            raise RuntimeError(
+                "İndirilen dosyada ses akışı bulunamadı. Lütfen farklı bir "
+                "kalite seçip tekrar deneyin."
+            )
+        if stream_types and job.kind == "audio" and "audio" not in stream_types:
+            raise RuntimeError(
+                "İndirilen dosyada ses akışı bulunamadı. Lütfen bağlantıyı "
+                "kontrol edip tekrar deneyin."
+            )
+
         # Apply Audio Post-Processing (Feature 1: Trimming & Feature 4: Audio Effects)
         if job.kind == "audio" and ext == "mp3" and FFMPEG_PATH:
             needs_trim = job.start_time is not None or job.end_time is not None
@@ -1748,6 +1832,15 @@ def _work(job: Job) -> None:
                     except OSError:
                         pass
                     path = processed_path
+
+        # A .mp3 that is really AAC/Opus bytes is what users experience as
+        # "the downloaded MP3 does not play", so verify the container before
+        # handing it over.
+        if job.kind == "audio" and ext == "mp3" and not _is_mp3_file(path):
+            raise RuntimeError(
+                "MP3 dönüştürme doğrulanamadı; dosya geçerli bir MP3 değil. "
+                "Lütfen tekrar deneyin."
+            )
 
         # Feature 2: Auto Lyrics Sync (Fetch & embed into ID3)
         if job.kind == "audio" and ext == "mp3":
@@ -2605,6 +2698,18 @@ def api_analyze() -> Response | tuple[Response, int]:
     if info:
         # Check direct formats
         direct_format = _pick_direct_format(info, kind)
+        if direct_format and direct_format.get("url") and is_audio:
+            # A direct audio stream is only usable as-is when its container is
+            # a real MP3. m4a/opus/webm bytes served under a .mp3 name cannot
+            # be played by most music apps, so those go through the server job
+            # which extracts and encodes an actual MP3.
+            direct_ext = (direct_format.get("ext") or "").strip().lower()
+            if direct_ext != "mp3":
+                logging.info(
+                    "Audio stream container is %s; extracting a real MP3 on the server.",
+                    direct_ext or "unknown",
+                )
+                direct_format = None
         if direct_format and direct_format.get("url"):
             clean_download_url = direct_format["url"]
             if isinstance(direct_format.get("http_headers"), dict):
@@ -2630,7 +2735,14 @@ def api_analyze() -> Response | tuple[Response, int]:
                 # Never return a video-containing format for an audio request.
                 # If no audio-only stream exists, the server job below extracts
                 # and converts the audio track to MP3.
-                candidates = audio_only
+                # Only an MP3 container is playable as-is. m4a/aac/opus bytes
+                # saved under a .mp3 name are the "MP3 does not play" report,
+                # so anything else is extracted by the server job below.
+                candidates = [
+                    f
+                    for f in audio_only
+                    if (f.get("ext") or "").strip().lower() == "mp3"
+                ]
                 if candidates:
                     candidates.sort(
                         key=lambda f: (f.get("abr") or 0, f.get("tbr") or 0),
@@ -2663,20 +2775,11 @@ def api_analyze() -> Response | tuple[Response, int]:
                             for k, v in prog_formats[0]["http_headers"].items()
                         }
                     ext = prog_formats[0].get("ext") or "mp4"
-                elif formats:
-                    valid = [f for f in formats if f.get("url")]
-                    if valid:
-                        valid.sort(
-                            key=lambda f: (f.get("height") or 0, f.get("tbr") or 0),
-                            reverse=True,
-                        )
-                        clean_download_url = valid[0].get("url")
-                        if isinstance(valid[0].get("http_headers"), dict):
-                            clean_download_headers = {
-                                str(k): str(v)
-                                for k, v in valid[0]["http_headers"].items()
-                            }
-                        ext = valid[0].get("ext") or "mp4"
+                # No progressive stream exists. Do NOT fall back to an arbitrary
+                # format: DASH sources expose video-only and audio-only streams,
+                # and handing over the video-only one produces a silent video.
+                # Leaving the URL unresolved sends the request to the server job
+                # below, which merges both streams with ffmpeg.
 
     # 2. Fallback regex scraper if yt-dlp returned no stream URL
     if not clean_download_url and not is_audio:
@@ -2755,7 +2858,12 @@ def api_analyze() -> Response | tuple[Response, int]:
         ), 422
 
     if is_audio and not ext.lower().endswith("mp3"):
-        ext = "mp3"
+        # Never rename AAC/Opus bytes to .mp3: strict music apps refuse to play
+        # them. Keep the true container so the client can transcode it.
+        logging.warning(
+            "Audio deliverable is %s rather than mp3; keeping the real container.",
+            ext,
+        )
 
     filename = _safe_filename(title, "vidsave", ext)
 

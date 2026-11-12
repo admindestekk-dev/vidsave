@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:ffmpeg_kit_flutter_new_min_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min_gpl/return_code.dart';
 import 'package:flutter/foundation.dart';
@@ -18,11 +19,15 @@ class LocalFFmpegService {
   LocalFFmpegService._();
   static final LocalFFmpegService instance = LocalFFmpegService._();
 
+  /// True inside `flutter test`, where native FFmpeg cannot be executed.
+  bool get isTestEnvironment =>
+      !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+
   /// Whether current platform supports ffmpeg_kit native bindings
   bool get isSupported =>
       !kIsWeb &&
       (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) &&
-      !Platform.environment.containsKey('FLUTTER_TEST');
+      !isTestEnvironment;
 
   /// Merges separate video and audio files into a unified MP4 file.
   Future<File> mergeVideoAndAudio({
@@ -31,10 +36,18 @@ class LocalFFmpegService {
     required File outputFile,
   }) async {
     if (!isSupported) {
-      // In test or unsupported environment, keep the video file
-      if (await outputFile.exists()) await outputFile.delete();
-      await videoFile.copy(outputFile.path);
-      return outputFile;
+      if (isTestEnvironment) {
+        // Test double: native FFmpeg cannot run under `flutter test`.
+        if (await outputFile.exists()) await outputFile.delete();
+        await videoFile.copy(outputFile.path);
+        return outputFile;
+      }
+      // Copying the video-only stream would ship a muted video, so fail
+      // loudly instead of pretending the merge succeeded.
+      throw UnsupportedError(
+        'Bu cihazda FFmpeg birleştirme desteklenmiyor; video ve ses akışı '
+        'tek dosyada birleştirilemedi.',
+      );
     }
 
     if (await outputFile.exists()) {
@@ -62,23 +75,20 @@ class LocalFFmpegService {
     debugPrint('LocalFFmpegService: Executing merge with arguments: $args');
     final completer = Completer<File>();
 
-    await FFmpegKit.executeWithArgumentsAsync(
-      args,
-      (session) async {
-        final returnCode = await session.getReturnCode();
-        if (ReturnCode.isSuccess(returnCode) && await outputFile.exists()) {
-          completer.complete(outputFile);
-        } else {
-          final failTrace = await session.getFailStackTrace();
-          final output = await session.getOutput();
-          completer.completeError(
-            Exception(
-              'FFmpeg birleştirme başarısız oldu (rc: $returnCode). $failTrace $output',
-            ),
-          );
-        }
-      },
-    );
+    await FFmpegKit.executeWithArgumentsAsync(args, (session) async {
+      final returnCode = await session.getReturnCode();
+      if (ReturnCode.isSuccess(returnCode) && await outputFile.exists()) {
+        completer.complete(outputFile);
+      } else {
+        final failTrace = await session.getFailStackTrace();
+        final output = await session.getOutput();
+        completer.completeError(
+          Exception(
+            'FFmpeg birleştirme başarısız oldu (rc: $returnCode). $failTrace $output',
+          ),
+        );
+      }
+    });
 
     return completer.future;
   }
@@ -95,10 +105,17 @@ class LocalFFmpegService {
     String? audioEffect,
   }) async {
     if (!isSupported) {
-      // In test or unsupported environment, emulate output
-      if (await outputFile.exists()) await outputFile.delete();
-      await inputFile.copy(outputFile.path);
-      return outputFile;
+      if (isTestEnvironment) {
+        // Test double: native FFmpeg cannot run under `flutter test`.
+        if (await outputFile.exists()) await outputFile.delete();
+        await inputFile.copy(outputFile.path);
+        return outputFile;
+      }
+      // Copying MP4/M4A bytes into a .mp3 file is exactly the "downloaded MP3
+      // does not play" report, so refuse instead of mislabelling the file.
+      throw UnsupportedError(
+        'Bu cihazda FFmpeg MP3 dönüştürme desteklenmiyor.',
+      );
     }
 
     final isSamePath = outputFile.path == inputFile.path;
@@ -158,37 +175,64 @@ class LocalFFmpegService {
 
     final completer = Completer<File>();
 
-    await FFmpegKit.executeWithArgumentsAsync(
-      args,
-      (session) async {
-        final returnCode = await session.getReturnCode();
-        if (ReturnCode.isSuccess(returnCode) && await actualOutput.exists()) {
-          if (isSamePath) {
-            try {
-              if (await inputFile.exists()) {
-                await inputFile.delete();
-              }
-              final renamed = await actualOutput.rename(outputFile.path);
-              completer.complete(renamed);
-            } catch (_) {
-              completer.complete(actualOutput);
-            }
-          } else {
-            completer.complete(outputFile);
-          }
-        } else {
-          final failTrace = await session.getFailStackTrace();
-          final output = await session.getOutput();
+    await FFmpegKit.executeWithArgumentsAsync(args, (session) async {
+      final returnCode = await session.getReturnCode();
+      if (ReturnCode.isSuccess(returnCode) && await actualOutput.exists()) {
+        if (!await _hasMp3Signature(actualOutput)) {
           completer.completeError(
             Exception(
-              'FFmpeg MP3 dönüştürme başarısız oldu (rc: $returnCode). $failTrace $output',
+              'FFmpeg çıktısı geçerli bir MP3 değil; dosya dönüştürülmedi.',
             ),
           );
+          return;
         }
-      },
-    );
+        if (isSamePath) {
+          try {
+            if (await inputFile.exists()) {
+              await inputFile.delete();
+            }
+            final renamed = await actualOutput.rename(outputFile.path);
+            completer.complete(renamed);
+          } catch (_) {
+            completer.complete(actualOutput);
+          }
+        } else {
+          completer.complete(outputFile);
+        }
+      } else {
+        final failTrace = await session.getFailStackTrace();
+        final output = await session.getOutput();
+        completer.completeError(
+          Exception(
+            'FFmpeg MP3 dönüştürme başarısız oldu (rc: $returnCode). $failTrace $output',
+          ),
+        );
+      }
+    });
 
     return completer.future;
+  }
+
+  /// True when [file] starts with an ID3 tag or an MPEG audio frame sync.
+  ///
+  /// Guards against handing a container (AAC/MP4/WebM) over as `.mp3`, which
+  /// is what makes downloaded tracks refuse to play.
+  Future<bool> _hasMp3Signature(File file) async {
+    try {
+      final handle = await file.open();
+      try {
+        final header = await handle.read(3);
+        if (header.length < 3) return false;
+        if (header[0] == 0x49 && header[1] == 0x44 && header[2] == 0x33) {
+          return true; // "ID3"
+        }
+        return header[0] == 0xFF && (header[1] & 0xE0) == 0xE0;
+      } finally {
+        await handle.close();
+      }
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Builds FFmpeg audio filter string for selected effect

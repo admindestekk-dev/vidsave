@@ -122,7 +122,9 @@ class UnifiedDownloadEngine {
     bool showSystemNotifications = true,
   }) async {
     final extractedUrl = ClipboardAutoDownloadService.extractUrl(rawUrl);
-    final urlToDownload = (extractedUrl != null && extractedUrl.isNotEmpty) ? extractedUrl : rawUrl.trim();
+    final urlToDownload = (extractedUrl != null && extractedUrl.isNotEmpty)
+        ? extractedUrl
+        : rawUrl.trim();
     ensureNotYouTubeUrl(urlToDownload);
     final cleanUrl = evrenselTemizUrl(urlToDownload);
     final targetUrl = cleanUrl.isNotEmpty ? cleanUrl : urlToDownload;
@@ -138,7 +140,10 @@ class UnifiedDownloadEngine {
     final notifService = DownloadNotificationService.instance;
     final notificationId = notifService.allocateNotificationId();
     final defaultTitle =
-        preferredTitle ?? (isAudio ? 'MP3 İndirme' : (isPhoto ? 'Görsel İndirme' : 'Video İndirme'));
+        preferredTitle ??
+        (isAudio
+            ? 'MP3 İndirme'
+            : (isPhoto ? 'Görsel İndirme' : 'Video İndirme'));
     int lastNotifPercent = -1;
 
     DateTime? lastProgressTime;
@@ -326,18 +331,17 @@ class UnifiedDownloadEngine {
                 await downloadedFile.delete();
               }
               downloadedFile = convertedFile;
-              finalFileName = convertedFile.path.split(Platform.pathSeparator).last;
+              finalFileName = convertedFile.path
+                  .split(Platform.pathSeparator)
+                  .last;
             } catch (convErr) {
-              debugPrint('UnifiedDownloadEngine Stage 1 MP3 conversion recovery fallback: $convErr');
-              // FFmpeg dönüştürme başarısız olsa veya ortam desteklenmese dahi
-              // dosyanın adı ve uzantısı MP3 olarak güncellenir
-              try {
-                if (await downloadedFile.exists() && !downloadedFile.path.toLowerCase().endsWith('.mp3')) {
-                  final renamedFile = await downloadedFile.rename('$mp3Path$mp3TargetName');
-                  downloadedFile = renamedFile;
-                  finalFileName = mp3TargetName;
-                }
-              } catch (_) {}
+              // Keep the untouched download with its real container (m4a/aac/
+              // opus). Renaming those bytes to .mp3 produces a track that most
+              // players refuse to play.
+              debugPrint(
+                'UnifiedDownloadEngine Stage 1 MP3 conversion failed, keeping '
+                'the original container: $convErr',
+              );
             }
           }
 
@@ -351,7 +355,9 @@ class UnifiedDownloadEngine {
             DownloadItemModel(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               name: finalFileName,
-              type: normalizedType == 'mp3' ? 'audio' : (isPhoto ? 'photo' : 'video'),
+              type: normalizedType == 'mp3'
+                  ? 'audio'
+                  : (isPhoto ? 'photo' : 'video'),
               sizeInBytes: fileSize,
               filePath: downloadedFile.path,
               downloadedAt: DateTime.now(),
@@ -524,19 +530,11 @@ class UnifiedDownloadEngine {
           }
           targetDownloadedFile = converted;
         } catch (convErr) {
+          // As in stage 1: never fake an .mp3 extension, keep the real file.
           debugPrint(
-            'UnifiedDownloadEngine Stage 2 MP3 conversion error: $convErr',
+            'UnifiedDownloadEngine Stage 2 MP3 conversion failed, keeping the '
+            'original container: $convErr',
           );
-          // FFmpeg dönüştürme başarısız olsa veya ortam desteklenmese dahi
-          // dosyanın adı ve uzantısı MP3 olarak güncellenir
-          try {
-            if (await targetDownloadedFile.exists() &&
-                !targetDownloadedFile.path.toLowerCase().endsWith('.mp3')) {
-              final renamedFile =
-                  await targetDownloadedFile.rename('$mp3Path$mp3FileName');
-              targetDownloadedFile = renamedFile;
-            }
-          } catch (_) {}
         }
       }
 
@@ -554,7 +552,9 @@ class UnifiedDownloadEngine {
         DownloadItemModel(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           name: finalFileName,
-          type: normalizedType == 'mp3' ? 'audio' : (isPhoto ? 'photo' : 'video'),
+          type: normalizedType == 'mp3'
+              ? 'audio'
+              : (isPhoto ? 'photo' : 'video'),
           sizeInBytes: fileSize,
           filePath: targetDownloadedFile.path,
           downloadedAt: DateTime.now(),
