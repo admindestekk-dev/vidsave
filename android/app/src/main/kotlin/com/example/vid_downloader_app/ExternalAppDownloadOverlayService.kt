@@ -213,7 +213,7 @@ class ExternalAppDownloadOverlayService : Service() {
 
         when (intent?.action) {
             ACTION_DOWNLOAD_STARTED -> {
-                startForeground(NOTIFICATION_ID, buildNotification())
+                startForegroundCompat(NOTIFICATION_ID, buildNotification())
                 handler.removeCallbacks(clearDownloadStatus)
                 downloadActive = true
                 downloadProgress = 0
@@ -251,7 +251,7 @@ class ExternalAppDownloadOverlayService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForegroundCompat(NOTIFICATION_ID, buildNotification())
         handler.removeCallbacks(pollForegroundApp)
         handler.post(pollForegroundApp)
         return START_STICKY
@@ -684,6 +684,9 @@ class ExternalAppDownloadOverlayService : Service() {
             gravity = Gravity.CENTER
         }
 
+        val isPinterestLink = url.lowercase(Locale.ROOT).let { "pinterest.com" in it || "pin.it" in it }
+        val photoMargin = if (isPinterestLink) (4 * density).toInt() else (6 * density).toInt()
+
         val videoBtn = TextView(this).apply {
             text = "VİDEO (MP4)"
             textSize = 12f
@@ -692,9 +695,9 @@ class ExternalAppDownloadOverlayService : Service() {
             typeface = Typeface.DEFAULT_BOLD
             background = roundedBackground(Color.rgb(255, 84, 54), 18f * density)
             setPadding(
-                (12 * density).toInt(),
+                (10 * density).toInt(),
                 (8 * density).toInt(),
-                (12 * density).toInt(),
+                (10 * density).toInt(),
                 (8 * density).toInt(),
             )
             setOnClickListener {
@@ -706,7 +709,7 @@ class ExternalAppDownloadOverlayService : Service() {
             LinearLayout.LayoutParams.WRAP_CONTENT,
             1f,
         ).apply {
-            rightMargin = (6 * density).toInt()
+            rightMargin = photoMargin
         }
         buttonsRow.addView(videoBtn, videoParams)
 
@@ -718,9 +721,9 @@ class ExternalAppDownloadOverlayService : Service() {
             typeface = Typeface.DEFAULT_BOLD
             background = roundedBackground(Color.rgb(32, 184, 197), 18f * density)
             setPadding(
-                (12 * density).toInt(),
+                (10 * density).toInt(),
                 (8 * density).toInt(),
-                (12 * density).toInt(),
+                (10 * density).toInt(),
                 (8 * density).toInt(),
             )
             setOnClickListener {
@@ -732,9 +735,38 @@ class ExternalAppDownloadOverlayService : Service() {
             LinearLayout.LayoutParams.WRAP_CONTENT,
             1f,
         ).apply {
-            leftMargin = (6 * density).toInt()
+            leftMargin = photoMargin
+            if (isPinterestLink) rightMargin = photoMargin
         }
         buttonsRow.addView(audioBtn, audioParams)
+
+        if (isPinterestLink) {
+            val photoBtn = TextView(this).apply {
+                text = "FOTO (HD)"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+                background = roundedBackground(Color.rgb(230, 0, 35), 18f * density)
+                setPadding(
+                    (10 * density).toInt(),
+                    (8 * density).toInt(),
+                    (10 * density).toInt(),
+                    (8 * density).toInt(),
+                )
+                setOnClickListener {
+                    startSilentDownloadFromOverlay(url, "photo")
+                }
+            }
+            val photoParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f,
+            ).apply {
+                leftMargin = photoMargin
+            }
+            buttonsRow.addView(photoBtn, photoParams)
+        }
         card.addView(buttonsRow)
 
         val cancelRow = LinearLayout(this).apply {
@@ -836,6 +868,23 @@ class ExternalAppDownloadOverlayService : Service() {
             description = "Diğer uygulamalarda bağlantı kopyalandığında indirme seçeneklerini gösterir."
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    private fun startForegroundCompat(notificationId: Int, notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            } else {
+                0
+            }
+            if (serviceType != 0) {
+                startForeground(notificationId, notification, serviceType)
+            } else {
+                startForeground(notificationId, notification)
+            }
+        } else {
+            startForeground(notificationId, notification)
+        }
     }
 
     private fun buildNotification(): Notification {

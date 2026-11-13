@@ -14,9 +14,10 @@ class ShareReceiverActivity : Activity() {
             ?: intent?.dataString
             ?: ""
         val matcher = Patterns.WEB_URL.matcher(sharedText)
-        val url = if (matcher.find()) matcher.group().orEmpty() else ""
-        val parsed = runCatching { android.net.Uri.parse(url) }.getOrNull()
-        val validUrl = url.takeIf {
+        val rawUrl = if (matcher.find()) matcher.group().orEmpty() else ""
+        val cleanedUrl = rawUrl.trim().trimEnd('.', ',', ';', ')', ']', '>')
+        val parsed = runCatching { android.net.Uri.parse(cleanedUrl) }.getOrNull()
+        val validUrl = cleanedUrl.takeIf {
             parsed != null &&
                 parsed.scheme in setOf("http", "https") &&
                 !parsed.host.isNullOrBlank()

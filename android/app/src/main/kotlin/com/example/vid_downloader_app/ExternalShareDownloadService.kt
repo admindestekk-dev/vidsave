@@ -419,9 +419,18 @@ class ExternalShareDownloadService : Service() {
             "mp4" -> "video/mp4"
             "mov" -> "video/quicktime"
             "webm" -> "video/webm"
+            "mkv" -> "video/x-matroska"
             "mp3" -> "audio/mpeg"
             "m4a" -> "audio/mp4"
+            "wav" -> "audio/wav"
             "aac" -> "audio/aac"
+            "ogg" -> "audio/ogg"
+            "flac" -> "audio/flac"
+            "opus" -> "audio/opus"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
             else -> "application/octet-stream"
         }
 

@@ -528,10 +528,16 @@ class MainActivity : FlutterActivity() {
             "wav" -> "audio/wav"
             "aac" -> "audio/aac"
             "ogg" -> "audio/ogg"
+            "flac" -> "audio/flac"
+            "opus" -> "audio/opus"
             "mp4" -> "video/mp4"
             "mkv" -> "video/x-matroska"
             "mov" -> "video/quicktime"
             "webm" -> "video/webm"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
             else -> "application/octet-stream"
         }
     }
