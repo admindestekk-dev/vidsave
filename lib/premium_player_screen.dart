@@ -15,12 +15,14 @@ import 'music_player.dart';
 class PremiumPlayerScreen extends StatefulWidget {
   const PremiumPlayerScreen({
     super.key,
-    required this.file,
+    this.file,
+    this.videoUrl,
     this.title,
     this.audioPlayerFactory,
-  });
+  }) : assert(file != null || videoUrl != null, 'Either file or videoUrl must be provided.');
 
-  final File file;
+  final File? file;
+  final String? videoUrl;
   final String? title;
   final AudioPlayerFactory? audioPlayerFactory;
 
@@ -35,7 +37,8 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   static const Color _accent = Color(0xFFFF5436);
   static const List<String> _qualities = ['1080p', '720p', '480p'];
 
-  late File _file;
+  File? _file;
+  String? _videoUrl;
   late String _title;
   late final bool _isAudio;
   late final AnimationController _waveAnimation;
@@ -73,11 +76,16 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _file = widget.file;
+    _videoUrl = widget.videoUrl?.trim();
     _title = widget.title?.trim().isNotEmpty == true
         ? widget.title!.trim()
-        : _file.uri.pathSegments.last;
-    final extension = _file.path.split('.').last.toLowerCase();
-    _isAudio = const {
+        : (_file != null
+            ? _file!.uri.pathSegments.last
+            : 'Canlı Video');
+    final extension = _file != null
+        ? _file!.path.split('.').last.toLowerCase()
+        : (_videoUrl?.split('?').first.split('.').last.toLowerCase() ?? 'mp4');
+    _isAudio = _videoUrl == null && const {
       'mp3',
       'm4a',
       'aac',
@@ -94,8 +102,8 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
 
   Future<void> _initialize() async {
     try {
-      if (!_file.existsSync()) {
-        throw FileSystemException('Dosya bulunamadı.', _file.path);
+      if (_file != null && !_file!.existsSync()) {
+        throw FileSystemException('Dosya bulunamadı.', _file!.path);
       }
 
       if (_isAudio) {
@@ -111,7 +119,7 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
           exception: error,
           stack: stackTrace,
           library: 'VidSave premium player',
-          context: ErrorDescription('while opening ${_file.path}'),
+          context: ErrorDescription('while opening ${_file?.path ?? _videoUrl}'),
         ),
       );
       if (!mounted) return;
@@ -124,7 +132,7 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
 
   Future<void> _initializeAudio() async {
     final audioAsset = AssetEntity(
-      id: _file.path,
+      id: _file?.path ?? _videoUrl ?? '',
       typeInt: AssetType.audio.index,
       width: 0,
       height: 0,
@@ -177,7 +185,11 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
       _updateWaveAnimation(PlayerState.completed);
     });
     await player.setReleaseMode(ReleaseMode.stop);
-    await player.setSource(DeviceFileSource(_file.path));
+    if (_file != null) {
+      await player.setSource(DeviceFileSource(_file!.path));
+    } else if (_videoUrl != null) {
+      await player.setSource(UrlSource(_videoUrl!));
+    }
     try {
       final initialDuration = await player.getDuration();
       if (initialDuration != null && initialDuration > Duration.zero && mounted) {
@@ -206,7 +218,9 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   }
 
   Future<void> _initializeVideo() async {
-    final controller = VideoPlayerController.file(_file);
+    final controller = _videoUrl != null && _videoUrl!.isNotEmpty
+        ? VideoPlayerController.networkUrl(Uri.parse(_videoUrl!))
+        : VideoPlayerController.file(_file!);
     _videoController = controller;
     await controller.initialize();
     await controller.setLooping(false);
@@ -430,7 +444,8 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   }
 
   Future<void> _showRenameDialog() async {
-    final currentName = _file.uri.pathSegments.last;
+    if (_file == null) return;
+    final currentName = _file!.uri.pathSegments.last;
     final extensionIndex = currentName.lastIndexOf('.');
     final extension = extensionIndex > 0
         ? currentName.substring(extensionIndex)
@@ -448,6 +463,7 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   }
 
   Future<void> _renameFile(String enteredName, String extension) async {
+    if (_file == null) return;
     final baseName = enteredName.trim();
     if (baseName.isEmpty ||
         baseName == '.' ||
@@ -464,9 +480,9 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
         ? baseName
         : '$baseName$extension';
     final target = File(
-      '${_file.parent.path}${Platform.pathSeparator}$fullName',
+      '${_file!.parent.path}${Platform.pathSeparator}$fullName',
     );
-    if (fullName == _file.uri.pathSegments.last) return;
+    if (fullName == _file!.uri.pathSegments.last) return;
     if (target.existsSync()) {
       _showMessage('Bu adla bir dosya zaten var.');
       return;
@@ -475,7 +491,7 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
     setState(() => _isRenaming = true);
     try {
       await _releasePlayback();
-      final renamedFile = _file.renameSync(target.path);
+      final renamedFile = _file!.renameSync(target.path);
       if (!mounted) return;
       setState(() {
         _file = renamedFile;
@@ -519,13 +535,19 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   }
 
   Future<void> _shareFile() async {
-    if (!await _file.exists()) {
+    if (_file == null || !await _file!.exists()) {
+      if (_videoUrl != null) {
+        await SharePlus.instance.share(
+          ShareParams(text: _videoUrl!, title: _title, subject: _title),
+        );
+        return;
+      }
       _showMessage('Paylaşılacak dosya bulunamadı.');
       return;
     }
     try {
       await SharePlus.instance.share(
-        ShareParams(files: [XFile(_file.path)], title: _title, subject: _title),
+        ShareParams(files: [XFile(_file!.path)], title: _title, subject: _title),
       );
     } catch (error) {
       debugPrint('[VidSave Oynatıcı] Dosya paylaşımı başarısız: $error');
@@ -597,12 +619,13 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               actions: [
-                IconButton(
-                  key: const Key('premium_player_rename'),
-                  tooltip: 'Yeniden adlandır',
-                  onPressed: _isRenaming ? null : _showRenameDialog,
-                  icon: const Icon(Icons.edit_rounded),
-                ),
+                if (_file != null)
+                  IconButton(
+                    key: const Key('premium_player_rename'),
+                    tooltip: 'Yeniden adlandır',
+                    onPressed: _isRenaming ? null : _showRenameDialog,
+                    icon: const Icon(Icons.edit_rounded),
+                  ),
               ],
             ),
       body: SafeArea(

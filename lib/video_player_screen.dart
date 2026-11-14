@@ -15,12 +15,14 @@ class VideoPlayerScreen extends StatefulWidget {
     super.key,
     this.asset,
     this.file,
+    this.networkUrl,
     this.title,
     this.controllerFactory,
   });
 
   final AssetEntity? asset;
   final File? file;
+  final String? networkUrl;
   final String? title;
   final VideoPlayerControllerFactory? controllerFactory;
 
@@ -70,6 +72,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<VideoPlayerController> _resolveController() async {
+    if (widget.networkUrl != null && widget.networkUrl!.trim().isNotEmpty) {
+      return VideoPlayerController.networkUrl(Uri.parse(widget.networkUrl!.trim()));
+    }
     if (widget.controllerFactory != null && widget.asset != null) {
       return widget.controllerFactory!(widget.asset!);
     }

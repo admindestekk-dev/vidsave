@@ -56,6 +56,12 @@ void main() {
         );
         expect(find.text('Video (MP4)'), findsOneWidget);
         expect(find.text('Ses (MP3)'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('browser_watch_video_option')),
+          findsOneWidget,
+        );
+        expect(find.text('Videoyu İzle'), findsOneWidget);
+        expect(find.text('İndirmeden önce canlı ön izle'), findsOneWidget);
 
         // 4. Select Video (MP4)
         await tester.tap(
@@ -119,6 +125,51 @@ void main() {
         expect(selectedKind, DownloadKind.photo);
         expect(selectedUrl, 'https://www.pinterest.com/pin/123456789/');
         expect(find.text('İndirme formatı'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'tapping Videoyu İzle closes sheet without triggering onFormatSelected',
+      (WidgetTester tester) async {
+        DownloadKind? selectedKind;
+        String? selectedUrl;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => ElevatedButton(
+                  onPressed: () {
+                    DownloadFormatBottomSheet.show(
+                      context: context,
+                      url: 'https://www.sample.com/video.mp4',
+                      initialTitle: 'Doğrudan Video',
+                      onFormatSelected: (kind, url) {
+                        selectedKind = kind;
+                        selectedUrl = url;
+                      },
+                    );
+                  },
+                  child: const Text('Open Direct Video Sheet'),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('Open Direct Video Sheet'));
+        await tester.pumpAndSettle();
+
+        final watchOption = find.byKey(const ValueKey('browser_watch_video_option'));
+        expect(watchOption, findsOneWidget);
+
+        await tester.tap(watchOption);
+        await tester.pumpAndSettle();
+
+        // Sheet closed and no download callback fired
+        expect(find.text('İndirme formatı'), findsNothing);
+        expect(selectedKind, isNull);
+        expect(selectedUrl, isNull);
       },
     );
   });

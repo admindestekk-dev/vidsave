@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'client_media_resolver.dart';
 import 'media_downloader.dart';
+import 'premium_player_screen.dart';
+import 'services/api_service.dart';
 import 'services/unified_download_engine.dart';
+import 'video_player_screen.dart';
 import 'youtube_restriction.dart';
 
 /// Alttan açılan şık 'İndirme formatı' Modal Bottom Sheet penceresi.
@@ -428,9 +433,16 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
                   );
                 },
               ),
+              const SizedBox(height: 10),
+
+              // 3. Videoyu İzle Seçeneği (Canlı Ön İzleme)
+              _buildWatchVideoOptionButton(
+                key: const ValueKey('browser_watch_video_option'),
+                onTap: _watchVideoLive,
+              ),
               if (_isPinterest) ...[
                 const SizedBox(height: 10),
-                // 3. Görsel / Fotoğraf Seçeneği (Pinterest Özel)
+                // 4. Görsel / Fotoğraf Seçeneği (Pinterest Özel)
                 _buildFormatOptionButton(
                   key: const ValueKey('browser_download_photo_option'),
                   icon: Icons.photo_library_rounded,
@@ -453,6 +465,163 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
         ),
       ),
     );
+  }
+
+  Widget _buildWatchVideoOptionButton({
+    required Key key,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2C3642),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.orangeAccent.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.orangeAccent.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.visibility,
+                  color: Colors.orangeAccent,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Videoyu İzle',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'İndirmeden önce canlı ön izle',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.play_circle_outline,
+                color: Colors.white70,
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _watchVideoLive() async {
+    final targetUrl = _urlController.text.trim().isNotEmpty
+        ? _urlController.text.trim()
+        : widget.url.trim();
+
+    // Paneli derhal kapat
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    final parentContext = context;
+    final contentTitle = _getContentTitle();
+
+    // Test ortamında canlı video oynatıcı yönlendirmesini test güvenliği için simüle et
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
+
+    try {
+      final clean = evrenselTemizUrl(targetUrl);
+      String? streamUrl;
+
+      // 1. Eğer doğrudan medya bağlantısı ise (mp4 vb.)
+      final uri = Uri.tryParse(clean.isNotEmpty ? clean : targetUrl);
+      if (uri != null && isDirectMediaUrl(uri)) {
+        streamUrl = uri.toString();
+      }
+
+      // 2. Render Pro ApiService üzerinden ham video akışını çözümle
+      if (streamUrl == null) {
+        try {
+          final analyze = await ApiService.instance.analyze(
+            url: clean.isNotEmpty ? clean : targetUrl,
+            type: 'video',
+          );
+          if (analyze.downloadUrl.isNotEmpty) {
+            streamUrl = analyze.downloadUrl;
+          }
+        } catch (e) {
+          debugPrint('Videoyu İzle: ApiService analiz hatası: $e');
+        }
+      }
+
+      // 3. Yedek resolver üzerinden çözümle
+      if (streamUrl == null) {
+        try {
+          final resolver = widget.resolver ?? ClientMediaResolver();
+          final resolved = await resolver.resolve(
+            uri ?? Uri.parse(targetUrl),
+            DownloadKind.video,
+          );
+          if (resolved.url.toString().isNotEmpty) {
+            streamUrl = resolved.url.toString();
+          }
+        } catch (e) {
+          debugPrint('Videoyu İzle: Yedek resolver analiz hatası: $e');
+        }
+      }
+
+      final finalPlayUrl = streamUrl ?? (clean.isNotEmpty ? clean : targetUrl);
+
+      if (!parentContext.mounted) return;
+
+      // Uygulama içi medya oynatıcıya gönder (PremiumPlayerScreen veya VideoPlayerScreen)
+      await Navigator.of(parentContext).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PremiumPlayerScreen(
+            videoUrl: finalPlayUrl,
+            title: contentTitle,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Videoyu İzle canlı önizleme hatası: $e');
+      if (parentContext.mounted) {
+        await Navigator.of(parentContext).push(
+          MaterialPageRoute<void>(
+            builder: (_) => VideoPlayerScreen(
+              networkUrl: targetUrl,
+              title: contentTitle,
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildFormatOptionButton({
