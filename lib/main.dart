@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -173,37 +174,54 @@ void main() async {
   };
 
   bool isFirstTime = false;
+
   try {
-    isFirstTime = await OnboardingScreen.checkIsFirstTime()
-        .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
-  } catch (e) {
-    debugPrint('OnboardingScreen.checkIsFirstTime hatası: $e');
+    try {
+      isFirstTime = await OnboardingScreen.checkIsFirstTime()
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
+    } catch (e) {
+      debugPrint('OnboardingScreen.checkIsFirstTime hatası: $e');
+    }
+
+    try {
+      await MobileAds.instance.initialize();
+    } catch (e) {
+      debugPrint('MobileAds.instance.initialize hatası: $e');
+    }
+
+    try {
+      await SharedPreferences.getInstance();
+    } catch (e) {
+      debugPrint('SharedPreferences.getInstance hatası: $e');
+    }
+
+    unawaited(RemoteConfigService.instance.initialize().catchError((e) {
+      debugPrint('RemoteConfigService init hatası: $e');
+    }));
+    unawaited(FirebaseNotificationService.instance.initialize().catchError((e) {
+      debugPrint('FirebaseNotificationService init hatası: $e');
+    }));
+    unawaited(AdmobService.instance.initialize().catchError((e) {
+      debugPrint('AdmobService init hatası: $e');
+    }));
+    unawaited(DownloadNotificationService.instance.initialize().catchError((e) {
+      debugPrint('DownloadNotificationService init hatası: $e');
+    }));
+    unawaited(StorageService.getItems().catchError((e) {
+      debugPrint('StorageService init hatası: $e');
+      return <DownloadItemModel>[];
+    }));
+    unawaited(ThemeService.initialize().catchError((e) {
+      debugPrint('ThemeService init hatası: $e');
+    }));
+    unawaited(LocaleService.initialize().catchError((e) {
+      debugPrint('LocaleService init hatası: $e');
+    }));
+  } catch (e, stackTrace) {
+    debugPrint('main başlatma sırasında yakalanan genel hata: $e\n$stackTrace');
+  } finally {
+    runApp(MyApp(isFirstTime: isFirstTime));
   }
-
-  unawaited(RemoteConfigService.instance.initialize().catchError((e) {
-    debugPrint('RemoteConfigService init hatası: $e');
-  }));
-  unawaited(FirebaseNotificationService.instance.initialize().catchError((e) {
-    debugPrint('FirebaseNotificationService init hatası: $e');
-  }));
-  unawaited(AdmobService.instance.initialize().catchError((e) {
-    debugPrint('AdmobService init hatası: $e');
-  }));
-  unawaited(DownloadNotificationService.instance.initialize().catchError((e) {
-    debugPrint('DownloadNotificationService init hatası: $e');
-  }));
-  unawaited(StorageService.getItems().catchError((e) {
-    debugPrint('StorageService init hatası: $e');
-    return <DownloadItemModel>[];
-  }));
-  unawaited(ThemeService.initialize().catchError((e) {
-    debugPrint('ThemeService init hatası: $e');
-  }));
-  unawaited(LocaleService.initialize().catchError((e) {
-    debugPrint('LocaleService init hatası: $e');
-  }));
-
-  runApp(MyApp(isFirstTime: isFirstTime));
 }
 
 class MyApp extends StatefulWidget {
