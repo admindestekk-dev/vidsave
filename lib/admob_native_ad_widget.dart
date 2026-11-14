@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import 'admob_service.dart';
+import 'services/ad_shield_service.dart';
 
 /// AdMob ve Google Play politikalarına tam uyumlu Yerel (Native) Reklam Bileşeni.
 ///
@@ -39,8 +41,9 @@ class _AdmobNativeAdWidgetState extends State<AdmobNativeAdWidget> {
     if (AdmobService.instance.isRunningInTest) return;
 
     final isPrem = await AdmobService.instance.checkIsPremium();
+    final isBlocked = await AdShieldService.instance.isAdBlocked();
     if (!mounted) return;
-    if (isPrem) {
+    if (isPrem || isBlocked) {
       setState(() => _isPremium = true);
       return;
     }
@@ -64,6 +67,19 @@ class _AdmobNativeAdWidgetState extends State<AdmobNativeAdWidget> {
       adUnitId: AdmobService.nativeAdUnitId,
       request: const AdRequest(),
       listener: NativeAdListener(
+        onAdClicked: (ad) {
+          debugPrint('AdmobNativeAdWidget: Native tıklandı, AdShieldService kaydı alınıyor.');
+          AdShieldService.instance.registerAdClick().then((newlyBlocked) {
+            if (newlyBlocked && mounted) {
+              setState(() {
+                _isPremium = true;
+                _isLoaded = false;
+              });
+              _nativeAd?.dispose();
+              _nativeAd = null;
+            }
+          });
+        },
         onAdLoaded: (ad) {
           if (!mounted) {
             ad.dispose();

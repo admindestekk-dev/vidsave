@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import 'services/ad_shield_service.dart';
 import 'services/pro_server_reward_service.dart';
 import 'subscription_screen.dart';
 
@@ -189,6 +190,11 @@ class AdmobService {
   /// Google Play politikası gereği peş peşe reklam gösterilmemesi için 60 saniye soğuma süresi (cooldown) uygulanır.
   Future<bool> showInterstitialAd({bool checkCooldown = true}) async {
     if (isRunningInTest || kIsWeb || await checkIsPremium()) return false;
+    // Tıklama kalkanı / sahtekarlık engeli kontrolü
+    if (await AdShieldService.instance.isAdBlocked()) {
+      debugPrint('AdmobService: Cihaz reklam engeli altında, Interstitial atlandı.');
+      return false;
+    }
     if (_isShowingFullScreenAd) return false;
     await initialize();
     if (!_isInitialized || !_canRequestAds) return false;
@@ -214,6 +220,10 @@ class AdmobService {
     final completer = Completer<bool>();
 
     ad.fullScreenContentCallback = FullScreenContentCallback<InterstitialAd>(
+      onAdClicked: (ad) {
+        debugPrint('AdmobService: Interstitial tıklandı, AdShieldService kaydı alınıyor.');
+        unawaited(AdShieldService.instance.registerAdClick());
+      },
       onAdDismissedFullScreenContent: (ad) {
         _isShowingFullScreenAd = false;
         _lastInterstitialShownTime = DateTime.now();
@@ -270,6 +280,11 @@ class AdmobService {
   /// Uygulama arka plandan ön plana geldiğinde App Open reklamını gösterir.
   Future<bool> showAppOpenAdIfAvailable() async {
     if (isRunningInTest || kIsWeb || await checkIsPremium()) return false;
+    // Tıklama kalkanı / sahtekarlık engeli kontrolü
+    if (await AdShieldService.instance.isAdBlocked()) {
+      debugPrint('AdmobService: Cihaz reklam engeli altında, App Open atlandı.');
+      return false;
+    }
     if (_isShowingFullScreenAd) return false;
     await initialize();
     if (!_isInitialized || !_canRequestAds) return false;
@@ -295,6 +310,10 @@ class AdmobService {
     final completer = Completer<bool>();
 
     ad.fullScreenContentCallback = FullScreenContentCallback<AppOpenAd>(
+      onAdClicked: (ad) {
+        debugPrint('AdmobService: App Open tıklandı, AdShieldService kaydı alınıyor.');
+        unawaited(AdShieldService.instance.registerAdClick());
+      },
       onAdDismissedFullScreenContent: (ad) {
         _isShowingFullScreenAd = false;
         ad.dispose();
@@ -567,10 +586,12 @@ class AdmobService {
 
     final isPremium = await checkIsPremium();
 
-    // 1. PREMIUM BYPASS: Ücretli abone ise reklamı tamamen atla
-    if (isPremium) {
+    // 1. PREMIUM VEYA TIKLAMA KALKANI BYPASS:
+    // Ücretli abone ise VEYA 1 saatte 3 kez tıklama yaptığı için cihaz 3 saat ceza kalkanındaysa reklamı tamamen atla
+    final isShieldBlocked = await AdShieldService.instance.isAdBlocked();
+    if (isPremium || isShieldBlocked) {
       debugPrint(
-        'AdmobService: Premium aktif. AdMob bypass edildi, indirme başlatılıyor.',
+        'AdmobService: ${isPremium ? 'Premium aktif' : 'AdShield kalkanı aktif (3 saat engel)'}. AdMob bypass edildi, indirme başlatılıyor.',
       );
       await onRewardEarned();
       return;
@@ -648,6 +669,10 @@ class AdmobService {
     _isShowingFullScreenAd = true;
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdClicked: (ad) {
+        debugPrint('AdmobService: Rewarded reklam tıklandı, AdShieldService kaydı alınıyor.');
+        unawaited(AdShieldService.instance.registerAdClick());
+      },
       onAdDismissedFullScreenContent: (ad) {
         _isShowingFullScreenAd = false;
         ad.dispose();
@@ -691,6 +716,13 @@ class AdmobService {
       debugPrint(
         'AdmobService: Test ortamında ödüllü reklam simüle edildi, Pro hak verildi.',
       );
+      onRewardEarned();
+      return true;
+    }
+
+    // Tıklama kalkanı kontrolü: Cihaz kalkan altındaysa kullanıcıyı bekletmeden Pro hak tanı
+    if (await AdShieldService.instance.isAdBlocked()) {
+      debugPrint('AdmobService: AdShield aktif, Pro sunucu ödülü doğrudan verildi.');
       onRewardEarned();
       return true;
     }
@@ -755,6 +787,10 @@ class AdmobService {
     _isShowingFullScreenAd = true;
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdClicked: (ad) {
+        debugPrint('AdmobService: ProServer Rewarded tıklandı, AdShieldService kaydı alınıyor.');
+        unawaited(AdShieldService.instance.registerAdClick());
+      },
       onAdDismissedFullScreenContent: (ad) {
         _isShowingFullScreenAd = false;
         ad.dispose();

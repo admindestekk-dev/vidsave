@@ -32,6 +32,12 @@ class RemoteConfigService {
     'pinterest_regex': r'"download_url":"(.*?)"|"url":\s*"(https://[^"]+\.mp4[^"]*)"|"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
     'user_agent_string': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'backup_api_url': 'https://vidsave-q7ut.onrender.com',
+    // Uygulama Güncelleme (App Update & Play Store) Parametreleri
+    'latest_app_version': '1.0.0',
+    'min_required_version': '1.0.0',
+    'force_update_enabled': 'false',
+    'update_release_notes': 'Yeni video indirme motoru ve performans iyileştirmeleri!',
+    'play_store_url': 'https://play.google.com/store/apps/details?id=com.example.vid_downloader_app',
   };
 
   /// Bellekteki aktif konfigürasyon önbelleği
@@ -109,7 +115,11 @@ class RemoteConfigService {
       }
     }
 
-    return (_defaultParameters[key] as String?) ?? '';
+    final defaultVal = _defaultParameters[key];
+    if (defaultVal != null) {
+      return defaultVal.toString();
+    }
+    return '';
   }
 
   /// Test veya dinamik override için değer atama
@@ -154,4 +164,19 @@ class RemoteConfigService {
   String get pinterestRegex => getString('pinterest_regex');
   String get userAgent => getString('user_agent_string');
   String get backupApiUrl => getString('backup_api_url');
+
+  // Güncelleme parametreleri erişim metotları
+  String get latestAppVersion => getString('latest_app_version');
+  String get minRequiredVersion => getString('min_required_version');
+  String get updateReleaseNotes => getString('update_release_notes');
+  String get playStoreUrl => getString('play_store_url');
+  bool get isForceUpdateEnabled {
+    if (_remoteConfig != null) {
+      try {
+        return _remoteConfig!.getBool('force_update_enabled');
+      } catch (_) {}
+    }
+    final raw = getString('force_update_enabled').toLowerCase();
+    return raw == 'true' || raw == '1';
+  }
 }

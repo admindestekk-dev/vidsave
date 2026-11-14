@@ -41,6 +41,9 @@ import 'admob_service.dart';
 import 'services/download_manager.dart';
 import 'services/micro_toast.dart';
 import 'services/unified_download_engine.dart';
+import 'firebase_notification_service.dart';
+import 'services/app_update_service.dart';
+import 'services/update_dialog.dart';
 
 const MethodChannel _externalShareDownloadChannel = MethodChannel(
   'vidsave/external_share_download',
@@ -164,6 +167,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final isFirstTimeFuture = OnboardingScreen.checkIsFirstTime();
   unawaited(RemoteConfigService.instance.initialize());
+  unawaited(FirebaseNotificationService.instance.initialize());
   unawaited(AdmobService.instance.initialize());
   unawaited(DownloadNotificationService.instance.initialize());
   unawaited(StorageService.getItems());
@@ -343,10 +347,11 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _requestMediaPermission();
-    // Uygulama açılışında panoyu ilk kez kontrol et
+    // Uygulama açılışında panoyu ve yeni güncellemeleri kontrol et
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkClipboard(checkOverlayRequest: true);
       _checkPendingShareInterstitial();
+      _checkForAppUpdatesSilently();
     });
     // Kullanıcı uygulama içindeyken (tarayıcıda veya başka sekmedeyken)
     // yeni bir bağlantıyı kopyaladığı an indirme penceresinin hemen açılabilmesi için
@@ -379,6 +384,30 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       _checkClipboard(checkOverlayRequest: true);
       _checkPendingShareInterstitial();
       unawaited(AdmobService.instance.showAppOpenAdIfAvailable());
+    }
+  }
+
+  bool _hasCheckedUpdateThisSession = false;
+
+  Future<void> _checkForAppUpdatesSilently() async {
+    if (_hasCheckedUpdateThisSession || AdmobService.instance.isRunningInTest) {
+      return;
+    }
+    _hasCheckedUpdateThisSession = true;
+
+    try {
+      // Remote config fetch bitişi ve UI çizimini beklemek için kısa gecikme
+      await Future<void>.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+
+      final updateResult = await AppUpdateService.instance.checkForUpdate();
+      if (!mounted) return;
+
+      if (updateResult.hasUpdate) {
+        await UpdateDialog.show(context, updateResult: updateResult);
+      }
+    } catch (e) {
+      debugPrint('Açılış güncelleme kontrolü uyarısı: $e');
     }
   }
 

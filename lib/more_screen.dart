@@ -25,6 +25,8 @@ import 'theme_service.dart';
 import 'user_identity_service.dart';
 import 'welcome_screen.dart';
 import 'l10n/l10n_extension.dart';
+import 'services/app_update_service.dart';
+import 'services/update_dialog.dart';
 
 /// "Ayarlar" sekmesi.
 ///
@@ -788,6 +790,16 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
               ],
               _buildModernMenuCard(
                 context,
+                icon: Icons.system_update_rounded,
+                iconColor: const Color(0xFF00B4D8),
+                iconBgColor: const Color(0xFFE0F2FE),
+                title: context.tr('check_for_updates'),
+                subtitle: context.tr('check_for_updates_desc'),
+                onTap: () => _manualCheckForUpdate(context),
+              ),
+              const SizedBox(height: 10),
+              _buildModernMenuCard(
+                context,
                 icon: Icons.star_rounded,
                 iconColor: const Color(0xFFF59E0B),
                 iconBgColor: const Color(0xFFFEF3C7),
@@ -1338,6 +1350,46 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  /// 1. Güncellemeleri Denetle: Google Play Store ve Firebase üzerinden kontrol
+  Future<void> _manualCheckForUpdate(BuildContext context) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr('checking_updates')),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    final result = await AppUpdateService.instance.checkForUpdate();
+    if (!context.mounted) return;
+
+    if (result.hasUpdate) {
+      await UpdateDialog.show(context, updateResult: result);
+    } else {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981)),
+              const SizedBox(width: 8),
+              Text(context.tr('app_up_to_date')),
+            ],
+          ),
+          content: Text(
+            '${context.tr('app_up_to_date_desc')}\n(v${result.currentVersion}+${result.currentBuildNumber})',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(context.tr('got_it')),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   /// 1. Bizi Değerlendirin: in_app_review ile Google Play Store puanı & yorumu

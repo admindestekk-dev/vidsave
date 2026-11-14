@@ -16,6 +16,7 @@ import 'api_service.dart';
 import 'download_manager.dart';
 import '../youtube_restriction.dart';
 import 'pro_server_reward_service.dart';
+import 'review_service.dart';
 
 /// VidSave Evrensel Birleşik İndirme Motoru (Unified Download Engine)
 ///
@@ -383,6 +384,9 @@ class UnifiedDownloadEngine {
 
           await ProServerRewardService.instance.consumeCredit();
 
+          // İlk indirme tamamlandıktan 2 saniye sonra In-App Review değerlendirme penceresini tetikle
+          unawaited(ReviewService.instance.requestReviewIfNeeded());
+
           return downloadedFile;
         } catch (serverStreamErr) {
           debugPrint(
@@ -573,6 +577,9 @@ class UnifiedDownloadEngine {
       }
 
       await ProServerRewardService.instance.consumeCredit();
+
+      // İlk indirme tamamlandıktan 2 saniye sonra In-App Review değerlendirme penceresini tetikle
+      unawaited(ReviewService.instance.requestReviewIfNeeded());
 
       return targetDownloadedFile;
     } catch (e) {

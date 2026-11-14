@@ -168,6 +168,11 @@ class AppLocalizations {
       'share_app': 'Uygulamayı Paylaş',
       'share_app_description':
           'VidSave’i arkadaşlarınızla ve ailenizle paylaşın',
+      'check_for_updates': 'Güncellemeleri Denetle',
+      'check_for_updates_desc': 'Google Play Store üzerinden yeni sürümü kontrol et',
+      'checking_updates': 'Güncellemeler denetleniyor…',
+      'app_up_to_date': 'Uygulamanız Güncel',
+      'app_up_to_date_desc': 'En son VidSave sürümünü kullanıyorsunuz.',
       'privacy_policy': 'Gizlilik Politikası',
       'privacy_policy_description':
           'Veri gizliliği ve kullanım koşullarını inceleyin',
@@ -301,6 +306,11 @@ class AppLocalizations {
       'rate_app_description': 'Support us by leaving a store review',
       'share_app': 'Share App',
       'share_app_description': 'Share VidSave with friends and family',
+      'check_for_updates': 'Check for Updates',
+      'check_for_updates_desc': 'Check for new version on Google Play Store',
+      'checking_updates': 'Checking for updates…',
+      'app_up_to_date': 'App is Up to Date',
+      'app_up_to_date_desc': 'You are using the latest version of VidSave.',
       'privacy_policy': 'Privacy Policy',
       'privacy_policy_description': 'Review data privacy and terms of use',
       'disclaimer': 'Disclaimer',

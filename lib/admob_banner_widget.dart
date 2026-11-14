@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import 'admob_service.dart';
+import 'services/ad_shield_service.dart';
 
 /// AdMob ve Google Play politikalarına tam uyumlu standart Banner Reklam Bileşeni.
 ///
@@ -45,8 +47,9 @@ class _AdmobBannerWidgetState extends State<AdmobBannerWidget> {
     if (AdmobService.instance.isRunningInTest) return;
 
     final isPrem = await AdmobService.instance.checkIsPremium();
+    final isBlocked = await AdShieldService.instance.isAdBlocked();
     if (!mounted) return;
-    if (isPrem) {
+    if (isPrem || isBlocked) {
       setState(() => _isPremium = true);
       return;
     }
@@ -68,6 +71,19 @@ class _AdmobBannerWidgetState extends State<AdmobBannerWidget> {
       size: widget.adSize,
       request: const AdRequest(),
       listener: BannerAdListener(
+        onAdClicked: (ad) {
+          debugPrint('AdmobBannerWidget: Banner tıklandı, AdShieldService kaydı alınıyor.');
+          AdShieldService.instance.registerAdClick().then((newlyBlocked) {
+            if (newlyBlocked && mounted) {
+              setState(() {
+                _isPremium = true;
+                _isLoaded = false;
+              });
+              _bannerAd?.dispose();
+              _bannerAd = null;
+            }
+          });
+        },
         onAdLoaded: (ad) {
           if (!mounted) {
             ad.dispose();
