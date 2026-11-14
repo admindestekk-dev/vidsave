@@ -9,11 +9,7 @@ import 'app_update_service.dart';
 /// Zorunlu (force/mandatory) güncellemelerde kapatılamaz (`barrierDismissible: false`),
 /// esnek (optional) güncellemelerde ise "Daha Sonra" seçeneği sunar.
 class UpdateDialog extends StatefulWidget {
-  const UpdateDialog({
-    super.key,
-    required this.updateResult,
-    this.onLater,
-  });
+  const UpdateDialog({super.key, required this.updateResult, this.onLater});
 
   final AppUpdateCheckResult updateResult;
   final VoidCallback? onLater;
@@ -29,10 +25,7 @@ class UpdateDialog extends StatefulWidget {
       barrierDismissible: !updateResult.isMandatory,
       builder: (ctx) => PopScope(
         canPop: !updateResult.isMandatory,
-        child: UpdateDialog(
-          updateResult: updateResult,
-          onLater: onLater,
-        ),
+        child: UpdateDialog(updateResult: updateResult, onLater: onLater),
       ),
     );
   }
@@ -212,7 +205,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
               style: TextStyle(
                 fontSize: 14,
                 height: 1.5,
-                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                color: isDark
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF475569),
               ),
               textAlign: TextAlign.center,
             ),

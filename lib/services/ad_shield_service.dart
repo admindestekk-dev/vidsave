@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -38,7 +39,9 @@ class AdShieldService {
       final blockedUntilMs = prefs.getInt(prefKeyBlockedUntil);
 
       if (blockedUntilMs != null) {
-        final blockedUntil = DateTime.fromMillisecondsSinceEpoch(blockedUntilMs);
+        final blockedUntil = DateTime.fromMillisecondsSinceEpoch(
+          blockedUntilMs,
+        );
         final now = DateTime.now();
 
         if (now.isBefore(blockedUntil)) {
@@ -51,7 +54,9 @@ class AdShieldService {
           // Ceza süresi dolmuş, temizle
           await prefs.remove(prefKeyBlockedUntil);
           await prefs.remove(prefKeyClickTimestamps);
-          debugPrint('AdShieldService: 3 saatlik reklam engeli süresi doldu, engel kaldırıldı.');
+          debugPrint(
+            'AdShieldService: 3 saatlik reklam engeli süresi doldu, engel kaldırıldı.',
+          );
           return false;
         }
       }
@@ -78,7 +83,10 @@ class AdShieldService {
         try {
           final decoded = jsonDecode(rawList);
           if (decoded is List) {
-            timestamps = decoded.map((e) => int.tryParse(e.toString()) ?? 0).where((e) => e > 0).toList();
+            timestamps = decoded
+                .map((e) => int.tryParse(e.toString()) ?? 0)
+                .where((e) => e > 0)
+                .toList();
           }
         } catch (_) {}
       }
@@ -100,7 +108,10 @@ class AdShieldService {
       // Eğer 1 saatte 3 veya daha fazla tıklama olduysa 3 saatlik engeli devreye al
       if (timestamps.length >= maxClicksAllowed) {
         final blockedUntil = now.add(blockDuration);
-        await prefs.setInt(prefKeyBlockedUntil, blockedUntil.millisecondsSinceEpoch);
+        await prefs.setInt(
+          prefKeyBlockedUntil,
+          blockedUntil.millisecondsSinceEpoch,
+        );
         debugPrint(
           'AdShieldService [ALARM / KALKAN DEVREDE]: 1 saat içinde $maxClicksAllowed tıklama tespit edildi! '
           'Cihaza ${blockDuration.inHours} saat boyunca reklam gösterimi tamamen kapatıldı. '

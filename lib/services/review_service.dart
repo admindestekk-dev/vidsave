@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,17 +35,22 @@ class ReviewService {
       await Future<void>.delayed(const Duration(seconds: 2));
 
       // Kontrolü tekrar yap (olası eşzamanlı indirmelerde çifte tetiklemeyi önlemek için)
-      final stillNotRequested = !(prefs.getBool(prefKeyHasRequestedReview) ?? false);
+      final stillNotRequested =
+          !(prefs.getBool(prefKeyHasRequestedReview) ?? false);
       if (!stillNotRequested) return;
 
       // Uygulama içi inceleme özelliği cihazda ve platformda destekleniyor mu?
       final isAvailable = await _inAppReview.isAvailable();
-      debugPrint('ReviewService: In-App Review kullanılabilir mi: $isAvailable');
+      debugPrint(
+        'ReviewService: In-App Review kullanılabilir mi: $isAvailable',
+      );
 
       if (isAvailable) {
         // Çağrı yapıldığı an veya hemen öncesinde has_requested_review değerini true olarak kaydet
         await prefs.setBool(prefKeyHasRequestedReview, true);
-        debugPrint('ReviewService: InAppReview.requestReview() tetikleniyor...');
+        debugPrint(
+          'ReviewService: InAppReview.requestReview() tetikleniyor...',
+        );
         await _inAppReview.requestReview();
       } else {
         // Cihazda Play Store kurulu değilse veya desteklenmiyorsa da true işaretle ki sürekli denemesin

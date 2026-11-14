@@ -23,48 +23,81 @@ void main() {
       expect(rc.playStoreUrl, contains('play.google.com'));
     });
 
-    test('When remote config reports a newer version, checkForUpdate flags update', () async {
-      RemoteConfigService.instance.setOverride('latest_app_version', '1.2.0');
-      RemoteConfigService.instance.setOverride('min_required_version', '1.0.0');
-      RemoteConfigService.instance.setOverride('force_update_enabled', 'false');
+    test(
+      'When remote config reports a newer version, checkForUpdate flags update',
+      () async {
+        RemoteConfigService.instance.setOverride('latest_app_version', '1.2.0');
+        RemoteConfigService.instance.setOverride(
+          'min_required_version',
+          '1.0.0',
+        );
+        RemoteConfigService.instance.setOverride(
+          'force_update_enabled',
+          'false',
+        );
 
-      final result = await AppUpdateService.instance.checkForUpdate();
+        final result = await AppUpdateService.instance.checkForUpdate();
 
-      expect(result.hasUpdate, isTrue);
-      expect(result.isMandatory, isFalse);
-      expect(result.latestVersion, '1.2.0');
-      expect(result.storeUrl, contains('play.google.com'));
-    });
+        expect(result.hasUpdate, isTrue);
+        expect(result.isMandatory, isFalse);
+        expect(result.latestVersion, '1.2.0');
+        expect(result.storeUrl, contains('play.google.com'));
+      },
+    );
 
-    test('When remote config min_required_version is higher, update is mandatory', () async {
-      RemoteConfigService.instance.setOverride('latest_app_version', '2.0.0');
-      RemoteConfigService.instance.setOverride('min_required_version', '1.5.0');
-      RemoteConfigService.instance.setOverride('force_update_enabled', 'false');
+    test(
+      'When remote config min_required_version is higher, update is mandatory',
+      () async {
+        RemoteConfigService.instance.setOverride('latest_app_version', '2.0.0');
+        RemoteConfigService.instance.setOverride(
+          'min_required_version',
+          '1.5.0',
+        );
+        RemoteConfigService.instance.setOverride(
+          'force_update_enabled',
+          'false',
+        );
 
-      final result = await AppUpdateService.instance.checkForUpdate();
+        final result = await AppUpdateService.instance.checkForUpdate();
 
-      expect(result.hasUpdate, isTrue);
-      expect(result.isMandatory, isTrue);
-    });
+        expect(result.hasUpdate, isTrue);
+        expect(result.isMandatory, isTrue);
+      },
+    );
 
-    test('When remote force_update_enabled is true, update is mandatory', () async {
-      RemoteConfigService.instance.setOverride('latest_app_version', '1.0.5');
-      RemoteConfigService.instance.setOverride('force_update_enabled', 'true');
+    test(
+      'When remote force_update_enabled is true, update is mandatory',
+      () async {
+        RemoteConfigService.instance.setOverride('latest_app_version', '1.0.5');
+        RemoteConfigService.instance.setOverride(
+          'force_update_enabled',
+          'true',
+        );
 
-      final result = await AppUpdateService.instance.checkForUpdate();
+        final result = await AppUpdateService.instance.checkForUpdate();
 
-      expect(result.hasUpdate, isTrue);
-      expect(result.isMandatory, isTrue);
-    });
+        expect(result.hasUpdate, isTrue);
+        expect(result.isMandatory, isTrue);
+      },
+    );
 
-    test('When current version equals or exceeds remote, no update is flagged', () async {
-      RemoteConfigService.instance.setOverride('latest_app_version', '1.0.0');
-      RemoteConfigService.instance.setOverride('min_required_version', '1.0.0');
-      RemoteConfigService.instance.setOverride('force_update_enabled', 'false');
+    test(
+      'When current version equals or exceeds remote, no update is flagged',
+      () async {
+        RemoteConfigService.instance.setOverride('latest_app_version', '1.0.0');
+        RemoteConfigService.instance.setOverride(
+          'min_required_version',
+          '1.0.0',
+        );
+        RemoteConfigService.instance.setOverride(
+          'force_update_enabled',
+          'false',
+        );
 
-      final result = await AppUpdateService.instance.checkForUpdate();
+        final result = await AppUpdateService.instance.checkForUpdate();
 
-      expect(result.hasUpdate, isFalse);
-    });
+        expect(result.hasUpdate, isFalse);
+      },
+    );
   });
 }
