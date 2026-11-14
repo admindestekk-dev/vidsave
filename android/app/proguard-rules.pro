@@ -60,3 +60,15 @@
 -keep class com.google.android.play.core.appupdate.** { *; }
 -keep class com.google.android.play.core.install.** { *; }
 -keep class com.google.android.play.core.tasks.** { *; }
+
+# Flutter WebView & InAppWebView
+-keep class com.pichillilorenzo.flutter_inappwebview_android.** { *; }
+-dontwarn com.pichillilorenzo.flutter_inappwebview_android.**
+-keep class io.flutter.plugins.webviewflutter.** { *; }
+
+# Google Sign-In & Auth
+-keep class com.google.android.gms.auth.api.signin.** { *; }
+-keep class io.flutter.plugins.googlesignin.** { *; }
+
+# Package Info Plus
+-keep class dev.fluttercommunity.plus.packageinfo.** { *; }

@@ -165,15 +165,44 @@ Future<void> _runExternalShareDownloads() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final isFirstTimeFuture = OnboardingScreen.checkIsFirstTime();
-  unawaited(RemoteConfigService.instance.initialize());
-  unawaited(FirebaseNotificationService.instance.initialize());
-  unawaited(AdmobService.instance.initialize());
-  unawaited(DownloadNotificationService.instance.initialize());
-  unawaited(StorageService.getItems());
-  unawaited(ThemeService.initialize());
-  unawaited(LocaleService.initialize());
-  final isFirstTime = await isFirstTimeFuture;
+
+  // Olası beklenmeyen asenkron veya UI hatalarında uygulamanın beyaz ekranda donup kalmasını önle
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('VidSave FlutterError: ${details.exceptionAsString()}');
+  };
+
+  bool isFirstTime = false;
+  try {
+    isFirstTime = await OnboardingScreen.checkIsFirstTime()
+        .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
+  } catch (e) {
+    debugPrint('OnboardingScreen.checkIsFirstTime hatası: $e');
+  }
+
+  unawaited(RemoteConfigService.instance.initialize().catchError((e) {
+    debugPrint('RemoteConfigService init hatası: $e');
+  }));
+  unawaited(FirebaseNotificationService.instance.initialize().catchError((e) {
+    debugPrint('FirebaseNotificationService init hatası: $e');
+  }));
+  unawaited(AdmobService.instance.initialize().catchError((e) {
+    debugPrint('AdmobService init hatası: $e');
+  }));
+  unawaited(DownloadNotificationService.instance.initialize().catchError((e) {
+    debugPrint('DownloadNotificationService init hatası: $e');
+  }));
+  unawaited(StorageService.getItems().catchError((e) {
+    debugPrint('StorageService init hatası: $e');
+    return <DownloadItemModel>[];
+  }));
+  unawaited(ThemeService.initialize().catchError((e) {
+    debugPrint('ThemeService init hatası: $e');
+  }));
+  unawaited(LocaleService.initialize().catchError((e) {
+    debugPrint('LocaleService init hatası: $e');
+  }));
+
   runApp(MyApp(isFirstTime: isFirstTime));
 }
 
