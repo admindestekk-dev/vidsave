@@ -129,7 +129,7 @@ void main() {
     );
 
     testWidgets(
-      'tapping Videoyu İzle closes sheet without triggering onFormatSelected',
+      'tapping Videoyu İzle keeps sheet open without triggering onFormatSelected',
       (WidgetTester tester) async {
         DownloadKind? selectedKind;
         String? selectedUrl;
@@ -166,8 +166,8 @@ void main() {
         await tester.tap(watchOption);
         await tester.pumpAndSettle();
 
-        // Sheet closed and no download callback fired
-        expect(find.text('İndirme formatı'), findsNothing);
+        // Sheet remains available when returning from the video player.
+        expect(find.text('İndirme formatı'), findsOneWidget);
         expect(selectedKind, isNull);
         expect(selectedUrl, isNull);
       },

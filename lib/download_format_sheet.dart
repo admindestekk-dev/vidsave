@@ -546,11 +546,6 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
     final rootNavigator = Navigator.of(context, rootNavigator: true);
     final navContext = rootNavigator.context;
 
-    // Paneli derhal kapat
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-
     final contentTitle = _getContentTitle();
 
     // Test ortamında canlı video oynatıcı yönlendirmesini test güvenliği için simüle et
