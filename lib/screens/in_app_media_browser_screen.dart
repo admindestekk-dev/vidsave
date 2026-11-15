@@ -251,28 +251,50 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         return Promise.resolve();
       }
 
+      function cleanMediaUrl(raw) {
+        if (!raw || typeof raw !== 'string') return null;
+        var s = raw.trim();
+        if ((s.startsWith('http://') || s.startsWith('https://')) && !s.startsWith('blob:')) {
+          if (s.indexOf('bytestart=') !== -1 || s.indexOf('byteend=') !== -1) {
+            s = s.replace(/[?&]bytestart=[0-9]+/g, '').replace(/[?&]byteend=[0-9]+/g, '');
+            if (s.indexOf('?') === -1 && s.indexOf('&') !== -1) {
+              s = s.replace('&', '?');
+            }
+          }
+          return s;
+        }
+        return null;
+      }
+
       function extractMediaSrc(videoEl) {
         if (!videoEl) return null;
         if (videoEl.tagName === 'A' && videoEl.href) {
-          return videoEl.href;
+          return cleanMediaUrl(videoEl.href);
         }
-        var src = videoEl.currentSrc || videoEl.src || videoEl.getAttribute('src');
-        if (src && typeof src === 'string') {
-          var s = src.trim();
-          if ((s.startsWith('http://') || s.startsWith('https://')) && !s.startsWith('blob:')) {
-            return s;
-          }
-        }
+        var direct = cleanMediaUrl(videoEl.currentSrc) ||
+                     cleanMediaUrl(videoEl.src) ||
+                     cleanMediaUrl(videoEl.getAttribute('src')) ||
+                     cleanMediaUrl(videoEl.getAttribute('data-src')) ||
+                     cleanMediaUrl(videoEl.getAttribute('data-video-url')) ||
+                     cleanMediaUrl(videoEl.getAttribute('data-orig-src'));
+        if (direct) return direct;
+
         var sources = videoEl.querySelectorAll('source');
         for (var i = 0; i < sources.length; i++) {
-          var sSrc = sources[i].src || sources[i].getAttribute('src');
-          if (sSrc && typeof sSrc === 'string') {
-            var clean = sSrc.trim();
-            if ((clean.startsWith('http://') || clean.startsWith('https://')) && !clean.startsWith('blob:')) {
-              return clean;
-            }
-          }
+          var sSrc = sources[i].src || sources[i].getAttribute('src') || sources[i].getAttribute('data-src');
+          var cleaned = cleanMediaUrl(sSrc);
+          if (cleaned) return cleaned;
         }
+
+        try {
+          var parent = videoEl.parentElement;
+          if (parent) {
+            var pSrc = parent.getAttribute('data-video-url') || parent.getAttribute('data-src');
+            var cleanedP = cleanMediaUrl(pSrc);
+            if (cleanedP) return cleanedP;
+          }
+        } catch(e) {}
+
         return null;
       }
 

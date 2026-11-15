@@ -79,7 +79,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (widget.networkUrl != null && widget.networkUrl!.trim().isNotEmpty) {
       final uri = Uri.parse(widget.networkUrl!.trim());
       final headers = widget.httpHeaders ??
-          ApiService.buildAggressiveBrowserHeaders(uri: uri);
+          ApiService.buildPlayerHeaders(uri: uri);
       return VideoPlayerController.networkUrl(
         uri,
         httpHeaders: headers,

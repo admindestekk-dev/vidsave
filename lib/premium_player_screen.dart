@@ -224,17 +224,30 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
     final uri = Uri.tryParse(_videoUrl ?? '');
     final headers = widget.httpHeaders ??
         (uri != null
-            ? ApiService.buildAggressiveBrowserHeaders(uri: uri)
+            ? ApiService.buildPlayerHeaders(uri: uri)
             : null);
 
-    final controller = _videoUrl != null && _videoUrl!.isNotEmpty
-        ? VideoPlayerController.networkUrl(
-            Uri.parse(_videoUrl!),
-            httpHeaders: headers ?? const {},
-          )
-        : VideoPlayerController.file(_file!);
+    VideoPlayerController controller;
+    if (_videoUrl != null && _videoUrl!.isNotEmpty) {
+      final parsedUri = Uri.parse(_videoUrl!);
+      try {
+        controller = VideoPlayerController.networkUrl(
+          parsedUri,
+          httpHeaders: headers ?? const {},
+        );
+        await controller.initialize();
+      } catch (initialErr) {
+        // Eğer özel başlıklarla 403 veya parse hatası verirse, başlık olmadan temiz dene
+        debugPrint('[VidSave Player] Başlıklı akış başlatılamadı ($initialErr), başlıksız deneniyor...');
+        controller = VideoPlayerController.networkUrl(parsedUri);
+        await controller.initialize();
+      }
+    } else {
+      controller = VideoPlayerController.file(_file!);
+      await controller.initialize();
+    }
+
     _videoController = controller;
-    await controller.initialize();
     await controller.setLooping(false);
     _chewieController = ChewieController(
       videoPlayerController: controller,

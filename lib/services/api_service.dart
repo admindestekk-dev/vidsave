@@ -346,6 +346,60 @@ class ApiService {
     return headers;
   }
 
+  /// Video oynatıcılar (ExoPlayer / AVPlayer) için standart, temiz ve CDN 403 engellerini aşan başlıklar.
+  /// CORS engellerine takılmaması için Sec-Fetch ve Origin gibi başlıklar içermez,
+  /// meşru mobil tarayıcı User-Agent ve Referer ile akışı çeker.
+  static Map<String, String> buildPlayerHeaders({
+    required Uri uri,
+    Map<String, String>? extraHeaders,
+  }) {
+    final host = uri.host.toLowerCase();
+    final headers = <String, String>{
+      'User-Agent':
+          'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Connection': 'keep-alive',
+    };
+
+    if (host.contains('youtube.com') ||
+        host.contains('googlevideo.com') ||
+        host.contains('youtu.be')) {
+      headers['Referer'] = 'https://www.youtube.com/';
+    } else if (host.contains('tiktok.com') ||
+        host.contains('tiktokcdn.com') ||
+        host.contains('byteoversea.com') ||
+        host.contains('ibytedtos.com') ||
+        host.contains('musical.ly')) {
+      headers['Referer'] = 'https://www.tiktok.com/';
+    } else if (host.contains('instagram.com') ||
+        host.contains('cdninstagram.com') ||
+        host.contains('fbcdn.net')) {
+      headers['Referer'] = 'https://www.instagram.com/';
+    } else if (host.contains('facebook.com') ||
+        host.contains('fb.watch') ||
+        host.contains('facebook.net')) {
+      headers['Referer'] = 'https://www.facebook.com/';
+    } else if (host.contains('pinterest.com') || host.contains('pinimg.com')) {
+      headers['Referer'] = 'https://www.pinterest.com/';
+    } else if (host.contains('twitter.com') ||
+        host.contains('x.com') ||
+        host.contains('twimg.com')) {
+      headers['Referer'] = 'https://twitter.com/';
+    } else if (host.contains('vimeo.com') || host.contains('vimeocdn.com')) {
+      headers['Referer'] = 'https://vimeo.com/';
+    } else if (host.contains('dailymotion.com') || host.contains('dmcdn.net')) {
+      headers['Referer'] = 'https://www.dailymotion.com/';
+    } else {
+      headers['Referer'] = '${uri.scheme}://${uri.host}/';
+    }
+
+    if (extraHeaders != null) {
+      headers.addAll(extraHeaders);
+    }
+    return headers;
+  }
+
   /// Sunucudan veya CDN'den gelen [downloadUrl] adresindeki dosyayı
   /// doğrudan cihaz hafızasına indirir ve canlı ilerleme yüzdesini bildirir.
   ///

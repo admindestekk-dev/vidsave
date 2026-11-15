@@ -9,7 +9,6 @@ import 'premium_player_screen.dart';
 import 'services/api_service.dart';
 import 'services/micro_toast.dart';
 import 'services/unified_download_engine.dart';
-import 'video_player_screen.dart';
 import 'youtube_restriction.dart';
 
 /// Alttan açılan şık 'İndirme formatı' Modal Bottom Sheet penceresi.
@@ -545,6 +544,7 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
 
     // Modal kapanmadan önce root navigator referansını yakala
     final rootNavigator = Navigator.of(context, rootNavigator: true);
+    final navContext = rootNavigator.context;
 
     // Paneli derhal kapat
     if (Navigator.of(context).canPop()) {
@@ -558,9 +558,9 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
       return;
     }
 
-    if (rootNavigator.context.mounted) {
+    if (navContext.mounted) {
       showMicroToast(
-        rootNavigator.context,
+        navContext,
         message: 'Canlı video hazırlanıyor…',
         isLoading: true,
       );
@@ -580,16 +580,32 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
           lower.contains('fbcdn.net');
     }
 
+    String cleanCdnStreamUrl(String url) {
+      var clean = url;
+      if (clean.contains('bytestart=') || clean.contains('byteend=')) {
+        clean = clean.replaceAll(RegExp(r'[?&]bytestart=\d+'), '');
+        clean = clean.replaceAll(RegExp(r'[?&]byteend=\d+'), '');
+        if (!clean.contains('?') && clean.contains('&')) {
+          clean = clean.replaceFirst('&', '?');
+        }
+      }
+      return clean;
+    }
+
     String normalizeStreamUrl(String raw) {
       var url = raw.trim();
       if (url.startsWith('//')) {
-        return 'https:$url';
+        url = 'https:$url';
+      } else if (url.startsWith('http://') &&
+          (url.contains('onrender.com') || url.contains('vidsave'))) {
+        url = url.replaceFirst('http://', 'https://');
+      } else if (url.startsWith('/')) {
+        final base = ApiService.instance.baseUrl
+            .replaceFirst('http://', 'https://')
+            .replaceAll(RegExp(r'/+$'), '');
+        url = '$base$url';
       }
-      if (url.startsWith('/')) {
-        final base = ApiService.instance.baseUrl.replaceAll(RegExp(r'/+$'), '');
-        return '$base$url';
-      }
-      return url;
+      return cleanCdnStreamUrl(url);
     }
 
     try {
@@ -601,7 +617,7 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
 
       // 1. Eğer zaten doğrudan medya akışı bağlantısı ise (mp4 veya CDN video URL'si)
       if (looksLikeDirectStream(effectiveTarget)) {
-        streamUrl = effectiveTarget;
+        streamUrl = cleanCdnStreamUrl(effectiveTarget);
       }
 
       // 2. Render Pro ApiService üzerinden ham video akışını çözümle
@@ -641,11 +657,27 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
         }
       }
 
-      final finalPlayUrl = normalizeStreamUrl(streamUrl ?? effectiveTarget);
+      // Eğer akış çözülemediyse ve hedef bir web sayfası ise (video akışı değilse),
+      // asla web sayfası HTML adresini video oynatıcıya gönderip 'Medya açılamadı' hatası verdirme!
+      if (streamUrl == null && !looksLikeDirectStream(effectiveTarget)) {
+        debugPrint('Videoyu İzle: Canlı akış URL\'si çözülemedi ($effectiveTarget)');
+        final navContext = rootNavigator.context;
+        if (navContext.mounted) {
+          showMicroToast(
+            navContext,
+            message: 'Bu videonun canlı ön izlemesi alınamadı. Lütfen "Video (MP4)" ile indirin.',
+          );
+        }
+        return;
+      }
 
-      if (!rootNavigator.context.mounted) return;
+      final resolvedUrl = streamUrl ?? effectiveTarget;
+      final finalPlayUrl = normalizeStreamUrl(resolvedUrl);
 
-      // Uygulama içi medya oynatıcıya gönder (PremiumPlayerScreen veya VideoPlayerScreen)
+      final navContext = rootNavigator.context;
+      if (!navContext.mounted) return;
+
+      // Uygulama içi medya oynatıcıya gönder (PremiumPlayerScreen)
       await rootNavigator.push(
         MaterialPageRoute<void>(
           builder: (_) => PremiumPlayerScreen(
@@ -657,14 +689,11 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
       );
     } catch (e) {
       debugPrint('Videoyu İzle canlı önizleme hatası: $e');
-      if (rootNavigator.context.mounted) {
-        await rootNavigator.push(
-          MaterialPageRoute<void>(
-            builder: (_) => VideoPlayerScreen(
-              networkUrl: targetUrl,
-              title: contentTitle,
-            ),
-          ),
+      final navContext = rootNavigator.context;
+      if (navContext.mounted) {
+        showMicroToast(
+          navContext,
+          message: 'Video başlatılamadı. Lütfen "Video (MP4)" seçeneğiyle indirin.',
         );
       }
     }
