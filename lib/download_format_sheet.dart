@@ -7,6 +7,7 @@ import 'client_media_resolver.dart';
 import 'media_downloader.dart';
 import 'premium_player_screen.dart';
 import 'services/api_service.dart';
+import 'services/micro_toast.dart';
 import 'services/unified_download_engine.dart';
 import 'video_player_screen.dart';
 import 'youtube_restriction.dart';
@@ -542,12 +543,14 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
         ? _urlController.text.trim()
         : widget.url.trim();
 
+    // Modal kapanmadan önce root navigator referansını yakala
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+
     // Paneli derhal kapat
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
 
-    final parentContext = context;
     final contentTitle = _getContentTitle();
 
     // Test ortamında canlı video oynatıcı yönlendirmesini test güvenliği için simüle et
@@ -555,25 +558,64 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
       return;
     }
 
+    if (rootNavigator.context.mounted) {
+      showMicroToast(
+        rootNavigator.context,
+        message: 'Canlı video hazırlanıyor…',
+        isLoading: true,
+      );
+    }
+
+    bool looksLikeDirectStream(String candidate) {
+      final uri = Uri.tryParse(candidate);
+      if (uri != null && isDirectMediaUrl(uri)) return true;
+      final lower = candidate.toLowerCase();
+      return lower.contains('.mp4') ||
+          lower.contains('.m4v') ||
+          lower.contains('.webm') ||
+          lower.contains('.mov') ||
+          lower.contains('googlevideo.com') ||
+          lower.contains('tiktokcdn.com') ||
+          lower.contains('cdninstagram.com') ||
+          lower.contains('fbcdn.net');
+    }
+
+    String normalizeStreamUrl(String raw) {
+      var url = raw.trim();
+      if (url.startsWith('//')) {
+        return 'https:$url';
+      }
+      if (url.startsWith('/')) {
+        final base = ApiService.instance.baseUrl.replaceAll(RegExp(r'/+$'), '');
+        return '$base$url';
+      }
+      return url;
+    }
+
     try {
       final clean = evrenselTemizUrl(targetUrl);
+      final effectiveTarget = clean.isNotEmpty ? clean : targetUrl;
       String? streamUrl;
 
-      // 1. Eğer doğrudan medya bağlantısı ise (mp4 vb.)
-      final uri = Uri.tryParse(clean.isNotEmpty ? clean : targetUrl);
-      if (uri != null && isDirectMediaUrl(uri)) {
-        streamUrl = uri.toString();
+      Map<String, String>? streamHeaders;
+
+      // 1. Eğer zaten doğrudan medya akışı bağlantısı ise (mp4 veya CDN video URL'si)
+      if (looksLikeDirectStream(effectiveTarget)) {
+        streamUrl = effectiveTarget;
       }
 
       // 2. Render Pro ApiService üzerinden ham video akışını çözümle
       if (streamUrl == null) {
         try {
           final analyze = await ApiService.instance.analyze(
-            url: clean.isNotEmpty ? clean : targetUrl,
+            url: effectiveTarget,
             type: 'video',
           );
           if (analyze.downloadUrl.isNotEmpty) {
             streamUrl = analyze.downloadUrl;
+            if (analyze.headers != null && analyze.headers!.isNotEmpty) {
+              streamHeaders = analyze.headers;
+            }
           }
         } catch (e) {
           debugPrint('Videoyu İzle: ApiService analiz hatası: $e');
@@ -585,34 +627,38 @@ class _DownloadFormatBottomSheetState extends State<DownloadFormatBottomSheet> {
         try {
           final resolver = widget.resolver ?? ClientMediaResolver();
           final resolved = await resolver.resolve(
-            uri ?? Uri.parse(targetUrl),
+            Uri.parse(effectiveTarget),
             DownloadKind.video,
           );
           if (resolved.url.toString().isNotEmpty) {
             streamUrl = resolved.url.toString();
+            if (resolved.downloadHeaders.isNotEmpty) {
+              streamHeaders = resolved.downloadHeaders;
+            }
           }
         } catch (e) {
           debugPrint('Videoyu İzle: Yedek resolver analiz hatası: $e');
         }
       }
 
-      final finalPlayUrl = streamUrl ?? (clean.isNotEmpty ? clean : targetUrl);
+      final finalPlayUrl = normalizeStreamUrl(streamUrl ?? effectiveTarget);
 
-      if (!parentContext.mounted) return;
+      if (!rootNavigator.context.mounted) return;
 
       // Uygulama içi medya oynatıcıya gönder (PremiumPlayerScreen veya VideoPlayerScreen)
-      await Navigator.of(parentContext).push(
+      await rootNavigator.push(
         MaterialPageRoute<void>(
           builder: (_) => PremiumPlayerScreen(
             videoUrl: finalPlayUrl,
             title: contentTitle,
+            httpHeaders: streamHeaders,
           ),
         ),
       );
     } catch (e) {
       debugPrint('Videoyu İzle canlı önizleme hatası: $e');
-      if (parentContext.mounted) {
-        await Navigator.of(parentContext).push(
+      if (rootNavigator.context.mounted) {
+        await rootNavigator.push(
           MaterialPageRoute<void>(
             builder: (_) => VideoPlayerScreen(
               networkUrl: targetUrl,

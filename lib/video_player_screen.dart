@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 
+import 'services/api_service.dart';
+
 typedef VideoPlayerControllerFactory = Future<VideoPlayerController> Function(
   AssetEntity asset,
 );
@@ -18,6 +20,7 @@ class VideoPlayerScreen extends StatefulWidget {
     this.networkUrl,
     this.title,
     this.controllerFactory,
+    this.httpHeaders,
   });
 
   final AssetEntity? asset;
@@ -25,6 +28,7 @@ class VideoPlayerScreen extends StatefulWidget {
   final String? networkUrl;
   final String? title;
   final VideoPlayerControllerFactory? controllerFactory;
+  final Map<String, String>? httpHeaders;
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -73,7 +77,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<VideoPlayerController> _resolveController() async {
     if (widget.networkUrl != null && widget.networkUrl!.trim().isNotEmpty) {
-      return VideoPlayerController.networkUrl(Uri.parse(widget.networkUrl!.trim()));
+      final uri = Uri.parse(widget.networkUrl!.trim());
+      final headers = widget.httpHeaders ??
+          ApiService.buildAggressiveBrowserHeaders(uri: uri);
+      return VideoPlayerController.networkUrl(
+        uri,
+        httpHeaders: headers,
+      );
     }
     if (widget.controllerFactory != null && widget.asset != null) {
       return widget.controllerFactory!(widget.asset!);

@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import 'music_player.dart';
+import 'services/api_service.dart';
 
 class PremiumPlayerScreen extends StatefulWidget {
   const PremiumPlayerScreen({
@@ -19,12 +20,14 @@ class PremiumPlayerScreen extends StatefulWidget {
     this.videoUrl,
     this.title,
     this.audioPlayerFactory,
+    this.httpHeaders,
   }) : assert(file != null || videoUrl != null, 'Either file or videoUrl must be provided.');
 
   final File? file;
   final String? videoUrl;
   final String? title;
   final AudioPlayerFactory? audioPlayerFactory;
+  final Map<String, String>? httpHeaders;
 
   @override
   State<PremiumPlayerScreen> createState() => _PremiumPlayerScreenState();
@@ -218,8 +221,17 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   }
 
   Future<void> _initializeVideo() async {
+    final uri = Uri.tryParse(_videoUrl ?? '');
+    final headers = widget.httpHeaders ??
+        (uri != null
+            ? ApiService.buildAggressiveBrowserHeaders(uri: uri)
+            : null);
+
     final controller = _videoUrl != null && _videoUrl!.isNotEmpty
-        ? VideoPlayerController.networkUrl(Uri.parse(_videoUrl!))
+        ? VideoPlayerController.networkUrl(
+            Uri.parse(_videoUrl!),
+            httpHeaders: headers ?? const {},
+          )
         : VideoPlayerController.file(_file!);
     _videoController = controller;
     await controller.initialize();
