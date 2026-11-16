@@ -14,6 +14,43 @@
       },
       "oauth_client": [
         {
+          "client_id": "415854271102-24qf465hqdfcsl67j6hvc98ah2849dgf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.vid_downloader_app",
+            "certificate_hash": "d128b8cdc9a35f04b5b13865e38a93500e537a08"
+          }
+        },
+        {
+          "client_id": "415854271102-oj44ne0nedjik1lodes91noa1dok3jeu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWqjAv5YkQOFxpGocskKK8kxwpN9easMk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "415854271102-oj44ne0nedjik1lodes91noa1dok3jeu.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:415854271102:android:60d82fdc67e22ebf0bd62f",
+        "android_client_info": {
+          "package_name": "dev.admindestekk.vidsave"
+        }
+      },
+      "oauth_client": [
+        {
           "client_id": "415854271102-oj44ne0nedjik1lodes91noa1dok3jeu.apps.googleusercontent.com",
           "client_type": 3
         }

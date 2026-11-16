@@ -12,7 +12,10 @@ class BackendSettings {
     defaultValue: 'https://vidsave-q7ut.onrender.com',
   );
 
-  static const defaultApiKey = String.fromEnvironment('VIDSAVE_API_KEY');
+  static const defaultApiKey = String.fromEnvironment(
+    'API_KEY',
+    defaultValue: String.fromEnvironment('VIDSAVE_API_KEY'),
+  );
 
   final String baseUrl;
   final String apiKey;

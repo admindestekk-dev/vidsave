@@ -1,4 +1,4 @@
-package com.example.vid_downloader_app
+package dev.admindestekk.vidsave
 
 import android.Manifest
 import android.content.ContentValues

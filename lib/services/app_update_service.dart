@@ -53,7 +53,7 @@ class AppUpdateService {
   bool _isChecking = false;
 
   /// Varsayılan paket ve Play Store URL
-  static const String defaultPackageName = 'com.example.vid_downloader_app';
+  static const String defaultPackageName = 'dev.admindestekk.vidsave';
   static const String defaultPlayStoreUrl =
       'https://play.google.com/store/apps/details?id=$defaultPackageName';
 

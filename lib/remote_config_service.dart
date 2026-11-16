@@ -37,7 +37,7 @@ class RemoteConfigService {
     'min_required_version': '1.0.0',
     'force_update_enabled': 'false',
     'update_release_notes': 'Yeni video indirme motoru ve performans iyileştirmeleri!',
-    'play_store_url': 'https://play.google.com/store/apps/details?id=com.example.vid_downloader_app',
+    'play_store_url': 'https://play.google.com/store/apps/details?id=dev.admindestekk.vidsave',
   };
 
   /// Bellekteki aktif konfigürasyon önbelleği

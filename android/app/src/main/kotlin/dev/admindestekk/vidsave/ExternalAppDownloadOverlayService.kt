@@ -1,4 +1,4 @@
-package com.example.vid_downloader_app
+package dev.admindestekk.vidsave
 
 import android.app.AppOpsManager
 import android.app.Notification

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -5,8 +7,16 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+val signingPropertiesFile = System.getenv("VIDSAVE_SIGNING_PROPERTIES")
+    ?.let { file(it) }
+    ?: File(File(System.getProperty("user.home"), ".vidsave"), "key.properties")
+val signingProperties = Properties()
+if (signingPropertiesFile.isFile) {
+    signingPropertiesFile.inputStream().use { signingProperties.load(it) }
+}
+
 android {
-    namespace = "com.example.vid_downloader_app"
+    namespace = "dev.admindestekk.vidsave"
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
@@ -17,8 +27,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.vid_downloader_app"
+        applicationId = "dev.admindestekk.vidsave"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = maxOf(flutter.minSdkVersion, 23)
@@ -31,11 +40,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (signingPropertiesFile.isFile) {
+                storeFile = file(requireNotNull(signingProperties.getProperty("storeFile")))
+                storePassword = requireNotNull(signingProperties.getProperty("storePassword"))
+                keyAlias = requireNotNull(signingProperties.getProperty("keyAlias"))
+                keyPassword = requireNotNull(signingProperties.getProperty("keyPassword"))
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

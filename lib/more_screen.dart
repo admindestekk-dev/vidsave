@@ -1400,12 +1400,12 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
         await inAppReview.requestReview();
       } else {
         await inAppReview.openStoreListing(
-          appStoreId: 'com.example.vid_downloader_app',
+          appStoreId: 'dev.admindestekk.vidsave',
         );
       }
     } catch (_) {
       final fallbackUri = Uri.parse(
-        'https://play.google.com/store/apps/details?id=com.example.vid_downloader_app',
+        'https://play.google.com/store/apps/details?id=dev.admindestekk.vidsave',
       );
       try {
         await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
@@ -1417,7 +1417,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
   Future<void> _shareApp() async {
     final isTr = LocaleService.currentLanguageCode == 'tr';
     const playStoreLink =
-        'https://play.google.com/store/apps/details?id=com.example.vid_downloader_app';
+        'https://play.google.com/store/apps/details?id=dev.admindestekk.vidsave';
 
     final shareText = isTr
         ? 'VidSave ile tüm video ve MP3\'leri ışık hızında indir! Link: $playStoreLink'
