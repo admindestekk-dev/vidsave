@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../app_dio.dart';
+import '../backend_settings.dart';
 import 'multi_threaded_downloader.dart';
 
 /// Varsayılan canlı sunucu adresi (Render Pro 7/24 Kesintisiz Canlı API).
@@ -123,8 +124,9 @@ class ApiService {
     return sanitized.replaceAll(RegExp(r'/+$'), '');
   }
 
-  ApiService({String? baseUrl, Dio? dioClient})
+  ApiService({String? baseUrl, Dio? dioClient, BackendSettingsStore? settingsStore})
     : _baseUrl = cleanBaseUrl(baseUrl),
+      _settingsStore = settingsStore ?? SecureBackendSettingsStore(),
       _dio =
           dioClient ??
           Dio(
@@ -155,6 +157,7 @@ class ApiService {
   }
 
   String _baseUrl;
+  final BackendSettingsStore _settingsStore;
   final Dio _dio;
 
   String get baseUrl => _baseUrl;
@@ -163,6 +166,15 @@ class ApiService {
   /// Sunucu URL'sini çalışma zamanında dinamik olarak günceller
   void setBaseUrl(String newBaseUrl) {
     _baseUrl = cleanBaseUrl(newBaseUrl);
+  }
+
+  Future<Map<String, String>> _backendHeaders(Uri target) async {
+    final settings = await _settingsStore.load();
+    if (!settings.isConfigured || target.origin != settings.baseUri.origin ||
+        settings.apiKey.isEmpty) {
+      return {};
+    }
+    return {'X-Api-Key': settings.apiKey};
   }
 
   /// Verilen ham linki ve indirme tipini Python sunucusuna gönderir ve
@@ -180,6 +192,7 @@ class ApiService {
     }
 
     final targetEndpoint = '$_baseUrl/api/analyze';
+    final apiHeaders = await _backendHeaders(Uri.parse(targetEndpoint));
 
     try {
       final response = await _dio.post<dynamic>(
@@ -189,9 +202,10 @@ class ApiService {
           'type': type.toLowerCase() == 'mp3' ? 'mp3' : 'video',
         },
         options: Options(
-          headers: const {
+          headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
+            ...apiHeaders,
           },
           validateStatus: (status) => status != null && status < 500,
         ),
@@ -432,15 +446,32 @@ class ApiService {
     }
 
     final uri = Uri.tryParse(effectiveUrl) ?? Uri.parse(downloadUrl);
+    final apiHeaders = await _backendHeaders(uri);
     final aggressiveHeaders = buildAggressiveBrowserHeaders(
       uri: uri,
       extraHeaders: headers,
     );
+    aggressiveHeaders.addAll(apiHeaders);
 
     // 403 engellerini bertaraf etmek için AppDio (CookieJar ve Maskeleme destekli) istemcisi kullanılır
     final downloadClient = AppDio.createClient();
 
     try {
+      if (apiHeaders.isNotEmpty) {
+        await downloadClient.download(
+          effectiveUrl,
+          savePath,
+          options: Options(
+            headers: aggressiveHeaders,
+            followRedirects: false,
+            validateStatus: (status) => status != null && status >= 200 && status < 300,
+          ),
+          deleteOnError: true,
+          onReceiveProgress: onProgress,
+          cancelToken: cancelToken,
+        );
+        return targetFile;
+      }
       // Çoklu parçacıklı (Multi-threaded Range Accelerator) hızlandırma motorunu devreye sok
       final accelerator = MultiThreadedDownloader(dioClient: downloadClient, threadCount: 4);
       return await accelerator.downloadWithAccelerator(
@@ -452,7 +483,7 @@ class ApiService {
       );
     } on DioException catch (dioErr) {
       // 403 Forbidden durumunda alternatif mobil tarayıcı kimliği (Android Chrome / no-cors) ile otomatik tekrar dene
-      if (dioErr.response?.statusCode == 403) {
+      if (dioErr.response?.statusCode == 403 && apiHeaders.isEmpty) {
         debugPrint(
           'ApiService.downloadFile 403 Forbidden ile karşılaştı. Alternatif mobil tarayıcı kimliği ile tekrar deneniyor...',
         );

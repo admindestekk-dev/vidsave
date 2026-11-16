@@ -1,9 +1,25 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vid_downloader_app/api_service.dart';
+import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/home_screen.dart';
+
+class _SettingsStore implements BackendSettingsStore {
+  const _SettingsStore(this.settings);
+  final BackendSettings settings;
+
+  @override
+  Future<BackendSettings> load() async => settings;
+
+  @override
+  Future<void> save(BackendSettings settings) async {}
+}
+
+class _RealHttpOverrides extends HttpOverrides {}
 
 void main() {
   setUp(() {
@@ -11,6 +27,9 @@ void main() {
   });
 
   group('ApiService Tests', () {
+    const settingsStore = _SettingsStore(
+      BackendSettings(baseUrl: 'http://127.0.0.1', apiKey: 'test-key'),
+    );
     test('analyze resolves video stream successfully with clean headers and download_url', () async {
       final dio = Dio();
       dio.interceptors.add(
@@ -18,6 +37,7 @@ void main() {
           onRequest: (options, handler) {
             expect(options.path.endsWith('/api/analyze'), isTrue);
             expect(options.method, 'POST');
+            expect(options.headers['X-Api-Key'], 'test-key');
             expect(options.data['url'], 'https://vimeo.com/123456');
             expect(options.data['type'], 'video');
             handler.resolve(
@@ -43,6 +63,7 @@ void main() {
       final apiService = ApiService(
         baseUrl: 'http://127.0.0.1:8787',
         dioClient: dio,
+        settingsStore: settingsStore,
       );
       final result = await apiService.analyze(
         url: 'https://vimeo.com/123456',
@@ -88,6 +109,7 @@ void main() {
       final apiService = ApiService(
         baseUrl: 'http://127.0.0.1:8787',
         dioClient: dio,
+        settingsStore: settingsStore,
       );
       final result = await apiService.analyze(
         url: 'https://youtube.com/watch?v=mock',
@@ -126,6 +148,7 @@ void main() {
         final apiService = ApiService(
           baseUrl: 'http://127.0.0.1:8787',
           dioClient: dio,
+          settingsStore: settingsStore,
         );
         expect(
           () => apiService.analyze(url: 'https://invalid.com/video'),
@@ -144,6 +167,77 @@ void main() {
       final service = ApiService();
       expect(service.dio.options.connectTimeout, const Duration(seconds: 30));
       expect(service.dio.options.receiveTimeout, const Duration(seconds: 30));
+    });
+
+    test('download sends the key only to the configured backend', () async {
+      await HttpOverrides.runWithHttpOverrides(() async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final directory = await Directory.systemTemp.createTemp('vidsave-api-test-');
+        final receivedKeys = <String?>[];
+        server.listen((request) async {
+          receivedKeys.add(request.headers.value('X-Api-Key'));
+          request.response.write('ok');
+          await request.response.close();
+        });
+        final baseUrl = 'http://127.0.0.1:${server.port}';
+        final service = ApiService(
+          baseUrl: baseUrl,
+          settingsStore: _SettingsStore(
+            BackendSettings(baseUrl: baseUrl, apiKey: 'test-key'),
+          ),
+        );
+        final backendFile = File('${directory.path}${Platform.pathSeparator}backend');
+        final externalFile = File('${directory.path}${Platform.pathSeparator}external');
+        try {
+          await service.downloadFile(
+            downloadUrl: '$baseUrl/download',
+            savePath: backendFile.path,
+          );
+          expect(receivedKeys, ['test-key']);
+          receivedKeys.clear();
+          await service.downloadFile(
+            downloadUrl: 'http://localhost:${server.port}/media',
+            savePath: externalFile.path,
+          );
+          expect(receivedKeys, isNotEmpty);
+          expect(receivedKeys.every((key) => key == null), isTrue);
+        } finally {
+          await server.close(force: true);
+          if (backendFile.existsSync()) await backendFile.delete();
+          if (externalFile.existsSync()) await externalFile.delete();
+          await directory.delete();
+        }
+      }, _RealHttpOverrides());
+    });
+
+    test('backend download rejects rate-limited responses', () async {
+      await HttpOverrides.runWithHttpOverrides(() async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final directory = await Directory.systemTemp.createTemp('vidsave-api-test-');
+        server.listen((request) async {
+          request.response.statusCode = 429;
+          await request.response.close();
+        });
+        final baseUrl = 'http://127.0.0.1:${server.port}';
+        final service = ApiService(
+          baseUrl: baseUrl,
+          settingsStore: _SettingsStore(
+            BackendSettings(baseUrl: baseUrl, apiKey: 'test-key'),
+          ),
+        );
+        final file = File('${directory.path}${Platform.pathSeparator}download');
+        try {
+          await expectLater(
+            service.downloadFile(downloadUrl: '$baseUrl/download', savePath: file.path),
+            throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 429)),
+          );
+          expect(file.existsSync(), isFalse);
+        } finally {
+          await server.close(force: true);
+          if (file.existsSync()) await file.delete();
+          await directory.delete();
+        }
+      }, _RealHttpOverrides());
     });
 
     test('buildAggressiveBrowserHeaders sets Accept-Encoding to identity and Connection to keep-alive', () {

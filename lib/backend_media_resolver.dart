@@ -12,7 +12,7 @@ class BackendMediaResolver implements MediaResolver {
   BackendMediaResolver({
     required this.settingsStore,
     http.Client? client,
-    this.pollInterval = const Duration(seconds: 1),
+    this.pollInterval = const Duration(seconds: 10),
     this.maxWait = const Duration(minutes: 30),
     Future<void> Function(Duration)? delay,
   }) : _client = client ?? http.Client(),

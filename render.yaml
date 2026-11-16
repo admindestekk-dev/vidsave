@@ -5,10 +5,12 @@ services:
     plan: free
     buildCommand: "pip install -r requirements.txt && bash ./render-build.sh"
     startCommand: "gunicorn --chdir backend --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 300 server:app"
-    healthCheckPath: /api/ping
+    healthCheckPath: /
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: VIDSAVE_IMPERSONATE
         value: "chrome"
+      - key: VIDSAVE_API_KEY
+        sync: false
     autoDeploy: true

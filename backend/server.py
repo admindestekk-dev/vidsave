@@ -62,6 +62,9 @@ except ImportError:
     requests = None
     HAS_REQUESTS = False
 from flask import Flask, Response, jsonify, request, send_file
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
@@ -77,6 +80,18 @@ except ImportError:  # Support running as `python backend/server.py`.
     from stream_proxy import stream_upstream_response, validate_public_http_url
 
 app = Flask(__name__)
+
+if os.environ.get("RENDER") == "true":
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=3)
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    application_limits=["10 per minute"],
+    application_limits_exempt_when=lambda: request.path == "/" or request.method == "OPTIONS",
+    storage_uri=os.environ.get("VIDSAVE_RATE_LIMIT_STORAGE_URI", "memory://"),
+    headers_enabled=True,
+)
 
 # --- CORS (Cross-Origin Resource Sharing) Shield ---------------------------
 try:
@@ -96,8 +111,10 @@ except Exception:
 
 # --- configuration ---------------------------------------------------------
 
-# Optional shared secret. When set, clients must send it as `X-Api-Key`.
+# Shared secret supplied through the server environment.
 API_KEY = os.environ.get("VIDSAVE_API_KEY", "").strip()
+if not API_KEY:
+    logging.error("VIDSAVE_API_KEY is not configured; API requests will be rejected")
 
 # Directory where yt-dlp writes merged/transcoded output.
 WORK_DIR = os.environ.get("VIDSAVE_WORK_DIR") or os.path.join(
@@ -1878,9 +1895,18 @@ def _work(job: Job) -> None:
 
 def _authorized() -> bool:
     if not API_KEY:
-        return True
+        return False
     supplied = request.headers.get("X-Api-Key", "").strip().encode("utf-8")
     return hmac.compare_digest(supplied, API_KEY.encode("utf-8"))
+
+
+@app.before_request
+def _require_api_key() -> tuple[Response, int] | None:
+    if request.method != "OPTIONS" and (
+        request.path == "/download" or request.path.startswith("/api/")
+    ) and not _authorized():
+        return jsonify(status="error", error={"code": "unauthorized"}), 401
+    return None
 
 
 def _current_user() -> dict[str, str] | None:
@@ -1980,8 +2006,7 @@ def _issue_auth_session(conn: sqlite3.Connection, user_id: str) -> str:
 #
 # The Flutter app talks to this backend from a different origin (the device),
 # so browsers/WebViews and Flutter web builds need permissive CORS headers.
-# Allow-all is safe here because access is gated by the optional X-Api-Key and
-# by the SSRF-safe URL validation in stream_proxy, not by the browser origin.
+# CORS is not an authentication mechanism.
 # Set VIDSAVE_ALLOWED_ORIGINS to a comma-separated list to lock this down.
 
 _ALLOWED_ORIGINS = os.environ.get("VIDSAVE_ALLOWED_ORIGINS", "*").strip() or "*"
@@ -3670,7 +3695,7 @@ def health() -> Response:
         impersonate=IMPERSONATE_TARGET if HAS_CURL_CFFI else None,
         cookiesBrowser=COOKIES_BROWSER or None,
         playerClient=YT_PLAYER_CLIENT or None,
-        authRequired=bool(API_KEY),
+        authRequired=True,
         qualities=True,
     )
 

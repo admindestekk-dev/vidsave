@@ -13,12 +13,16 @@ A new Flutter project.
    ```
 
    The backend listens on port `8787` and must be reachable by the device.
-   Keep the API key private and configure the same value in the app's **Daha
-   Fazlası → Backend bağlantısı** settings.
+   Set `VIDSAVE_API_KEY` in Render's environment as well. If it is missing,
+   API and download requests are rejected. Set the same value in the app's
+   **Daha Fazlası → Backend bağlantısı** settings.
 
-2. In the app, enter the backend address and optional API key, then choose
+2. In the app, enter the backend address and API key, then choose
    **Bağlantıyı Sına ve Kaydet**. The URL and key are stored using platform
-   encrypted storage.
+   encrypted storage. Alternatively, set `VIDSAVE_API_KEY` with
+   `--dart-define` at build time to provide a default for the default backend.
+   A saved key takes precedence. The build-time key is not sent to a different
+   backend URL.
 
 3. Use an address reachable from the device:
    - Android emulator: `http://10.0.2.2:8787`
@@ -30,6 +34,25 @@ A new Flutter project.
 Set `VIDSAVE_MAX_DOWNLOAD_BYTES` on the backend to change the default maximum
 stream size (4 GiB). A key stored on a user's device is not secret from that
 device's owner; use per-user or short-lived credentials for distributed apps.
+Rotate any key that has been shared publicly.
+
+The backend limits API and download requests, including failed authentication,
+to 10 per IP per minute; CORS preflights and the public `/` health check are
+exempt. Clients behind the same NAT share the limit. The Render configuration
+uses one worker and in-memory counters, which reset on restart and are not
+shared across workers or instances. For multiple workers or instances, set
+`VIDSAVE_RATE_LIMIT_STORAGE_URI` to a shared Flask-Limiter-compatible storage
+backend and install its corresponding driver. On Render, three forwarded proxy
+hops are trusted for the standard public route; verify the actual proxy chain
+and client IPs before deployment, especially with custom domains, private
+network access or additional proxies. Only trusted proxies must reach the app
+when forwarded headers are enabled.
+
+Android release builds enable R8/resource shrinking. For Dart symbol
+obfuscation, build with `flutter build apk --obfuscate --split-debug-info=<private-symbol-directory>`
+and retain the symbols privately for crash analysis. Neither obfuscation nor a
+shared app key prevents reverse engineering, and application rate limiting is
+not DDoS protection; use edge-level protection and monitoring as well.
 
 ## Anti-bot resilience (backend)
 

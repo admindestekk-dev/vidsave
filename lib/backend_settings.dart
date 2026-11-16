@@ -12,6 +12,8 @@ class BackendSettings {
     defaultValue: 'https://vidsave-q7ut.onrender.com',
   );
 
+  static const defaultApiKey = String.fromEnvironment('VIDSAVE_API_KEY');
+
   final String baseUrl;
   final String apiKey;
 
@@ -70,11 +72,15 @@ class SecureBackendSettingsStore implements BackendSettingsStore {
       _storage.read(key: _apiKeyKey),
     ]);
     final savedBaseUrl = values[0];
+    final baseUrl = savedBaseUrl == null || savedBaseUrl.isEmpty
+        ? BackendSettings.defaultBaseUrl
+        : savedBaseUrl;
+    final isDefaultBackend = baseUrl.replaceFirst(RegExp(r'/+$'), '') ==
+        BackendSettings.defaultBaseUrl.replaceFirst(RegExp(r'/+$'), '');
     return BackendSettings(
-      baseUrl: savedBaseUrl == null || savedBaseUrl.isEmpty
-          ? BackendSettings.defaultBaseUrl
-          : savedBaseUrl,
-      apiKey: values[1] ?? '',
+      baseUrl: baseUrl,
+      apiKey: values[1] ??
+          (isDefaultBackend ? BackendSettings.defaultApiKey : ''),
     );
   }
 
