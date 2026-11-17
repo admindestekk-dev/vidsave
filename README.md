@@ -58,6 +58,20 @@ R8/resource shrinking. Neither obfuscation nor a
 shared app key prevents reverse engineering, and application rate limiting is
 not DDoS protection; use edge-level protection and monitoring as well.
 
+### Google sign-in in Play releases
+
+The Android OAuth client must use the `dev.admindestekk.vidsave` package and
+the **app signing certificate** SHA-1 shown in Play Console under app integrity,
+not just the upload certificate. Register that SHA-1 in the Firebase project
+and download an updated `android/app/google-services.json`. The Google Services
+Gradle plugin supplies the Web OAuth client ID to the Android sign-in plugin.
+Enable Google as a Firebase Authentication sign-in provider. Register the debug
+or upload certificate separately if testing builds signed with those keys.
+Google sign-in failures display their plugin details and any available native
+error code.
+Existing local Premium records from the previous unverified purchase flow are
+not trusted; affected subscribers must sign in and restore their purchases.
+
 ## Anti-bot resilience (backend)
 
 Platforms change their bot defences continuously, so no configuration can

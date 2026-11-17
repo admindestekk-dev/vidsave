@@ -5,3 +5,5 @@ requests
 yt-dlp
 curl-cffi
 gunicorn
+firebase-admin>=6.5,<8
+google-auth>=2.29,<3

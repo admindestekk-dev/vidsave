@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
   ffmpeg_kit_flutter_new_min_gpl
+  firebase_auth
   firebase_core
   firebase_remote_config
   flutter_inappwebview_windows

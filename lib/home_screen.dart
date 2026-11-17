@@ -6,11 +6,11 @@ import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admob_banner_widget.dart';
 import 'admob_service.dart';
 import 'auth_service.dart';
+import 'google_sign_in_error_dialog.dart';
 import 'backend_settings.dart';
 import 'media_downloader.dart';
 import 'subscription_screen.dart';
@@ -44,17 +44,12 @@ Future<void> _handlePremiumClick(
   VoidCallback? onSubscribed,
   bool? isPlayStoreLive,
 }) async {
-  final prefs = await SharedPreferences.getInstance();
-  final userEmail = prefs.getString(SecureAuthTokenStore.prefKeyUserEmail);
   final auth = authService ?? AuthService.instance;
   final hasSession = await auth.hasStoredSession;
 
-  final bool isLoggedIn =
-      (userEmail != null && userEmail.trim().isNotEmpty) || hasSession;
-
   if (!context.mounted) return;
 
-  if (isLoggedIn) {
+  if (hasSession) {
     // Kullanıcı zaten giriş yapmış: doğrudan Abonelik Ekranına geç
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -165,19 +160,9 @@ class _GoogleSignInSheetState extends State<_GoogleSignInSheet> {
     } catch (error) {
       if (!mounted) return;
       if (error is AuthException && error.code == 'auth.cancelled') {
-        setState(() => _isSigningIn = false);
         return;
       }
-      final msg = error is AuthException
-          ? error.message
-          : 'Google ile giriş yapılamadı: $error';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      await showGoogleSignInErrorDialog(context, error);
     } finally {
       if (mounted) {
         setState(() => _isSigningIn = false);

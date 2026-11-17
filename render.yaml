@@ -13,4 +13,6 @@ services:
         value: "chrome"
       - key: VIDSAVE_API_KEY
         sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
+        sync: false
     autoDeploy: true

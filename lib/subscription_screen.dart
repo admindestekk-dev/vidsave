@@ -44,9 +44,9 @@ class SubscriptionScreen extends StatefulWidget {
   final bool? isPlayStoreLive;
 
   static const String productId = 'vidsave_premium_monthly';
-  static const String prefKeyIsPremium = 'vidsave_is_premium';
+  static const String prefKeyIsPremium = 'vidsave_is_premium_verified_v2';
   static const String prefKeySubscribedAt = 'vidsave_premium_subscribed_at';
-  static const String prefKeyPremiumUntil = 'vidsave_premium_until';
+  static const String prefKeyPremiumUntil = 'vidsave_premium_until_verified_v2';
 
   static Future<bool> readPremiumStatus() async {
     final prefs = await SharedPreferences.getInstance();
@@ -252,10 +252,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   /// Backend'deki `/api/auth/verify-purchase` endpoint'ine makbuzu gönderir
   Future<bool> _verifyPurchaseOnBackend(PurchaseDetails purchaseDetails) async {
-    final token =
-        purchaseDetails.verificationData.serverVerificationData.isNotEmpty
-        ? purchaseDetails.verificationData.serverVerificationData
-        : purchaseDetails.verificationData.localVerificationData;
+    final token = purchaseDetails.verificationData.serverVerificationData;
     if (purchaseDetails.productID != SubscriptionScreen.productId ||
         token.isEmpty) {
       if (mounted) {
@@ -275,17 +272,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     http.Client? ownedClient;
 
     try {
-      String baseUrl = BackendSettings.defaultBaseUrl;
-      String apiKey = '';
-      if (widget.store != null) {
-        try {
-          final settings = await widget.store!.load();
-          if (settings.isConfigured) {
-            baseUrl = settings.baseUrl;
-            apiKey = settings.apiKey;
-          }
-        } catch (_) {}
-      }
+      final settings =
+          await (widget.store ?? SecureBackendSettingsStore()).load();
+      final baseUrl = settings.isConfigured
+          ? settings.baseUrl
+          : BackendSettings.defaultBaseUrl;
+      final apiKey = settings.apiKey;
 
       final uri = Uri.parse(baseUrl).resolve('/api/auth/verify-purchase');
       final client = widget.httpClient ?? (ownedClient = http.Client());
@@ -301,7 +293,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ...await authService.authorizationHeaders(),
             },
             body: jsonEncode({
-              'token': token,
+              'purchaseToken': token,
               'productId': purchaseDetails.productID,
               'userId': await authService.userIdForRequests(),
               'lang': langCode,
@@ -352,7 +344,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         DateTime.now().toIso8601String(),
       );
 
-      if (!mounted) return false;
+      if (!mounted) return true;
       setState(() {
         _loading = false;
         _isPremiumActive = true;
@@ -372,40 +364,21 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       );
       return true;
     } catch (e) {
-      debugPrint('Abonelik backend doğrulama uyarısı ($e), yerel onay ile devam ediliyor.');
-      // Kullanıcı Google Play üzerinden test kartı veya ödeme ile satın aldıysa,
-      // sunucu gecikmesi veya çevrimdışı durumda kullanıcının satın alımı bloke edilmez.
-      final fallbackUntil = DateTime.now().add(const Duration(days: 30));
-      await SubscriptionScreen.savePremiumStatus(fallbackUntil);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        SubscriptionScreen.prefKeySubscribedAt,
-        DateTime.now().toIso8601String(),
-      );
-
-      final fallbackReceipt = isTurkish
-          ? 'Google Play satın alımı onaylandı: Premium aboneliğiniz 30 gün boyunca aktif edildi.'
-          : 'Google Play purchase confirmed: Premium subscription activated for 30 days.';
-
-      if (!mounted) return true;
-      setState(() {
-        _loading = false;
-        _isPremiumActive = true;
-        _receiptMessage = fallbackReceipt;
-      });
-
-      _confettiController.play();
-      widget.onSubscribed?.call();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(fallbackReceipt),
-          backgroundColor: const Color(0xFF0E7C4B),
-          duration: const Duration(seconds: 4),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return true;
+      debugPrint('Abonelik doğrulanamadı: $e');
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isTurkish
+                  ? 'Satın alma doğrulanamadı. Lütfen tekrar deneyin veya satın alımları geri yükleyin.'
+                  : 'Purchase could not be verified. Please retry or restore purchases.',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return false;
     } finally {
       ownedClient?.close();
     }

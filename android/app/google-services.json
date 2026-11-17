@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "415854271102-6j3t58jft9bbo0spddil39d6p00tdkok.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.vid_downloader_app",
+            "certificate_hash": "9c0f3e5a3aa68ac9aee56a91c5a54b3433be4247"
+          }
+        },
+        {
           "client_id": "415854271102-oj44ne0nedjik1lodes91noa1dok3jeu.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -50,6 +58,22 @@
         }
       },
       "oauth_client": [
+        {
+          "client_id": "415854271102-eao54ta3fp7n7acgapr136hdb8k4joud.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "dev.admindestekk.vidsave",
+            "certificate_hash": "6d1b2afdc3aef84a59d87b4e3fa4638ff8f2ca24"
+          }
+        },
+        {
+          "client_id": "415854271102-kucmjc2g6b577cfvn1a9s3depflads0t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "dev.admindestekk.vidsave",
+            "certificate_hash": "9c0f3e5a3aa68ac9aee56a91c5a54b3433be4247"
+          }
+        },
         {
           "client_id": "415854271102-oj44ne0nedjik1lodes91noa1dok3jeu.apps.googleusercontent.com",
           "client_type": 3

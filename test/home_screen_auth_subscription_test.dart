@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,6 +49,19 @@ class _SettingsStore implements BackendSettingsStore {
   Future<void> save(BackendSettings settings) async {}
 }
 
+class _FailingAuthService extends AuthService {
+  _FailingAuthService() : super(tokenStore: _MemoryTokenStore());
+
+  @override
+  Future<AuthUser> loginWithGoogle({
+    String? idToken,
+    GoogleSignIn? googleSignInClient,
+  }) async => throw const AuthException(
+    'auth.failed',
+    'ApiException: 12500: SIGN_IN_FAILED',
+  );
+}
+
 Widget _buildTestApp({
   required Widget child,
   Locale locale = const Locale('tr'),
@@ -71,6 +85,30 @@ void main() {
   });
 
   group('PremiumBanner and _handlePremiumClick Architecture', () {
+    testWidgets('Google sign-in error is visible above the sign-in sheet', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(_buildTestApp(
+        child: Scaffold(
+          body: PremiumBanner(authService: _FailingAuthService()),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('premium_banner_buy_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('google_signin_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.textContaining('ApiException: 12500'), findsOneWidget);
+    });
+
     testWidgets(
       'When user is already logged in with Google, tapping AL button navigates directly to SubscriptionScreen',
       (tester) async {
@@ -196,9 +234,7 @@ void main() {
         // Now trigger authentication
         // (We can invoke loginWithGoogle directly through authService and trigger the onSuccess flow)
         await auth.loginWithGoogle(
-          email: 'newuser@gmail.com',
-          name: 'New User',
-          avatarUrl: 'https://lh3.googleusercontent.com/avatar.jpg',
+          idToken: 'firebase-id-token',
         );
 
         expect(googleAuthEndpointCalled, isTrue);

@@ -10,6 +10,7 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vid_downloader_app/app_localizations.dart';
 import 'package:vid_downloader_app/auth_service.dart';
+import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/subscription_screen.dart';
 
 class _MemoryTokenStore implements AuthTokenStore {
@@ -35,6 +36,15 @@ class _MemoryTokenStore implements AuthTokenStore {
   Future<void> saveUserId(String value) async => userId = value;
 }
 
+class _SettingsStore implements BackendSettingsStore {
+  @override
+  Future<BackendSettings> load() async =>
+      const BackendSettings(baseUrl: 'https://api.example.test');
+
+  @override
+  Future<void> save(BackendSettings settings) async {}
+}
+
 class _FakeInAppPurchase extends Fake implements InAppPurchase {
   _FakeInAppPurchase({
     this.price = '9,99 TL',
@@ -49,6 +59,7 @@ class _FakeInAppPurchase extends Fake implements InAppPurchase {
       StreamController<List<PurchaseDetails>>.broadcast();
   bool buyNonConsumableCalled = false;
   bool restorePurchasesCalled = false;
+  bool completePurchaseCalled = false;
 
   @override
   Stream<List<PurchaseDetails>> get purchaseStream =>
@@ -95,13 +106,15 @@ class _FakeInAppPurchase extends Fake implements InAppPurchase {
         ),
         transactionDate: DateTime.now().millisecondsSinceEpoch.toString(),
         status: PurchaseStatus.purchased,
-      ),
+      )..pendingCompletePurchase = true,
     ]);
     return true;
   }
 
   @override
-  Future<void> completePurchase(PurchaseDetails purchase) async {}
+  Future<void> completePurchase(PurchaseDetails purchase) async {
+    completePurchaseCalled = true;
+  }
 
   @override
   Future<void> restorePurchases({String? applicationUserName}) async {
@@ -129,6 +142,15 @@ Widget _buildTestApp({required Locale locale, required Widget home}) {
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+  });
+
+  test('legacy unverified local premium is not accepted', () async {
+    SharedPreferences.setMockInitialValues({
+      'vidsave_is_premium': true,
+      'vidsave_premium_until': '2099-12-31T23:59:59Z',
+    });
+
+    expect(await SubscriptionScreen.readPremiumStatus(), isFalse);
   });
 
   testWidgets('SubscriptionScreen displays localized store pricing', (
@@ -370,7 +392,7 @@ void main() {
       final mockClient = MockClient((request) async {
         expect(request.url.path, '/api/auth/verify-purchase');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
-        expect(body['token'], 'test_google_play_token_xyz');
+        expect(body['purchaseToken'], 'test_google_play_token_xyz');
         expect(body['productId'], 'vidsave_premium_monthly');
         expect(body['lang'], 'tr');
         expect(body['userId'], matches(RegExp(r'^[0-9a-f-]{36}$')));
@@ -381,7 +403,7 @@ void main() {
             'status': 'ok',
             'success': true,
             'verified': true,
-            'premiumUntil': '2026-11-18T12:00:00Z',
+            'premiumUntil': '2099-11-18T12:00:00Z',
             'receiptMessage': 'Faturanız onaylandı: Google Play aboneliğiniz doğrulandı ve Premium süreniz 30 gün uzatıldı!',
           }),
           200,
@@ -396,6 +418,7 @@ void main() {
             isPlayStoreLive: true,
             inAppPurchase: fakeIap,
             httpClient: mockClient,
+            store: _SettingsStore(),
             authService: _testAuthService(mockClient),
           ),
         ),
@@ -414,6 +437,7 @@ void main() {
 
       // Verify buyNonConsumable was called on Google Play billing
       expect(fakeIap.buyNonConsumableCalled, isTrue);
+      expect(fakeIap.completePurchaseCalled, isTrue);
 
       // Verify backend confirmation message appears and premium is activated
       expect(
@@ -428,7 +452,7 @@ void main() {
       expect(prefs.getBool(SubscriptionScreen.prefKeyIsPremium), isTrue);
       expect(
         prefs.getString(SubscriptionScreen.prefKeyPremiumUntil),
-        '2026-11-18T12:00:00.000Z',
+        '2099-11-18T12:00:00.000Z',
       );
 
       await tester.tap(find.byKey(const Key('restore_purchases')));
@@ -437,6 +461,39 @@ void main() {
       fakeIap.purchaseStreamController.close();
     },
   );
+
+  testWidgets('failed purchase verification never activates premium', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final fakeIap = _FakeInAppPurchase();
+    final client = MockClient((_) async => http.Response('{}', 503));
+    await tester.pumpWidget(_buildTestApp(
+      locale: const Locale('tr'),
+      home: SubscriptionScreen(
+        isPlayStoreLive: true,
+        inAppPurchase: fakeIap,
+        store: _SettingsStore(),
+        httpClient: client,
+        authService: _testAuthService(client),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final button = find.text('9,99 TL / Ay - Abone Ol');
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(await SubscriptionScreen.readPremiumStatus(), isFalse);
+    expect(find.textContaining('Satın alma doğrulanamadı'), findsOneWidget);
+    expect(fakeIap.completePurchaseCalled, isFalse);
+    await fakeIap.purchaseStreamController.close();
+  });
 
   testWidgets(
     'SubscriptionScreen renders Terms of Service and Privacy Policy legal links',

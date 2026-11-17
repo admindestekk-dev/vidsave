@@ -30,6 +30,30 @@ void main() {
     const settingsStore = _SettingsStore(
       BackendSettings(baseUrl: 'http://127.0.0.1', apiKey: 'test-key'),
     );
+
+    test(
+      'headersForUrl only sends the API key to the configured backend',
+      () async {
+        final apiService = ApiService(
+          baseUrl: 'http://127.0.0.1:8787',
+          settingsStore: settingsStore,
+        );
+
+        expect(
+          await apiService.headersForUrl(
+            Uri.parse('http://127.0.0.1/download?job=video'),
+          ),
+          {'X-Api-Key': 'test-key'},
+        );
+        expect(
+          await apiService.headersForUrl(
+            Uri.parse('https://cdn.example/video.mp4'),
+          ),
+          isEmpty,
+        );
+      },
+    );
+
     test('analyze resolves video stream successfully with clean headers and download_url', () async {
       final dio = Dio();
       dio.interceptors.add(

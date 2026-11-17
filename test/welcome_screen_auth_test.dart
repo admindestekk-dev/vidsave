@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,6 +47,18 @@ class _SettingsStore implements BackendSettingsStore {
   Future<void> save(BackendSettings settings) async {}
 }
 
+class _FailingAuthService extends AuthService {
+  _FailingAuthService(this.error);
+
+  final AuthException error;
+
+  @override
+  Future<AuthUser> loginWithGoogle({
+    String? idToken,
+    GoogleSignIn? googleSignInClient,
+  }) async => throw error;
+}
+
 Widget _buildApp(AuthService auth) => MaterialApp(
   localizationsDelegates: const [
     AppLocalizations.delegate,
@@ -68,6 +81,41 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  testWidgets('Google sign-in failure displays the native error', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_buildApp(_FailingAuthService(
+      const AuthException('auth.failed', 'ApiException: 10: DEVELOPER_ERROR'),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Google ile Devam Et'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.textContaining('ApiException: 10'), findsOneWidget);
+    expect(find.textContaining('auth.failed'), findsOneWidget);
+  });
+
+  testWidgets('cancelled Google sign-in does not show an error', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_buildApp(_FailingAuthService(
+      const AuthException('auth.cancelled', 'Cancelled'),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Google ile Devam Et'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
   testWidgets('Google sign in button authenticates and continues to home', (
     tester,
   ) async {
@@ -77,7 +125,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final tokenStore = _MemoryTokenStore();
-    String? requestEmail;
+    String? requestIdToken;
     final auth = AuthService(
       settingsStore: _SettingsStore(),
       tokenStore: tokenStore,
@@ -85,7 +133,8 @@ void main() {
         expect(request.url.path, '/api/auth/google');
         expect(request.headers['X-Api-Key'], 'app-key');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
-        requestEmail = body['email'] as String;
+        requestIdToken = body['idToken'] as String;
+        expect(body.keys, ['idToken']);
         return http.Response(
           jsonEncode({
             'status': 'ok',
@@ -127,15 +176,13 @@ void main() {
 
     // Trigger auth.loginWithGoogle directly via AuthService test
     final user = await auth.loginWithGoogle(
-      email: 'googleuser@example.com',
-      name: 'Google User',
-      avatarUrl: 'https://example.com/avatar.jpg',
+      idToken: 'firebase-id-token',
     );
 
     expect(user.email, 'googleuser@example.com');
     expect(user.name, 'Google User');
     expect(tokenStore.token, 'google-session-jwt-token');
-    expect(requestEmail, 'googleuser@example.com');
+    expect(requestIdToken, 'firebase-id-token');
   });
 
   testWidgets('guest bypass continues directly without auth', (
@@ -171,7 +218,7 @@ void main() {
     );
 
     await expectLater(
-      auth.loginWithGoogle(email: 'googleuser@example.com'),
+      auth.loginWithGoogle(idToken: 'firebase-id-token'),
       throwsA(isA<AuthException>()),
     );
 
@@ -204,7 +251,7 @@ void main() {
       ),
     );
 
-    await auth.loginWithGoogle(email: 'premiumuser@example.com');
+    await auth.loginWithGoogle(idToken: 'firebase-id-token');
 
     expect(await SubscriptionScreen.readPremiumStatus(), isTrue);
     expect(

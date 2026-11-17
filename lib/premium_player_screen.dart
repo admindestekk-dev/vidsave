@@ -221,19 +221,20 @@ class _PremiumPlayerScreenState extends State<PremiumPlayerScreen>
   }
 
   Future<void> _initializeVideo() async {
-    final uri = Uri.tryParse(_videoUrl ?? '');
-    final headers = widget.httpHeaders ??
-        (uri != null
-            ? ApiService.buildPlayerHeaders(uri: uri)
-            : null);
-
     VideoPlayerController controller;
     if (_videoUrl != null && _videoUrl!.isNotEmpty) {
       final parsedUri = Uri.parse(_videoUrl!);
+      final headers = <String, String>{
+        ...ApiService.buildPlayerHeaders(
+          uri: parsedUri,
+          extraHeaders: widget.httpHeaders,
+        ),
+        ...await ApiService.instance.headersForUrl(parsedUri),
+      };
       try {
         controller = VideoPlayerController.networkUrl(
           parsedUri,
-          httpHeaders: headers ?? const {},
+          httpHeaders: headers,
         );
         await controller.initialize();
       } catch (initialErr) {

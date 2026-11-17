@@ -1,5 +1,8 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
@@ -89,26 +92,24 @@ class AuthService {
     BackendSettingsStore? settingsStore,
     AuthTokenStore? tokenStore,
     http.Client? httpClient,
+    Future<String> Function(String googleIdToken)? firebaseTokenExchange,
   }) : _settingsStore = settingsStore ?? SecureBackendSettingsStore(),
        _tokenStore = tokenStore ?? SecureAuthTokenStore(),
        _httpClient = httpClient ?? http.Client(),
-       _ownsHttpClient = httpClient == null;
+       _ownsHttpClient = httpClient == null,
+       _firebaseTokenExchange = firebaseTokenExchange ?? _exchangeGoogleToken;
 
   static final AuthService instance = AuthService();
 
-  /// Firebase / Google Cloud Console OAuth 2.0 Web Client ID
-  static const String googleServerClientId =
-      '415854271102-oj44ne0nedjik1lodes91noa1dok3jeu.apps.googleusercontent.com';
-
   static bool _googleSignInInitialized = false;
 
-  /// Google Sign-In motorunu serverClientId ile başlatır
+  /// Android reads the Web client ID generated from google-services.json.
   static Future<void> ensureGoogleSignInInitialized([
     GoogleSignIn? client,
   ]) async {
     if (_googleSignInInitialized && client == null) return;
     final target = client ?? GoogleSignIn.instance;
-    await target.initialize(serverClientId: googleServerClientId);
+    await target.initialize();
     if (client == null) {
       _googleSignInInitialized = true;
     }
@@ -118,6 +119,21 @@ class AuthService {
   final AuthTokenStore _tokenStore;
   final http.Client _httpClient;
   final bool _ownsHttpClient;
+  final Future<String> Function(String) _firebaseTokenExchange;
+
+  static Future<String> _exchangeGoogleToken(String googleIdToken) async {
+    await Firebase.initializeApp();
+    final credential = GoogleAuthProvider.credential(idToken: googleIdToken);
+    final result = await FirebaseAuth.instance.signInWithCredential(credential);
+    final token = await result.user?.getIdToken();
+    if (token == null || token.isEmpty) {
+      throw const AuthException(
+        'auth.token_missing',
+        'Firebase kimlik belirteci alınamadı.',
+      );
+    }
+    return token;
+  }
 
   Future<AuthUser> register({
     required String email,
@@ -129,23 +145,24 @@ class AuthService {
 
   /// Authenticates using Google Sign-In and persists the session and user profile.
   Future<AuthUser> loginWithGoogle({
-    String? email,
-    String? name,
-    String? avatarUrl,
     String? idToken,
     GoogleSignIn? googleSignInClient,
   }) async {
-    String effectiveEmail = email ?? '';
-    String effectiveName = name ?? '';
-    String effectiveAvatar = avatarUrl ?? '';
     String? tokenId = idToken;
 
-    if (effectiveEmail.isEmpty) {
+    if (tokenId == null) {
       final googleSignIn = googleSignInClient ?? GoogleSignIn.instance;
-      GoogleSignInAccount? account;
       try {
         await ensureGoogleSignInInitialized(googleSignInClient);
-        account = await googleSignIn.authenticate();
+        final account = await googleSignIn.authenticate();
+        final googleIdToken = account.authentication.idToken;
+        if (googleIdToken == null || googleIdToken.isEmpty) {
+          throw const AuthException(
+            'auth.token_missing',
+            'Google kimlik belirteci alınamadı.',
+          );
+        }
+        tokenId = await _firebaseTokenExchange(googleIdToken);
       } catch (e) {
         if (e is GoogleSignInException &&
             e.code == GoogleSignInExceptionCode.canceled) {
@@ -154,23 +171,20 @@ class AuthService {
             'Google ile giriş iptal edildi.',
           );
         }
+        if (e is AuthException) rethrow;
         throw AuthException('auth.failed', 'Google ile giriş yapılamadı: $e');
       }
-      effectiveEmail = account.email;
-      effectiveName = account.displayName ?? '';
-      effectiveAvatar = account.photoUrl ?? '';
-      final auth = account.authentication;
-      tokenId = auth.idToken;
+    }
+    if (tokenId.isEmpty) {
+      throw const AuthException(
+        'auth.token_missing',
+        'Kimlik belirteci alınamadı.',
+      );
     }
 
     final response = await _send(
       'google',
-      body: {
-        'email': effectiveEmail,
-        'name': effectiveName,
-        'avatarUrl': effectiveAvatar,
-        if (tokenId != null && tokenId.isNotEmpty) 'idToken': tokenId,
-      },
+      body: {'idToken': tokenId},
     );
 
     final data = _decodeResponse(response);
@@ -253,6 +267,7 @@ class AuthService {
     final user = AuthUser.fromJson(userJson);
     await _tokenStore.saveToken(token);
     await _tokenStore.saveUserId(user.id);
+    await SubscriptionScreen.clearPremiumStatus();
     return user;
   }
 
@@ -273,6 +288,7 @@ class AuthService {
         if (error is Map<String, dynamic> &&
             error['code'] == 'auth.session_invalid') {
           await _tokenStore.clearToken();
+          await SubscriptionScreen.clearPremiumStatus();
           return null;
         }
       } on FormatException {
@@ -325,13 +341,23 @@ class AuthService {
       // Always clear the local session so the user can leave the account.
     } finally {
       await _tokenStore.clearToken();
+      await SubscriptionScreen.clearPremiumStatus();
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(SecureAuthTokenStore.prefKeyUserName);
       await prefs.remove(SecureAuthTokenStore.prefKeyUserEmail);
       await prefs.remove(SecureAuthTokenStore.prefKeyUserAvatarUrl);
       try {
+        if (Firebase.apps.isNotEmpty) {
+          await FirebaseAuth.instance.signOut();
+        }
+      } catch (error) {
+        debugPrint('Firebase çıkışı başarısız: $error');
+      }
+      try {
         await GoogleSignIn.instance.signOut();
-      } catch (_) {}
+      } catch (error) {
+        debugPrint('Google çıkışı başarısız: $error');
+      }
     }
   }
 
@@ -347,10 +373,12 @@ class AuthService {
     } on AuthException catch (error) {
       if (error.code == 'auth.session_invalid') {
         await _tokenStore.clearToken();
+        await SubscriptionScreen.clearPremiumStatus();
       }
       rethrow;
     }
     await _tokenStore.clearToken();
+    await SubscriptionScreen.clearPremiumStatus();
   }
 
   Future<http.Response> _send(

@@ -76,8 +76,10 @@ except ImportError:
 
 try:
     from .stream_proxy import stream_upstream_response, validate_public_http_url
+    from . import google_verification
 except ImportError:  # Support running as `python backend/server.py`.
     from stream_proxy import stream_upstream_response, validate_public_http_url
+    import google_verification
 
 app = Flask(__name__)
 
@@ -345,10 +347,32 @@ def _init_db() -> None:
                 premium_until TIMESTAMP,
                 product_id TEXT,
                 purchase_token TEXT,
+                entitlement_source TEXT,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS play_purchase_claims (
+                token_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                premium_until TEXT,
+                superseded INTEGER NOT NULL DEFAULT 0,
+                verified_at INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        try:
+            conn.execute("ALTER TABLE play_purchase_claims ADD COLUMN verified_at INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+        try:
+            conn.execute("ALTER TABLE user_subscriptions ADD COLUMN entitlement_source TEXT")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -360,6 +384,14 @@ def _init_db() -> None:
                 failed_logins INTEGER NOT NULL DEFAULT 0,
                 locked_until REAL,
                 created_at REAL NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS firebase_identities (
+                firebase_uid TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL UNIQUE
             )
             """
         )
@@ -384,6 +416,11 @@ def _init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id "
             "ON auth_sessions(user_id)"
+        )
+        conn.execute(
+            "DELETE FROM auth_sessions WHERE user_id IN "
+            "(SELECT id FROM users WHERE password_hash = 'google_oauth_no_password' "
+            "AND id NOT IN (SELECT user_id FROM firebase_identities))"
         )
         conn.commit()
     except Exception as exc:
@@ -3164,32 +3201,46 @@ def api_login() -> Response | tuple[Response, int]:
 
 @app.post("/api/auth/google")
 def api_auth_google() -> Response | tuple[Response, int]:
-    """Google Sign-In endpoint.
-
-    Authenticates or automatically registers the user with their Google profile
-    (email, name, avatarUrl). Returns a secure session token and subscription status.
-    """
+    """Authenticate using a Firebase Authentication ID token."""
     if not _authorized():
         return jsonify(status="error", error={"code": "unauthorized"}), 401
 
     body = request.get_json(silent=True) or {}
-    email = str(body.get("email") or "").strip().lower()
-    name = str(body.get("name") or body.get("displayName") or "").strip()
-    avatar_url = str(body.get("avatarUrl") or body.get("photoUrl") or "").strip()
-
-    if not email or len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-        return jsonify(status="error", error={"code": "auth.email_invalid"}), 400
+    id_token = body.get("idToken")
+    if not isinstance(id_token, str) or not id_token.strip() or len(id_token) > 16384:
+        return jsonify(status="error", error={"code": "auth.google_token_missing"}), 400
+    try:
+        claims = google_verification.verify_firebase_token(id_token.strip())
+    except google_verification.VerificationError as error:
+        return jsonify(status="error", error={"code": error.code}), error.status
+    email = claims.get("email")
+    if (
+        not isinstance(email, str)
+        or not isinstance(claims.get("uid"), str)
+        or not claims["uid"]
+        or claims.get("email_verified") is not True
+        or not isinstance(claims.get("firebase"), dict)
+        or claims["firebase"].get("sign_in_provider") != "google.com"
+    ):
+        return jsonify(status="error", error={"code": "auth.google_token_invalid"}), 401
+    email = email.strip().lower()
+    if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return jsonify(status="error", error={"code": "auth.google_token_invalid"}), 401
+    name = claims.get("name") if isinstance(claims.get("name"), str) else ""
+    avatar_url = claims.get("picture") if isinstance(claims.get("picture"), str) else ""
 
     now = time.time()
     conn = None
     try:
         conn = sqlite3.connect(DB_PATH)
         row = conn.execute(
-            "SELECT id, email, name, avatar_url FROM users WHERE email = ?",
+            "SELECT id, email, name, avatar_url, password_hash FROM users WHERE email = ?",
             (email,),
         ).fetchone()
 
         if row is None:
+            if conn.execute("SELECT 1 FROM firebase_identities WHERE firebase_uid = ?", (claims["uid"],)).fetchone():
+                return jsonify(status="error", error={"code": "auth.google_identity_conflict"}), 409
             user_id = str(uuid.uuid4())
             conn.execute(
                 """
@@ -3200,33 +3251,38 @@ def api_auth_google() -> Response | tuple[Response, int]:
             )
         else:
             user_id = row[0]
-            existing_name = row[2] or ""
-            existing_avatar = row[3] or ""
-            # Update name / avatar if newly provided
-            update_name = name or existing_name
-            update_avatar = avatar_url or existing_avatar
-            if update_name != existing_name or update_avatar != existing_avatar:
-                conn.execute(
-                    "UPDATE users SET name = ?, avatar_url = ? WHERE id = ?",
-                    (update_name, update_avatar, user_id),
-                )
-                name = update_name
-                avatar_url = update_avatar
-            else:
-                name = existing_name
-                avatar_url = existing_avatar
+            if row[4] != "google_oauth_no_password":
+                return jsonify(status="error", error={"code": "auth.google_identity_conflict"}), 409
+            conn.execute(
+                "UPDATE users SET name = ?, avatar_url = ? WHERE id = ?",
+                (name, avatar_url, user_id),
+            )
+        identity = conn.execute(
+            "SELECT firebase_uid FROM firebase_identities WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        if identity and identity[0] != claims["uid"]:
+            return jsonify(status="error", error={"code": "auth.google_identity_conflict"}), 409
+        if identity is None:
+            if conn.execute("SELECT 1 FROM firebase_identities WHERE firebase_uid = ?", (claims["uid"],)).fetchone():
+                return jsonify(status="error", error={"code": "auth.google_identity_conflict"}), 409
+            conn.execute("INSERT INTO firebase_identities (firebase_uid, user_id) VALUES (?, ?)", (claims["uid"], user_id))
+            # Sessions issued by the previous profile-only endpoint were not verified.
+            conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
 
         token = _issue_auth_session(conn, user_id)
 
         # Check premium subscription status
         cur = conn.cursor()
-        cur.execute("SELECT premium_until, is_premium FROM user_subscriptions WHERE user_id = ?", (user_id,))
+        cur.execute("SELECT premium_until, is_premium, entitlement_source FROM user_subscriptions WHERE user_id = ?", (user_id,))
         sub_row = cur.fetchone()
         is_premium = False
         premium_until = None
         if sub_row:
             prem_until_str, is_prem_flag = sub_row[0], sub_row[1]
-            if is_prem_flag and prem_until_str:
+            trusted_source = sub_row[2] == "google_play" or (
+                sub_row[2] == "test" and os.environ.get("VIDSAVE_ENABLE_TEST_SUBSCRIPTIONS") == "true"
+            )
+            if is_prem_flag and prem_until_str and trusted_source:
                 try:
                     premium_date = datetime.datetime.fromisoformat(
                         str(prem_until_str).replace("Z", "+00:00")
@@ -3302,6 +3358,8 @@ def api_subscribe_monthly() -> Response | tuple[Response, int]:
     """Monthly subscription accounting endpoint with psychological pricing (9.99 TRY vs 0.99 USD)."""
     if not _authorized():
         return jsonify(status="error", error={"code": "unauthorized"}), 401
+    if os.environ.get("VIDSAVE_ENABLE_TEST_SUBSCRIPTIONS") != "true":
+        return jsonify(status="error", error={"code": "subscription.test_disabled"}), 403
 
     body = request.get_json(silent=True) or {}
     user_id, auth_error = _auth_user_id(body)
@@ -3328,7 +3386,7 @@ def api_subscribe_monthly() -> Response | tuple[Response, int]:
     try:
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
-        cur.execute("SELECT premium_until FROM user_subscriptions WHERE user_id = ?", (user_id,))
+        cur.execute("SELECT premium_until FROM user_subscriptions WHERE user_id = ? AND entitlement_source = 'test'", (user_id,))
         row = cur.fetchone()
         if row and row[0]:
             try:
@@ -3345,13 +3403,14 @@ def api_subscribe_monthly() -> Response | tuple[Response, int]:
         # Update or insert into user_subscriptions for active premium & 30-day extension
         conn.execute(
             """
-            INSERT INTO user_subscriptions (user_id, is_premium, premium_until, product_id, purchase_token, updated_at)
-            VALUES (?, 1, ?, 'vidsave_premium_monthly', ?, CURRENT_TIMESTAMP)
+            INSERT INTO user_subscriptions (user_id, is_premium, premium_until, product_id, purchase_token, entitlement_source, updated_at)
+            VALUES (?, 1, ?, 'vidsave_premium_monthly', ?, 'test', CURRENT_TIMESTAMP)
             ON CONFLICT(user_id) DO UPDATE SET
                 is_premium = 1,
                 premium_until = excluded.premium_until,
                 product_id = excluded.product_id,
                 purchase_token = excluded.purchase_token,
+                entitlement_source = excluded.entitlement_source,
                 updated_at = CURRENT_TIMESTAMP
             """,
             (user_id, new_until_str, f"sim_{subscription_id}"),
@@ -3408,95 +3467,103 @@ def api_subscribe_monthly() -> Response | tuple[Response, int]:
 
 
 @app.post("/api/auth/verify-purchase")
-def api_verify_purchase() -> Response:
-    """Verify in-app purchase receipt from Google Play Store and extend premium_until by 30 days."""
+def api_verify_purchase() -> Response | tuple[Response, int]:
+    """Grant an account the paid entitlement reported by Google Play."""
     if not _authorized():
         return jsonify(status="error", error={"code": "unauthorized"}), 401
 
     body = request.get_json(silent=True) or {}
-    token = str(
-        body.get("token")
-        or body.get("purchaseToken")
-        or body.get("serverVerificationData")
-        or body.get("purchaseId")
-        or ""
-    ).strip()
-    product_id = str(body.get("productId") or body.get("product_id") or "vidsave_premium_monthly").strip()
-    user_id, auth_error = _auth_user_id(body)
-    if auth_error:
-        return auth_error
-    assert user_id is not None
-    lang = str(body.get("lang") or "tr").strip().lower()
-
-    if not token:
-        return jsonify(
-            status="error",
-            error={"code": "token.missing", "message": "Doğrulama belirteci (token) eksik."},
-        ), 400
-
-    # Calculate 30 days extension from now (or from existing premium_until if currently active)
-    now = datetime.datetime.now(datetime.timezone.utc)
-    current_until = None
-
-    conn = None
+    user = _current_user()
+    if user is None:
+        return jsonify(status="error", error={"code": "auth.required"}), 401
+    user_id = user["id"]
+    token = body.get("token") or body.get("purchaseToken") or body.get("serverVerificationData")
+    if not isinstance(token, str) or not token.strip() or len(token) > 4096:
+        return jsonify(status="error", error={"code": "token.missing"}), 400
+    token = token.strip()
+    product_id = body.get("productId") or body.get("product_id") or google_verification.PRODUCT
+    if product_id != google_verification.PRODUCT:
+        return jsonify(status="error", error={"code": "purchase.product_invalid"}), 400
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    verification_started = time.time_ns()
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("SELECT premium_until FROM user_subscriptions WHERE user_id = ?", (user_id,))
-        row = cur.fetchone()
-        if row and row[0]:
+        expiry, linked_token = google_verification.verify_play_purchase(token)
+    except google_verification.VerificationError as error:
+        if error.code in ("purchase.invalid", "purchase.inactive"):
             try:
-                parsed_ts = datetime.datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
-                if parsed_ts > now:
-                    current_until = parsed_ts
-            except Exception:
-                pass
+                with closing(sqlite3.connect(DB_PATH)) as conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    previous = conn.execute(
+                        "SELECT verified_at FROM play_purchase_claims WHERE token_hash = ? AND user_id = ?",
+                        (token_hash, user_id),
+                    ).fetchone()
+                    if previous and previous[0] > verification_started:
+                        conn.rollback()
+                        return jsonify(status="error", error={"code": "purchase.verification_stale"}), 409
+                    conn.execute(
+                        "UPDATE play_purchase_claims SET premium_until = NULL, verified_at = ? WHERE token_hash = ? AND user_id = ?",
+                        (verification_started, token_hash, user_id),
+                    )
+                    remaining = conn.execute(
+                        "SELECT MAX(premium_until) FROM play_purchase_claims WHERE user_id = ?", (user_id,)
+                    ).fetchone()[0]
+                    conn.execute(
+                        "UPDATE user_subscriptions SET is_premium = ?, premium_until = ?, updated_at = CURRENT_TIMESTAMP "
+                        "WHERE user_id = ? AND entitlement_source = 'google_play'",
+                        (int(remaining is not None), remaining, user_id),
+                    )
+                    conn.commit()
+            except sqlite3.Error:
+                logging.error("Purchase entitlement persistence failed")
+                return jsonify(status="error", error={"code": "purchase.record_failed"}), 500
+        return jsonify(status="error", error={"code": error.code}), error.status
 
-        base_time = current_until or now
-        new_until = base_time + datetime.timedelta(days=30)
-        new_until_str = new_until.isoformat()
-
-        # Update or insert into user_subscriptions
-        conn.execute(
-            """
-            INSERT INTO user_subscriptions (user_id, is_premium, premium_until, product_id, purchase_token, updated_at)
-            VALUES (?, 1, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET
-                is_premium = 1,
-                premium_until = excluded.premium_until,
-                product_id = excluded.product_id,
-                purchase_token = excluded.purchase_token,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (user_id, new_until_str, product_id, token),
-        )
-
-        # Record accounting audit entry in subscriptions table as well
-        invoice_id = f"inv_{uuid.uuid4().hex[:12]}"
-        amount = 9.99 if lang == "tr" else 0.99
-        currency = "TRY" if lang == "tr" else "USD"
-        sub_id = f"sub_{uuid.uuid4().hex[:12]}"
-        conn.execute(
-            """
-            INSERT INTO subscriptions (
-                id, user_id, lang, amount, currency, vat_included, status, invoice_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (sub_id, user_id, lang, amount, currency, 1, "verified", invoice_id),
-        )
-        conn.commit()
-    except Exception as exc:
-        logging.warning("verify-purchase DB error: %s", exc)
-        return jsonify(status="error", error={"message": str(exc)}), 500
-    finally:
-        if conn:
-            conn.close()
-
-    receipt_msg = (
-        "Faturanız onaylandı: Google Play aboneliğiniz doğrulandı ve Premium süreniz 30 gün uzatıldı!"
-        if lang == "tr"
-        else "Receipt verified: Google Play subscription confirmed and Premium extended by 30 days!"
-    )
+    linked_hash = hashlib.sha256(linked_token.encode("utf-8")).hexdigest() if linked_token else None
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            for claim_hash in {token_hash, linked_hash} - {None}:
+                row = conn.execute(
+                    "SELECT user_id, superseded, verified_at FROM play_purchase_claims WHERE token_hash = ?", (claim_hash,)
+                ).fetchone()
+                if row and row[0] != user_id:
+                    conn.rollback()
+                    return jsonify(status="error", error={"code": "purchase.already_claimed"}), 409
+                if row and row[1] and claim_hash == token_hash:
+                    conn.rollback()
+                    return jsonify(status="error", error={"code": "purchase.superseded"}), 409
+                if row and claim_hash == token_hash and row[2] > verification_started:
+                    conn.rollback()
+                    return jsonify(status="error", error={"code": "purchase.verification_stale"}), 409
+                conn.execute(
+                    "INSERT OR IGNORE INTO play_purchase_claims (token_hash, user_id) VALUES (?, ?)",
+                    (claim_hash, user_id),
+                )
+            expiry_str = expiry.astimezone(datetime.timezone.utc).isoformat()
+            conn.execute(
+                "UPDATE play_purchase_claims SET premium_until = ?, verified_at = ? WHERE token_hash = ?",
+                (expiry_str, verification_started, token_hash),
+            )
+            # Replaced purchases must not extend entitlement beyond their replacement.
+            if linked_hash and linked_hash != token_hash:
+                conn.execute("UPDATE play_purchase_claims SET premium_until = NULL, superseded = 1 WHERE token_hash = ?", (linked_hash,))
+            effective_until = conn.execute(
+                "SELECT MAX(premium_until) FROM play_purchase_claims WHERE user_id = ?", (user_id,)
+            ).fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO user_subscriptions (user_id, is_premium, premium_until, product_id, purchase_token, entitlement_source, updated_at)
+                VALUES (?, 1, ?, ?, NULL, 'google_play', CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET is_premium = 1,
+                    premium_until = excluded.premium_until, product_id = excluded.product_id,
+                    purchase_token = NULL, entitlement_source = 'google_play', updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, effective_until, product_id),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        logging.error("Purchase entitlement persistence failed")
+        return jsonify(status="error", error={"code": "purchase.record_failed"}), 500
 
     return jsonify(
         status="ok",
@@ -3504,8 +3571,8 @@ def api_verify_purchase() -> Response:
         verified=True,
         userId=user_id,
         productId=product_id,
-        premiumUntil=new_until_str,
-        receiptMessage=receipt_msg,
+        premiumUntil=effective_until,
+        receiptMessage="Google Play subscription verified.",
     )
 
 
@@ -3525,6 +3592,7 @@ def api_delete_account() -> Response:
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM firebase_identities WHERE user_id = ?", (user_id,))
         conn.execute(
             "DELETE FROM user_subscriptions WHERE user_id = ?",
             (user_id,),

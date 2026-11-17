@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_localizations.dart';
 import 'auth_service.dart';
+import 'google_sign_in_error_dialog.dart';
 import 'main.dart';
 
 /// VidSave İsteğe Bağlı Giriş ve Karşılama Ekranı (Welcome Screen)
@@ -29,9 +30,6 @@ class WelcomeScreen extends StatefulWidget {
   final GoogleSignIn? googleSignInClient;
 
   static const String prefKeyHasSeenWelcome = 'vidsave_has_seen_welcome';
-
-  /// Firebase / Google Cloud Console OAuth 2.0 Web Client ID (Android yapılandırma hatasını önlemek için serverClientId)
-  static const String serverClientId = AuthService.googleServerClientId;
 
   @override
   State<WelcomeScreen> createState() => _WelcomeScreenState();
@@ -106,13 +104,8 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     if (_isGoogleSigningIn) return;
     setState(() => _isGoogleSigningIn = true);
 
-    final isTurkish =
-        AppLocalizations.of(context).locale.languageCode.toLowerCase() == 'tr';
-
     try {
       final auth = widget.authService ?? AuthService.instance;
-      // Android yapılandırma hatasını önlemek için serverClientId şablon parametresini initialize et
-      await AuthService.ensureGoogleSignInInitialized(widget.googleSignInClient);
       await auth.loginWithGoogle(
         googleSignInClient: widget.googleSignInClient,
       );
@@ -123,18 +116,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
       if (error is AuthException && error.code == 'auth.cancelled') {
         return;
       }
-      final msg = error is AuthException
-          ? error.message
-          : isTurkish
-              ? 'Google ile giriş başarısız oldu. Lütfen tekrar deneyin.'
-              : 'Google sign in failed. Please try again.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      await showGoogleSignInErrorDialog(context, error);
     } finally {
       if (mounted) {
         setState(() => _isGoogleSigningIn = false);

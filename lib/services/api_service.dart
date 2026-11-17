@@ -177,6 +177,10 @@ class ApiService {
     return {'X-Api-Key': settings.apiKey};
   }
 
+  /// Returns the configured API key only for URLs hosted by this backend.
+  Future<Map<String, String>> headersForUrl(Uri target) =>
+      _backendHeaders(target);
+
   /// Verilen ham linki ve indirme tipini Python sunucusuna gönderir ve
   /// temiz [download_url] adresini içeren sonucu döndürür.
   ///
