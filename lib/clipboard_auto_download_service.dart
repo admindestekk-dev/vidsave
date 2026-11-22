@@ -110,18 +110,8 @@ class ClipboardAutoDownloadService {
   static String _fingerprint(String url) =>
       sha256.convert(utf8.encode(url)).toString();
 
-  /// Testlerde veya yeni indirme başladığında son işlenen URL önbelleğini sıfırlar.
+  /// Son işlenen bağlantı kaydını açıkça sıfırlar.
   static Future<void> clearLastHandled() async {
-    _lastHandledUrl = null;
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.remove(_lastHandledUrlKey);
-    } catch (_) {}
-  }
-
-  /// Her indirme öncesi ve sonrası hafıza kalıntılarını derhal sıfırlar.
-  /// Birbiri ardına sonsuz farklı medyanın çakışmasız indirilmesini sağlar.
-  static Future<void> clearMemoryAndCache() async {
     _lastHandledUrl = null;
     try {
       final preferences = await SharedPreferences.getInstance();
@@ -138,9 +128,9 @@ class ClipboardAutoDownloadService {
   /// aynı bağlantının art arda tekrar açılmaması için işlenmiş olarak kaydeder.
   static Future<void> markUrlAsHandled(String url) async {
     _lastHandledUrl = url;
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setString(_lastHandledUrlKey, _fingerprint(url));
-    } catch (_) {}
+    final preferences = await SharedPreferences.getInstance();
+    if (!await preferences.setString(_lastHandledUrlKey, _fingerprint(url))) {
+      throw StateError('Algılanan bağlantı durumu kaydedilemedi.');
+    }
   }
 }

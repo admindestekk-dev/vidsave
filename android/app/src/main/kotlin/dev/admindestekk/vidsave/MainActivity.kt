@@ -7,9 +7,11 @@ import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
+import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -19,10 +21,14 @@ import java.io.FileOutputStream
 import java.util.Locale
 
 class MainActivity : FlutterActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        WindowCompat.enableEdgeToEdge(window)
+    }
+
     companion object {
         private const val DOWNLOADS_CHANNEL = "vidsave/public_downloads"
         private const val OVERLAY_CHANNEL = "vidsave/external_app_download_overlay"
-        private const val SHARE_LIFECYCLE_CHANNEL = "vidsave/share_lifecycle"
         private const val WRITE_STORAGE_REQUEST = 4207
     }
 
@@ -33,6 +39,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        AdOperationCounter.register(applicationContext, flutterEngine)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             DOWNLOADS_CHANNEL,
@@ -67,34 +74,6 @@ class MainActivity : FlutterActivity() {
             }
 
             exportFile(sourcePath, fileName, result)
-        }
-
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            SHARE_LIFECYCLE_CHANNEL,
-        ).setMethodCallHandler { call, result ->
-            val preferences = getSharedPreferences(
-                ExternalShareDownloadService.PREFERENCES,
-                MODE_PRIVATE,
-            )
-            when (call.method) {
-                "hasPendingInterstitial" -> result.success(
-                    preferences.getBoolean(
-                        ExternalShareDownloadService.PENDING_INTERSTITIAL_KEY,
-                        false,
-                    ),
-                )
-                "clearPendingInterstitial" -> {
-                    preferences.edit()
-                        .putBoolean(
-                            ExternalShareDownloadService.PENDING_INTERSTITIAL_KEY,
-                            false,
-                        )
-                        .apply()
-                    result.success(null)
-                }
-                else -> result.notImplemented()
-            }
         }
 
         MethodChannel(

@@ -42,8 +42,10 @@ class _MockMediaResolver implements MediaResolver {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  var clipboardText = '';
 
   setUp(() {
+    clipboardText = '';
     SharedPreferences.setMockInitialValues({
       SubscriptionScreen.prefKeyIsPremium: true,
       SubscriptionScreen.prefKeyPremiumUntil: '2099-12-31T23:59:59Z',
@@ -52,7 +54,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
           if (call.method == 'Clipboard.getData') {
-            return {'text': ''};
+            return {'text': clipboardText};
           }
           return null;
         });
@@ -64,6 +66,11 @@ void main() {
     ) async {
       final resolver = _MockMediaResolver();
       var downloadStarted = false;
+      clipboardText = 'https://instagram.com/p/C_abc123';
+      expect(
+        await ClipboardAutoDownloadService.checkClipboardForDownloadUrl(),
+        clipboardText,
+      );
 
       await tester.pumpWidget(
         MaterialApp(
@@ -107,17 +114,12 @@ void main() {
       // Micro Toast: 2-second minimal notification is displayed
       expect(find.byType(SnackBar), findsOneWidget);
       expect(find.text('İndirme başlatılıyor…'), findsOneWidget);
-    });
 
-    testWidgets('2. Cache Cleansing: URL and clipboard memory are wiped clean immediately upon trigger', (
-      WidgetTester tester,
-    ) async {
-      await ClipboardAutoDownloadService.clearMemoryAndCache();
-
-      // Verify clearing cache prevents stale URLs from lingering
-      await SharedPreferences.getInstance();
-      await ClipboardAutoDownloadService.clearLastHandled();
-      expect(await ClipboardAutoDownloadService.checkClipboardForDownloadUrl(), isNull);
+      ClipboardAutoDownloadService.resetLastHandled();
+      expect(
+        await ClipboardAutoDownloadService.checkClipboardForDownloadUrl(),
+        isNull,
+      );
     });
 
     testWidgets('3. Micro Toast displays minimal pill-shaped notification with 2s duration', (

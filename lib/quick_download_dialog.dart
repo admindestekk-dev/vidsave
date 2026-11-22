@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import 'admob_service.dart';
 import 'client_media_resolver.dart';
-import 'clipboard_auto_download_service.dart';
 import 'download_exception_handler.dart';
 import 'media_downloader.dart';
 import 'services/micro_toast.dart';
@@ -352,9 +351,7 @@ class _QuickDownloadDialogState extends State<QuickDownloadDialog> {
         ? _urlController.text.trim()
         : widget.videoTitle;
 
-    // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing)
     _urlController.clear();
-    ClipboardAutoDownloadService.clearMemoryAndCache();
 
     // 2. Butonların Dönüşümü: İndirme başladı
     setState(() {

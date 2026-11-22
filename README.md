@@ -58,6 +58,18 @@ R8/resource shrinking. Neither obfuscation nor a
 shared app key prevents reverse engineering, and application rate limiting is
 not DDoS protection; use edge-level protection and monitoring as well.
 
+R8 uses Flutter's and the Android dependencies' consumer rules; avoid broad
+package-wide keep rules unless a dependency requires them. Archive
+`build/app/outputs/mapping/release/mapping.txt` for each published bundle and
+upload it to Play Console if it is not included automatically. Check the
+optimization result in Play Console for the uploaded bundle; its percentage
+cannot be inferred from the presence of a mapping file.
+
+The app targets API 36 and enables edge-to-edge on older Android versions too.
+Before release, check screens, dialogs, keyboard, video playback and system-bar
+contrast on Android 15/16 and an older Android version, with gesture and
+three-button navigation. Flutter handles system insets using its layout widgets.
+
 ### Google sign-in in Play releases
 
 The Android OAuth client must use the `dev.admindestekk.vidsave` package and
@@ -162,11 +174,19 @@ opening the VidSave home screen. The headless Dart entrypoint runs the same
 notification. Successful downloads are added to VidSave history and exported
 to Android media storage when supported.
 
-No ad is shown during the background download. A successful download queues a
-one-time interstitial attempt for the next time VidSave is opened; the app waits
-two seconds and skips the ad if consent, Premium status, or ad availability
-prevents showing it. Android may hide foreground-service notifications from the
-notification drawer when notification access is denied.
+No ad is shown during the background download. A successful download counts as
+an operation but does not queue an interstitial for reopening. Android may
+hide foreground-service notifications from the notification drawer when
+notification access is denied.
+
+Interstitials are considered only after every third successful operation, at
+least 60 seconds after launch and 180 seconds after the last interstitial.
+A batch with at least one successful item counts once; failures do not count.
+If an opportunity is ineligible or an ad is unavailable, it is skipped rather
+than shown later. The operation count and interstitial cooldown survive app
+restarts. Background completions are counted but cannot show ads. App Open
+impressions are at least four hours apart, including across restarts. Active
+Premium subscribers do not load or see ads.
 
 ## Getting Started
 

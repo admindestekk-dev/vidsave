@@ -275,67 +275,84 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
     final effectiveDownloader =
         widget.downloader ?? MediaDownloader(dioClient: AppDio.instance);
 
-    for (int step = 0; step < activeIndices.length; step++) {
-      if (!mounted) return;
+    var batchRecorded = false;
+    int? batchOperationCount;
+    AdmobService.instance.beginBatch();
+    try {
+      for (int step = 0; step < activeIndices.length; step++) {
+        if (!mounted) return;
 
-      final rowIndex = activeIndices[step];
-      final currentNum = step + 1;
-      final rawUrl = _controllers[rowIndex].text.trim();
-      final typeLabel = _selectedKind == DownloadKind.audio ? 'MP3' : 'Video';
+        final rowIndex = activeIndices[step];
+        final currentNum = step + 1;
+        final rawUrl = _controllers[rowIndex].text.trim();
+        final typeLabel = _selectedKind == DownloadKind.audio ? 'MP3' : 'Video';
 
-      // İndirilen satırı işaretle
-      setState(() {
-        _overallStatusText =
-            '$currentNum/$_totalActiveCount $typeLabel İndiriliyor…';
-        _rowStates[rowIndex].status = BatchItemStatus.downloading;
-        _rowStates[rowIndex].progress = null;
-        _rowStates[rowIndex].error = null;
-      });
+        // İndirilen satırı işaretle
+        setState(() {
+          _overallStatusText =
+              '$currentNum/$_totalActiveCount $typeLabel İndiriliyor…';
+          _rowStates[rowIndex].status = BatchItemStatus.downloading;
+          _rowStates[rowIndex].progress = null;
+          _rowStates[rowIndex].error = null;
+        });
 
-      final defaultNotifTitle =
-          'Toplu $typeLabel İndirme ($currentNum/$_totalActiveCount)';
+        final defaultNotifTitle =
+            'Toplu $typeLabel İndirme ($currentNum/$_totalActiveCount)';
 
-      try {
-        // A) EVRENSEL URL TEMİZLEME KALKANI
-        final cleanUrl = evrenselTemizUrl(rawUrl);
-        if (cleanUrl.isEmpty) {
-          throw const FormatException('Geçerli bir URL bulunamadı.');
+        try {
+          // A) EVRENSEL URL TEMİZLEME KALKANI
+          final cleanUrl = evrenselTemizUrl(rawUrl);
+          if (cleanUrl.isEmpty) {
+            throw const FormatException('Geçerli bir URL bulunamadı.');
+          }
+
+          // B) HIZLI İNDİRME PANELİ ALTYAPISI (UnifiedDownloadEngine)
+          final downloadedFile = await UnifiedDownloadEngine.instance.download(
+            rawUrl: cleanUrl,
+            type: _selectedKind == DownloadKind.audio ? 'mp3' : 'video',
+            preferredTitle: defaultNotifTitle,
+            onProgress: (received, total, progress, speed, status) {
+              if (!mounted) return;
+              setState(() {
+                _rowStates[rowIndex].progress = progress;
+              });
+            },
+            fallbackResolver: effectiveResolver,
+            fallbackDownloader: effectiveDownloader,
+            countForInterstitial: false,
+          );
+
+          if (!batchRecorded) {
+            batchRecorded = true;
+            batchOperationCount = await AdmobService.instance
+                .recordSuccessfulOperation(showInterstitial: false);
+          }
+          final fileName = downloadedFile.path
+              .split(Platform.pathSeparator)
+              .last;
+          _rowStates[rowIndex].fileName = fileName;
+
+          if (!mounted) return;
+          setState(() {
+            _rowStates[rowIndex].status = BatchItemStatus.completed;
+            _rowStates[rowIndex].progress = 1.0;
+            _completedCount++;
+          });
+        } catch (err) {
+          final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
+            err,
+            context,
+          );
+
+          if (!mounted) return;
+          setState(() {
+            _rowStates[rowIndex].status = BatchItemStatus.error;
+            _rowStates[rowIndex].error = errorMsg;
+          });
         }
-
-        // B) HIZLI İNDİRME PANELİ ALTYAPISI (UnifiedDownloadEngine)
-        final downloadedFile = await UnifiedDownloadEngine.instance.download(
-          rawUrl: cleanUrl,
-          type: _selectedKind == DownloadKind.audio ? 'mp3' : 'video',
-          preferredTitle: defaultNotifTitle,
-          onProgress: (received, total, progress, speed, status) {
-            if (!mounted) return;
-            setState(() {
-              _rowStates[rowIndex].progress = progress;
-            });
-          },
-          fallbackResolver: effectiveResolver,
-          fallbackDownloader: effectiveDownloader,
-        );
-
-        final fileName = downloadedFile.path.split(Platform.pathSeparator).last;
-        _rowStates[rowIndex].fileName = fileName;
-
-        if (!mounted) return;
-        setState(() {
-          _rowStates[rowIndex].status = BatchItemStatus.completed;
-          _rowStates[rowIndex].progress = 1.0;
-          _completedCount++;
-        });
-      } catch (err) {
-        final errorMsg =
-            DownloadExceptionHandler.getFriendlyMessage(err, context);
-
-        if (!mounted) return;
-        setState(() {
-          _rowStates[rowIndex].status = BatchItemStatus.error;
-          _rowStates[rowIndex].error = errorMsg;
-        });
       }
+    } finally {
+      AdmobService.instance.endBatch();
     }
 
     if (!mounted) return;
@@ -363,6 +380,13 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
         ),
       ),
     );
+    if (batchOperationCount != null && batchOperationCount % 3 == 0) {
+      unawaited(
+        AdmobService.instance.showInterstitialAd(
+          successfulOperations: batchOperationCount,
+        ),
+      );
+    }
   }
 
   @override

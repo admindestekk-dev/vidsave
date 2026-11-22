@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vid_downloader_app/admob_service.dart';
 import 'package:vid_downloader_app/batch_download_screen.dart';
 import 'package:vid_downloader_app/media_downloader.dart';
+import 'package:vid_downloader_app/services/review_service.dart';
 import 'package:vid_downloader_app/subscription_screen.dart';
 
 class _FakeResolver implements MediaResolver {
@@ -58,11 +59,26 @@ class _FakeDownloader extends MediaDownloader {
   }
 }
 
+Future<void> _waitForCompletedDownloads(WidgetTester tester, int count) async {
+  for (var i = 0; i < 300; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    if (find.byIcon(Icons.check_circle_rounded).evaluate().length == count) {
+      return;
+    }
+  }
+  fail('Expected $count completed downloads');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      ReviewService.prefKeyHasRequestedReview: true,
+    });
     AdmobService.instance.disableAdsForTesting = true;
   });
 
@@ -165,6 +181,42 @@ void main() {
   });
 
   group('BatchDownloadScreen - Queue & Rewarded Ad Consent Flow', () {
+    testWidgets('a successful multi-file batch counts as one operation', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({
+        SubscriptionScreen.prefKeyIsPremium: true,
+        SubscriptionScreen.prefKeyPremiumUntil: '2099-12-31T23:59:59Z',
+        ReviewService.prefKeyHasRequestedReview: true,
+      });
+      final resolver = _FakeResolver();
+      final downloader = _FakeDownloader();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BatchDownloadScreen(resolver: resolver, downloader: downloader),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Yeni Link Satırı Ekle'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField).at(0),
+        'https://tiktok.com/@user/video/1',
+      );
+      await tester.enterText(
+        find.byType(TextField).at(1),
+        'https://vimeo.com/video/2',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Toplu İndirmeyi Başlat (2 Link)'));
+      await _waitForCompletedDownloads(tester, 2);
+      expect(downloader.downloadedFiles.length, 2);
+      expect(
+        (await SharedPreferences.getInstance()).getInt('ad_successful_operations'),
+        1,
+      );
+    });
+
     testWidgets(
       'Free user gets AdMob Rewarded Consent Dialog before starting queue',
       (WidgetTester tester) async {
@@ -174,6 +226,7 @@ void main() {
         // Mock free user (isPremium = false)
         SharedPreferences.setMockInitialValues({
           SubscriptionScreen.prefKeyIsPremium: false,
+          ReviewService.prefKeyHasRequestedReview: true,
         });
 
         await tester.pumpWidget(
@@ -214,9 +267,7 @@ void main() {
         await tester.pumpAndSettle();
 
         await tester.tap(find.text('Reklamı İzle ve Başlat'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
-        await tester.pumpAndSettle();
+        await _waitForCompletedDownloads(tester, 1);
 
         expect(fakeResolver.resolvedUrls.length, 1);
         expect(fakeDownloader.downloadedFiles.length, 1);
@@ -234,6 +285,7 @@ void main() {
         SharedPreferences.setMockInitialValues({
           SubscriptionScreen.prefKeyIsPremium: true,
           SubscriptionScreen.prefKeyPremiumUntil: '2099-12-31T23:59:59Z',
+          ReviewService.prefKeyHasRequestedReview: true,
         });
 
         await tester.pumpWidget(
@@ -268,10 +320,7 @@ void main() {
         // No consent dialog should be shown for premium user
         expect(find.text('Ücretsiz İndirme Hakkı Kazan!'), findsNothing);
 
-        // Let queue finish
-        for (var i = 0; i < 40; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
-        }
+        await _waitForCompletedDownloads(tester, 2);
 
         expect(fakeResolver.resolvedUrls.length, 2);
         expect(fakeDownloader.downloadedFiles.length, 2);

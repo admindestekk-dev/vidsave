@@ -59,8 +59,7 @@ class ThemeService {
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
         statusBarBrightness: isDark ? Brightness.dark : Brightness.light, // iOS
-        systemNavigationBarColor:
-            isDark ? darkBackgroundColor : lightBackgroundColor,
+        systemNavigationBarColor: Colors.transparent,
         systemNavigationBarIconBrightness:
             isDark ? Brightness.light : Brightness.dark,
       ),

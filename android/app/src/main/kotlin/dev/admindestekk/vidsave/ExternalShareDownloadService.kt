@@ -32,7 +32,6 @@ class ExternalShareDownloadService : Service() {
         const val EXTRA_SHARED_URL = "shared_media_url"
         const val EXTRA_MEDIA_TYPE = "shared_media_type"
         const val PREFERENCES = "external_share_download"
-        const val PENDING_INTERSTITIAL_KEY = "pending_completion_interstitial"
         private const val CHANNEL_ID = "vidsave_share_download"
         private const val COMPLETE_CHANNEL_ID = "vidsave_share_complete"
         private const val FOREGROUND_NOTIFICATION_ID = 8432
@@ -96,6 +95,7 @@ class ExternalShareDownloadService : Service() {
     }
 
     private fun installMethodChannels(backgroundEngine: FlutterEngine) {
+        AdOperationCounter.register(applicationContext, backgroundEngine)
         methodChannel = MethodChannel(
             backgroundEngine.dartExecutor.binaryMessenger,
             METHOD_CHANNEL,
@@ -174,9 +174,6 @@ class ExternalShareDownloadService : Service() {
 
     private fun finishDownloads(success: Boolean) {
         if (success) {
-            getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit()
-                .putBoolean(PENDING_INTERSTITIAL_KEY, true)
-                .apply()
             vibrateCompletion()
         }
 

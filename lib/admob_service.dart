@@ -2,10 +2,14 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'services/ad_frequency_policy.dart';
 import 'services/ad_shield_service.dart';
+import 'services/download_manager.dart';
 import 'services/pro_server_reward_service.dart';
 import 'subscription_screen.dart';
 
@@ -15,7 +19,9 @@ import 'subscription_screen.dart';
 /// them with the app's own ad unit IDs only when configuring a production
 /// release; never click live ads while testing.
 class AdmobService {
-  AdmobService._();
+  AdmobService._() {
+    SubscriptionScreen.premiumStatusChanges.addListener(_onPremiumStatusChanged);
+  }
   static final AdmobService instance = AdmobService._();
 
   /// Google Resmi Android Test Reklam Birimi Kimlikleri (Ad Unit IDs)
@@ -83,12 +89,19 @@ class AdmobService {
   AppOpenAd? _appOpenAd;
   DateTime? _appOpenLoadTime;
   DateTime? _lastInterstitialShownTime;
-  static const Duration interstitialCooldown = Duration(seconds: 60);
+  DateTime? _lastAppOpenShownTime;
+  final Stopwatch _sessionClock = Stopwatch();
+  Future<void>? _counterUpdate;
+  static const _counterChannel = MethodChannel('vidsave/ad_operation_counter');
+  static const _operationCountKey = 'ad_successful_operations';
+  static const _interstitialTimeKey = 'ad_last_interstitial_shown';
+  static const _appOpenTimeKey = 'ad_last_app_open_shown';
 
   bool _isLoading = false;
   bool _isLoadingInterstitial = false;
   bool _isLoadingAppOpen = false;
   bool _isShowingFullScreenAd = false;
+  int _activeBatches = 0;
   bool _isInitialized = false;
   Future<void>? _initialization;
   Future<void>? _consentUpdate;
@@ -101,11 +114,119 @@ class AdmobService {
   bool get canRequestAds => _canRequestAds;
   bool get isShowingFullScreenAd => _isShowingFullScreenAd;
 
+  void startSession() {
+    if (!_sessionClock.isRunning) _sessionClock.start();
+  }
+
+  bool get _isForeground =>
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  bool get _hasActiveDownloads =>
+      _activeBatches > 0 ||
+      DownloadManager.instance.activeTasks.any(
+        (task) => task.isDownloading || task.isPaused,
+      );
+
+  void beginBatch() => _activeBatches++;
+  void endBatch() => _activeBatches--;
+
+  void _onPremiumStatusChanged() {
+    if (SubscriptionScreen.premiumStatusChanges.value == true) {
+      dispose();
+    } else {
+      unawaited(() async {
+        await initialize();
+        if (_isInitialized && _canRequestAds) {
+          unawaited(loadRewardedAd());
+          unawaited(loadInterstitialAd());
+          unawaited(loadAppOpenAd());
+        }
+      }());
+    }
+  }
+
+  Future<bool> hasActiveSubscription() async {
+    try {
+      return await SubscriptionScreen.readPremiumStatus();
+    } catch (error, stackTrace) {
+      debugPrint('Premium durumu okunamadı: $error\n$stackTrace');
+      return true;
+    }
+  }
+
+  Future<int> _recordOperationCount() async {
+    if (!kIsWeb && Platform.isAndroid && !isRunningInTest) {
+      final count = await _counterChannel.invokeMethod<int>('recordSuccess');
+      if (count == null) throw StateError('Operation counter returned no value');
+      return count;
+    }
+    final previous = _counterUpdate;
+    final done = Completer<void>();
+    _counterUpdate = done.future;
+    try {
+      if (previous != null) await previous;
+      final prefs = await SharedPreferences.getInstance();
+      final count = (prefs.getInt(_operationCountKey) ?? 0) + 1;
+      if (!await prefs.setInt(_operationCountKey, count)) {
+        throw StateError('Could not persist successful operation count');
+      }
+      return count;
+    } finally {
+      if (identical(_counterUpdate, done.future)) _counterUpdate = null;
+      done.complete();
+    }
+  }
+
+  /// Records a completed operation even if the app is in the background.
+  Future<int?> recordSuccessfulOperation({bool showInterstitial = true}) async {
+    try {
+      final count = await _recordOperationCount();
+      final eligible = count % 3 == 0;
+      if (eligible && showInterstitial && _isForeground) {
+        unawaited(showInterstitialAd(successfulOperations: count));
+      }
+      return count;
+    } catch (error, stackTrace) {
+      debugPrint('Reklam işlem sayacı kaydedilemedi: $error\n$stackTrace');
+      return null;
+    }
+  }
+
+  Future<int> _readOperationCount() async {
+    if (!kIsWeb && Platform.isAndroid && !isRunningInTest) {
+      final count = await _counterChannel.invokeMethod<int>('getCount');
+      if (count == null) throw StateError('Operation counter returned no value');
+      return count;
+    }
+    final pendingUpdate = _counterUpdate;
+    if (pendingUpdate != null) await pendingUpdate;
+    return (await SharedPreferences.getInstance()).getInt(_operationCountKey) ?? 0;
+  }
+
+  Future<DateTime?> _readShownTime(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final milliseconds = prefs.getInt(key);
+    return milliseconds == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(milliseconds);
+  }
+
+  Future<void> _saveShownTime(String key, DateTime time) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!await prefs.setInt(key, time.millisecondsSinceEpoch)) {
+        throw StateError('Could not persist ad impression time');
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Reklam gösterim zamanı kaydedilemedi: $error\n$stackTrace');
+    }
+  }
+
   /// AdMob SDK başlatma metodu (main.dart veya ilk ihtiyaçta çağrılır)
   Future<void> initialize() async {
     if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS) || isRunningInTest) {
       return;
     }
+    if (await hasActiveSubscription()) return;
     final existingInitialization = _initialization;
     if (existingInitialization != null) {
       await existingInitialization;
@@ -129,15 +250,14 @@ class AdmobService {
               : const <String>[],
         ),
       );
+      if (await hasActiveSubscription()) return;
       await MobileAds.instance.initialize();
       _isInitialized = true;
       await gatherConsentIfRequired();
-      if (_canRequestAds) {
-        loadRewardedAd();
-        if (!await checkIsPremium()) {
-          loadInterstitialAd();
-          loadAppOpenAd();
-        }
+      if (_canRequestAds && !await hasActiveSubscription()) {
+        unawaited(loadRewardedAd());
+        unawaited(loadInterstitialAd());
+        unawaited(loadAppOpenAd());
       }
     } catch (e) {
       _isInitialized = false;
@@ -147,7 +267,7 @@ class AdmobService {
     }
   }
 
-  void loadInterstitialAd() {
+  Future<void> loadInterstitialAd() async {
     if (!_isInitialized ||
         !_canRequestAds ||
         _isLoadingInterstitial ||
@@ -157,12 +277,20 @@ class AdmobService {
 
     _isLoadingInterstitial = true;
     try {
+      if (await hasActiveSubscription()) {
+        _isLoadingInterstitial = false;
+        return;
+      }
       InterstitialAd.load(
         adUnitId: testAdUnitId('interstitial'),
         request: const AdRequest(),
         adLoadCallback: InterstitialAdLoadCallback(
-          onAdLoaded: (ad) {
-            _interstitialAd = ad;
+          onAdLoaded: (ad) async {
+            if (await hasActiveSubscription()) {
+              ad.dispose();
+            } else {
+              _interstitialAd = ad;
+            }
             _isLoadingInterstitial = false;
           },
           onAdFailedToLoad: (error) {
@@ -179,39 +307,49 @@ class AdmobService {
     }
   }
 
-  /// Shows a preloaded interstitial after the user reopens VidSave.
-  /// Background jobs never present ads; a missing ad is skipped rather than
-  /// delaying the app or showing a late, unexpected full-screen ad.
-  Future<bool> showQueuedInterstitialAfterReopen() async {
-    return showInterstitialAd(checkCooldown: false);
-  }
-
-  /// Doğal geçiş noktalarında (indirme tamamlandığında vb.) geçiş reklamını gösterir.
-  /// Google Play politikası gereği peş peşe reklam gösterilmemesi için 60 saniye soğuma süresi (cooldown) uygulanır.
-  Future<bool> showInterstitialAd({bool checkCooldown = true}) async {
-    if (isRunningInTest || kIsWeb || await checkIsPremium()) return false;
+  Future<bool> showInterstitialAd({int successfulOperations = 0}) async {
+    if (isRunningInTest ||
+        kIsWeb ||
+        !_isForeground ||
+        !_sessionClock.isRunning ||
+        await checkIsPremium()) {
+      return false;
+    }
     // Tıklama kalkanı / sahtekarlık engeli kontrolü
     if (await AdShieldService.instance.isAdBlocked()) {
       debugPrint('AdmobService: Cihaz reklam engeli altında, Interstitial atlandı.');
       return false;
     }
     if (_isShowingFullScreenAd) return false;
-    await initialize();
     if (!_isInitialized || !_canRequestAds) return false;
-
-    if (checkCooldown && _lastInterstitialShownTime != null) {
-      final elapsed = DateTime.now().difference(_lastInterstitialShownTime!);
-      if (elapsed < interstitialCooldown) {
-        debugPrint(
-          'AdmobService: Interstitial cooldown aktif (${elapsed.inSeconds}s < ${interstitialCooldown.inSeconds}s)',
-        );
-        return false;
-      }
+    try {
+      _lastInterstitialShownTime ??= await _readShownTime(_interstitialTimeKey);
+    } catch (error, stackTrace) {
+      debugPrint('Interstitial zamanı okunamadı: $error\n$stackTrace');
+      return false;
+    }
+    if (!AdFrequencyPolicy.canShowInterstitial(
+      successfulOperations: successfulOperations,
+      sinceLaunch: _sessionClock.elapsed,
+      now: DateTime.now(),
+      lastShown: _lastInterstitialShownTime,
+    )) {
+      return false;
+    }
+    if (await checkIsPremium()) return false;
+    try {
+      if (await _readOperationCount() != successfulOperations) return false;
+    } catch (error, stackTrace) {
+      debugPrint('Reklam işlem sayacı okunamadı: $error\n$stackTrace');
+      return false;
+    }
+    if (!_isForeground || _isShowingFullScreenAd || _hasActiveDownloads) {
+      return false;
     }
 
     final ad = _interstitialAd;
     if (ad == null) {
-      loadInterstitialAd();
+      unawaited(loadInterstitialAd());
       return false;
     }
 
@@ -220,31 +358,43 @@ class AdmobService {
     final completer = Completer<bool>();
 
     ad.fullScreenContentCallback = FullScreenContentCallback<InterstitialAd>(
+      onAdShowedFullScreenContent: (ad) {
+        final now = DateTime.now();
+        _lastInterstitialShownTime = now;
+        unawaited(_saveShownTime(_interstitialTimeKey, now));
+      },
       onAdClicked: (ad) {
         debugPrint('AdmobService: Interstitial tıklandı, AdShieldService kaydı alınıyor.');
         unawaited(AdShieldService.instance.registerAdClick());
       },
       onAdDismissedFullScreenContent: (ad) {
         _isShowingFullScreenAd = false;
-        _lastInterstitialShownTime = DateTime.now();
         ad.dispose();
-        loadInterstitialAd();
+        unawaited(loadInterstitialAd());
         if (!completer.isCompleted) completer.complete(true);
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         _isShowingFullScreenAd = false;
         debugPrint('AdmobService: Interstitial gösterilemedi: $error');
         ad.dispose();
-        loadInterstitialAd();
+        unawaited(loadInterstitialAd());
         if (!completer.isCompleted) completer.complete(false);
       },
     );
-    ad.show();
+    try {
+      await ad.show();
+    } catch (error, stackTrace) {
+      _isShowingFullScreenAd = false;
+      debugPrint('Interstitial gösterilemedi: $error\n$stackTrace');
+      ad.dispose();
+      unawaited(loadInterstitialAd());
+      if (!completer.isCompleted) completer.complete(false);
+    }
     return completer.future;
   }
 
   /// App Open (Uygulama Açılış) reklamını önceden yükler
-  void loadAppOpenAd() {
+  Future<void> loadAppOpenAd() async {
     if (!_isInitialized ||
         !_canRequestAds ||
         _isLoadingAppOpen ||
@@ -254,13 +404,21 @@ class AdmobService {
 
     _isLoadingAppOpen = true;
     try {
+      if (await hasActiveSubscription()) {
+        _isLoadingAppOpen = false;
+        return;
+      }
       AppOpenAd.load(
         adUnitId: testAdUnitId('appOpen'),
         request: const AdRequest(),
         adLoadCallback: AppOpenAdLoadCallback(
-          onAdLoaded: (ad) {
-            _appOpenAd = ad;
-            _appOpenLoadTime = DateTime.now();
+          onAdLoaded: (ad) async {
+            if (await hasActiveSubscription()) {
+              ad.dispose();
+            } else {
+              _appOpenAd = ad;
+              _appOpenLoadTime = DateTime.now();
+            }
             _isLoadingAppOpen = false;
             debugPrint('AdmobService: App Open reklam yüklendi.');
           },
@@ -279,19 +437,31 @@ class AdmobService {
 
   /// Uygulama arka plandan ön plana geldiğinde App Open reklamını gösterir.
   Future<bool> showAppOpenAdIfAvailable() async {
-    if (isRunningInTest || kIsWeb || await checkIsPremium()) return false;
+    if (isRunningInTest || kIsWeb || !_isForeground || await checkIsPremium()) return false;
     // Tıklama kalkanı / sahtekarlık engeli kontrolü
     if (await AdShieldService.instance.isAdBlocked()) {
       debugPrint('AdmobService: Cihaz reklam engeli altında, App Open atlandı.');
       return false;
     }
     if (_isShowingFullScreenAd) return false;
-    await initialize();
     if (!_isInitialized || !_canRequestAds) return false;
+    try {
+      _lastAppOpenShownTime ??= await _readShownTime(_appOpenTimeKey);
+    } catch (error, stackTrace) {
+      debugPrint('App Open zamanı okunamadı: $error\n$stackTrace');
+      return false;
+    }
+    if (!AdFrequencyPolicy.canShowAppOpen(DateTime.now(), _lastAppOpenShownTime)) {
+      return false;
+    }
+    if (await checkIsPremium()) return false;
+    if (!_isForeground || _isShowingFullScreenAd || _hasActiveDownloads) {
+      return false;
+    }
 
     final ad = _appOpenAd;
     if (ad == null) {
-      loadAppOpenAd();
+      unawaited(loadAppOpenAd());
       return false;
     }
 
@@ -301,7 +471,7 @@ class AdmobService {
             const Duration(hours: 4)) {
       ad.dispose();
       _appOpenAd = null;
-      loadAppOpenAd();
+      unawaited(loadAppOpenAd());
       return false;
     }
 
@@ -310,6 +480,11 @@ class AdmobService {
     final completer = Completer<bool>();
 
     ad.fullScreenContentCallback = FullScreenContentCallback<AppOpenAd>(
+      onAdShowedFullScreenContent: (ad) {
+        final now = DateTime.now();
+        _lastAppOpenShownTime = now;
+        unawaited(_saveShownTime(_appOpenTimeKey, now));
+      },
       onAdClicked: (ad) {
         debugPrint('AdmobService: App Open tıklandı, AdShieldService kaydı alınıyor.');
         unawaited(AdShieldService.instance.registerAdClick());
@@ -317,18 +492,26 @@ class AdmobService {
       onAdDismissedFullScreenContent: (ad) {
         _isShowingFullScreenAd = false;
         ad.dispose();
-        loadAppOpenAd();
+        unawaited(loadAppOpenAd());
         if (!completer.isCompleted) completer.complete(true);
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         _isShowingFullScreenAd = false;
         debugPrint('AdmobService: App Open gösterilemedi: $error');
         ad.dispose();
-        loadAppOpenAd();
+        unawaited(loadAppOpenAd());
         if (!completer.isCompleted) completer.complete(false);
       },
     );
-    ad.show();
+    try {
+      await ad.show();
+    } catch (error, stackTrace) {
+      _isShowingFullScreenAd = false;
+      debugPrint('App Open gösterilemedi: $error\n$stackTrace');
+      ad.dispose();
+      unawaited(loadAppOpenAd());
+      if (!completer.isCompleted) completer.complete(false);
+    }
     return completer.future;
   }
 
@@ -454,7 +637,7 @@ class AdmobService {
         }
         unawaited(() async {
           await _refreshConsentStatus();
-          if (_canRequestAds) loadRewardedAd();
+          if (_canRequestAds) unawaited(loadRewardedAd());
           if (!completer.isCompleted) completer.complete();
         }());
       });
@@ -478,7 +661,7 @@ class AdmobService {
   }
 
   /// Ödüllü reklamı önceden belleğe yükler (Pre-load)
-  void loadRewardedAd({VoidCallback? onLoaded, VoidCallback? onFailed}) {
+  Future<void> loadRewardedAd({VoidCallback? onLoaded, VoidCallback? onFailed}) async {
     if (!_isInitialized || !_canRequestAds) {
       onFailed?.call();
       return;
@@ -497,11 +680,32 @@ class AdmobService {
     if (onFailed != null) _pendingFailedCallbacks.add(onFailed);
 
     try {
+      if (await hasActiveSubscription()) {
+        _isLoading = false;
+        final callbacks = List<VoidCallback>.from(_pendingFailedCallbacks);
+        _pendingLoadedCallbacks.clear();
+        _pendingFailedCallbacks.clear();
+        for (final cb in callbacks) {
+          cb();
+        }
+        return;
+      }
       RewardedAd.load(
         adUnitId: rewardedAdUnitId,
         request: const AdRequest(),
         rewardedAdLoadCallback: RewardedAdLoadCallback(
-          onAdLoaded: (ad) {
+          onAdLoaded: (ad) async {
+            if (await hasActiveSubscription()) {
+              ad.dispose();
+              _isLoading = false;
+              final callbacks = List<VoidCallback>.from(_pendingFailedCallbacks);
+              _pendingLoadedCallbacks.clear();
+              _pendingFailedCallbacks.clear();
+              for (final cb in callbacks) {
+                cb();
+              }
+              return;
+            }
             _rewardedAd = ad;
             _isLoading = false;
             debugPrint('AdmobService: Ödüllü reklam başarıyla yüklendi.');
@@ -546,7 +750,7 @@ class AdmobService {
       return credits > 0;
     } catch (error, stackTrace) {
       debugPrint('Premium / Pro kredi durumu okunamadı: $error\n$stackTrace');
-      return false;
+      return true;
     }
   }
 
@@ -617,10 +821,10 @@ class AdmobService {
         onLoaded: () {
           if (!completer.isCompleted) {
             completer.complete();
-            _presentRewardedAd(
+            unawaited(_presentRewardedAd(
               onRewardEarned: onRewardEarned,
               onAdDismissedWithoutReward: onAdDismissedWithoutReward,
-            );
+                ));
           }
         },
         onFailed: () async {
@@ -649,23 +853,31 @@ class AdmobService {
       return;
     }
 
-    _presentRewardedAd(
+    await _presentRewardedAd(
       onRewardEarned: onRewardEarned,
       onAdDismissedWithoutReward: onAdDismissedWithoutReward,
     );
   }
 
-  void _presentRewardedAd({
+  Future<void> _presentRewardedAd({
     required FutureOr<void> Function() onRewardEarned,
     VoidCallback? onAdDismissedWithoutReward,
-  }) {
+  }) async {
+    if (await checkIsPremium() ||
+        !_isForeground ||
+        _isShowingFullScreenAd ||
+        _hasActiveDownloads) {
+      await onRewardEarned();
+      return;
+    }
     final ad = _rewardedAd;
     if (ad == null) {
-      onRewardEarned();
+      await onRewardEarned();
       return;
     }
 
     bool earnedReward = false;
+    _rewardedAd = null;
     _isShowingFullScreenAd = true;
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
@@ -677,7 +889,7 @@ class AdmobService {
         _isShowingFullScreenAd = false;
         ad.dispose();
         _rewardedAd = null;
-        loadRewardedAd(); // Bir sonraki indirme için reklamı hemen arka planda hazırla
+        unawaited(loadRewardedAd());
         if (!earnedReward) {
           onAdDismissedWithoutReward?.call();
         }
@@ -687,7 +899,7 @@ class AdmobService {
         debugPrint('AdmobService: Reklam gösterilemedi: $error');
         ad.dispose();
         _rewardedAd = null;
-        loadRewardedAd();
+        unawaited(loadRewardedAd());
         // Reklam gösterim hatasında da indirmeyi bloke etme
         onRewardEarned();
       },
@@ -720,6 +932,7 @@ class AdmobService {
       return true;
     }
 
+    if (await hasActiveSubscription()) return false;
     // Tıklama kalkanı kontrolü: Cihaz kalkan altındaysa kullanıcıyı bekletmeden Pro hak tanı
     if (await AdShieldService.instance.isAdBlocked()) {
       debugPrint('AdmobService: AdShield aktif, Pro sunucu ödülü doğrudan verildi.');
@@ -737,6 +950,12 @@ class AdmobService {
       await gatherConsentIfRequired();
     }
 
+    if (await hasActiveSubscription() ||
+        !_isForeground ||
+        _isShowingFullScreenAd ||
+        _hasActiveDownloads) {
+      return false;
+    }
     final ad = _rewardedAd;
     if (ad == null) {
       final completer = Completer<bool>();
@@ -779,11 +998,18 @@ class AdmobService {
     required VoidCallback onRewardEarned,
     VoidCallback? onAdDismissedWithoutReward,
   }) async {
+    if (await hasActiveSubscription() ||
+        !_isForeground ||
+        _isShowingFullScreenAd ||
+        _hasActiveDownloads) {
+      return false;
+    }
     final ad = _rewardedAd;
     if (ad == null) return false;
 
     final completer = Completer<bool>();
     bool earnedReward = false;
+    _rewardedAd = null;
     _isShowingFullScreenAd = true;
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
@@ -795,7 +1021,7 @@ class AdmobService {
         _isShowingFullScreenAd = false;
         ad.dispose();
         _rewardedAd = null;
-        loadRewardedAd();
+        unawaited(loadRewardedAd());
         if (!earnedReward) {
           onAdDismissedWithoutReward?.call();
         }
@@ -806,7 +1032,7 @@ class AdmobService {
         debugPrint('AdmobService: Rewarded reklam gösterilemedi: $error');
         ad.dispose();
         _rewardedAd = null;
-        loadRewardedAd();
+        unawaited(loadRewardedAd());
         if (!completer.isCompleted) completer.complete(false);
       },
     );
@@ -832,6 +1058,5 @@ class AdmobService {
     _interstitialAd = null;
     _appOpenAd?.dispose();
     _appOpenAd = null;
-    _isShowingFullScreenAd = false;
   }
 }

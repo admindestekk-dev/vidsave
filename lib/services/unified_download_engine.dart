@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../admob_service.dart';
 import '../backend_media_resolver.dart';
 import '../client_media_resolver.dart';
 import '../clipboard_auto_download_service.dart';
@@ -121,6 +122,8 @@ class UnifiedDownloadEngine {
     MediaResolver? fallbackResolver,
     MediaDownloader? fallbackDownloader,
     bool showSystemNotifications = true,
+    bool countForInterstitial = true,
+    bool showInterstitialOnCompletion = true,
   }) async {
     final extractedUrl = ClipboardAutoDownloadService.extractUrl(rawUrl);
     final urlToDownload = (extractedUrl != null && extractedUrl.isNotEmpty)
@@ -387,6 +390,11 @@ class UnifiedDownloadEngine {
           // İlk indirme tamamlandıktan 2 saniye sonra In-App Review değerlendirme penceresini tetikle
           unawaited(ReviewService.instance.requestReviewIfNeeded());
 
+          if (countForInterstitial) {
+            await AdmobService.instance.recordSuccessfulOperation(
+              showInterstitial: showInterstitialOnCompletion,
+            );
+          }
           return downloadedFile;
         } catch (serverStreamErr) {
           debugPrint(
@@ -581,6 +589,11 @@ class UnifiedDownloadEngine {
       // İlk indirme tamamlandıktan 2 saniye sonra In-App Review değerlendirme penceresini tetikle
       unawaited(ReviewService.instance.requestReviewIfNeeded());
 
+      if (countForInterstitial) {
+        await AdmobService.instance.recordSuccessfulOperation(
+          showInterstitial: showInterstitialOnCompletion,
+        );
+      }
       return targetDownloadedFile;
     } catch (e) {
       DownloadManager.instance.failTask(taskId);

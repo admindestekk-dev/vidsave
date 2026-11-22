@@ -12,8 +12,11 @@ import 'package:vid_downloader_app/batch_download_screen.dart';
 import 'package:vid_downloader_app/download_platforms.dart';
 import 'package:vid_downloader_app/media_library.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
+import 'package:vid_downloader_app/clipboard_auto_download_service.dart';
+import 'package:vid_downloader_app/download_format_sheet.dart';
 import 'package:vid_downloader_app/home_screen.dart';
 import 'package:vid_downloader_app/main.dart';
+import 'package:vid_downloader_app/media_downloader.dart';
 import 'package:vid_downloader_app/more_screen.dart';
 import 'package:vid_downloader_app/music_player.dart';
 import 'package:vid_downloader_app/screens/in_app_media_browser_screen.dart';
@@ -50,6 +53,65 @@ void main() {
     );
     // Platform kareleri ve altlarındaki İNDİR butonları
     expect(find.text('İNDİR'), findsNWidgets(kDownloadPlatforms.length));
+  });
+
+  testWidgets('clipboard prompt appears once per detected URL across restarts', (
+    tester,
+  ) async {
+    var clipboardText = 'https://www.instagram.com/reel/first';
+    ClipboardAutoDownloadService.resetLastHandled();
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.getData') return {'text': clipboardText};
+        return null;
+      },
+    );
+    addTearDown(() {
+      ClipboardAutoDownloadService.resetLastHandled();
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    Widget home() => const MaterialApp(
+      home: VidSaveHomePage(
+        library: _TestMediaLibrary(),
+        backendSettingsStore: _EmptyBackendSettingsStore(),
+        mediaResolver: _ClipboardTestResolver(),
+      ),
+    );
+
+    await tester.pumpWidget(home());
+    await tester.pumpAndSettle();
+    expect(find.byType(DownloadFormatBottomSheet), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.byType(DownloadFormatBottomSheet), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close_rounded).last);
+    await tester.pumpAndSettle();
+    expect(find.byType(DownloadFormatBottomSheet), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    ClipboardAutoDownloadService.resetLastHandled();
+    await tester.pumpWidget(home());
+    await tester.pumpAndSettle();
+    expect(find.byType(DownloadFormatBottomSheet), findsNothing);
+
+    clipboardText = 'https://www.tiktok.com/@user/video/second';
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.byType(DownloadFormatBottomSheet), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close_rounded).last);
+    await tester.pumpAndSettle();
+    clipboardText = 'https://www.instagram.com/reel/first';
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.byType(DownloadFormatBottomSheet), findsOneWidget);
   });
 
   testWidgets('back button returns to the İndir tab before leaving the app', (
@@ -459,4 +521,25 @@ class _TestMediaLibrary implements MediaLibrary {
 
   @override
   void invalidateCache() {}
+}
+
+class _ClipboardTestResolver implements MediaResolver {
+  const _ClipboardTestResolver();
+
+  @override
+  Future<MediaPreview> preview(Uri source, DownloadKind kind) async =>
+      const MediaPreview(title: 'Test video');
+
+  @override
+  Future<ResolvedMedia> resolve(
+    Uri source,
+    DownloadKind kind, {
+    int? height,
+    double? startTime,
+    double? endTime,
+    String? audioEffect,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<SearchResultItem>> search(String query) async => [];
 }

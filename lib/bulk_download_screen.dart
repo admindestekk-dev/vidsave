@@ -126,70 +126,87 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
           '1/$_totalCount ${_selectedKind == DownloadKind.audio ? "MP3" : "Video"} İndiriliyor…';
     });
 
-    // İsteğe bağlı backend /api/toplu-indir çağrısı
-    if (widget.settingsStore != null) {
-      try {
-        final settings = await widget.settingsStore!.load();
-        if (settings.isConfigured) {
-          unawaited(
-            BulkDownloadService.sendBulkDownloadRequest(
-              urls: urls,
-              kind: _selectedKind,
-              settings: settings,
-            ).catchError((_) => <String, dynamic>{}),
-          );
-        }
-      } catch (_) {}
-    }
-
-    // Her URL için sırayla indirme döngüsü
-    for (int i = 0; i < _items.length; i++) {
-      if (!mounted) return;
-
-      final currentItem = _items[i];
-      final currentNum = i + 1;
-      final typeLabel = _selectedKind == DownloadKind.audio ? 'MP3' : 'Video';
-
-      setState(() {
-        _currentIndex = currentNum;
-        currentItem.status = BulkItemStatus.downloading;
-        _overallStatusText = '$currentNum/$_totalCount $typeLabel İndiriliyor…';
-      });
-
-      try {
-        final cleanUrl = evrenselTemizUrl(currentItem.url);
-        final file = await UnifiedDownloadEngine.instance.download(
-          rawUrl: cleanUrl,
-          type: _selectedKind == DownloadKind.audio ? 'mp3' : 'video',
-          preferredTitle: 'Toplu $typeLabel İndirme ($currentNum/$_totalCount)',
-          onProgress: (received, total, progress, speed, status) {
-            if (!mounted) return;
-            setState(() {
-              currentItem.progress = progress;
-            });
-          },
-          fallbackResolver: widget.resolver,
-          fallbackDownloader: widget.downloader,
-        );
-
-        final fileName = file.path.split(Platform.pathSeparator).last;
-        currentItem.title = fileName;
-
-        if (!mounted) return;
-        setState(() {
-          currentItem.status = BulkItemStatus.completed;
-          currentItem.progress = 1.0;
-        });
-      } catch (err) {
-        final errorMsg =
-            DownloadExceptionHandler.getFriendlyMessage(err, context);
-
-        if (!mounted) return;
-        setState(() {
-          currentItem.status = BulkItemStatus.error;
-          currentItem.error = errorMsg;
-        });
+    var batchRecorded = false;
+    int? batchOperationCount;
+    AdmobService.instance.beginBatch();
+    try {
+      // İsteğe bağlı backend /api/toplu-indir çağrısı
+      if (widget.settingsStore != null) {
+        try {
+          final settings = await widget.settingsStore!.load();
+          if (settings.isConfigured) {
+            unawaited(
+              BulkDownloadService.sendBulkDownloadRequest(
+                urls: urls,
+                kind: _selectedKind,
+                settings: settings,
+              ).catchError((_) => <String, dynamic>{}),
+            );
+          }
+        } catch (_) {}
       }
+
+      // Her URL için sırayla indirme döngüsü
+      for (int i = 0; i < _items.length; i++) {
+        if (!mounted) return;
+
+        final currentItem = _items[i];
+        final currentNum = i + 1;
+        final typeLabel = _selectedKind == DownloadKind.audio ? 'MP3' : 'Video';
+
+        setState(() {
+          _currentIndex = currentNum;
+          currentItem.status = BulkItemStatus.downloading;
+          _overallStatusText =
+              '$currentNum/$_totalCount $typeLabel İndiriliyor…';
+        });
+
+        try {
+          final cleanUrl = evrenselTemizUrl(currentItem.url);
+          final file = await UnifiedDownloadEngine.instance.download(
+            rawUrl: cleanUrl,
+            type: _selectedKind == DownloadKind.audio ? 'mp3' : 'video',
+            preferredTitle:
+                'Toplu $typeLabel İndirme ($currentNum/$_totalCount)',
+            onProgress: (received, total, progress, speed, status) {
+              if (!mounted) return;
+              setState(() {
+                currentItem.progress = progress;
+              });
+            },
+            fallbackResolver: widget.resolver,
+            fallbackDownloader: widget.downloader,
+            countForInterstitial: false,
+          );
+
+          if (!batchRecorded) {
+            batchRecorded = true;
+            batchOperationCount = await AdmobService.instance
+                .recordSuccessfulOperation(showInterstitial: false);
+          }
+          final fileName = file.path.split(Platform.pathSeparator).last;
+          currentItem.title = fileName;
+
+          if (!mounted) return;
+          setState(() {
+            currentItem.status = BulkItemStatus.completed;
+            currentItem.progress = 1.0;
+          });
+        } catch (err) {
+          final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
+            err,
+            context,
+          );
+
+          if (!mounted) return;
+          setState(() {
+            currentItem.status = BulkItemStatus.error;
+            currentItem.error = errorMsg;
+          });
+        }
+      }
+    } finally {
+      AdmobService.instance.endBatch();
     }
 
     if (!mounted) return;
@@ -203,7 +220,13 @@ class _BulkDownloadScreenState extends State<BulkDownloadScreen> {
           'Toplu İndirme Tamamlandı! ($successCount/$_totalCount Başarılı)';
     });
 
-    unawaited(AdmobService.instance.showInterstitialAd());
+    if (batchOperationCount != null && batchOperationCount % 3 == 0) {
+      unawaited(
+        AdmobService.instance.showInterstitialAd(
+          successfulOperations: batchOperationCount,
+        ),
+      );
+    }
   }
 
   @override

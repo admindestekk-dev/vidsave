@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../admob_service.dart';
 import '../services/micro_toast.dart';
 import '../services/pro_server_reward_service.dart';
+import '../subscription_screen.dart';
 
 /// Ana Ekranda (HomeScreen) yer alan ve kullanıcının kısa bir ödüllü test videosu izleyerek
 /// 3 indirme boyunca Pro Sunucuyu ve reklamsız modu aktif etmesini sağlayan ödül kartı.
@@ -32,11 +33,9 @@ class _ProServerRewardCardState extends State<ProServerRewardCard> {
     setState(() => _isLoading = true);
 
     try {
-      final isPremiumSubscribed = await AdmobService.instance.checkIsPremium();
-      final currentCredits = await ProServerRewardService.instance.getCredits();
-
+      final isPremiumSubscribed = await SubscriptionScreen.readPremiumStatus();
       // Zaten sınırsız premium üyesi ise kullanıcıya nazikçe bildir
-      if (isPremiumSubscribed && currentCredits == 0) {
+      if (isPremiumSubscribed) {
         if (!mounted) return;
         showMicroToast(
           context,

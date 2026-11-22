@@ -47,6 +47,7 @@ class SubscriptionScreen extends StatefulWidget {
   static const String prefKeyIsPremium = 'vidsave_is_premium_verified_v2';
   static const String prefKeySubscribedAt = 'vidsave_premium_subscribed_at';
   static const String prefKeyPremiumUntil = 'vidsave_premium_until_verified_v2';
+  static final ValueNotifier<bool?> premiumStatusChanges = ValueNotifier<bool?>(null);
 
   static Future<bool> readPremiumStatus() async {
     final prefs = await SharedPreferences.getInstance();
@@ -71,17 +72,23 @@ class SubscriptionScreen extends StatefulWidget {
       );
     }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(prefKeyIsPremium, true);
-    await prefs.setString(
+    if (!await prefs.setString(
       prefKeyPremiumUntil,
       premiumUntil.toUtc().toIso8601String(),
-    );
+    )) {
+      throw StateError('Could not save Premium expiry');
+    }
+    if (!await prefs.setBool(prefKeyIsPremium, true)) {
+      throw StateError('Could not save Premium status');
+    }
+    premiumStatusChanges.value = true;
   }
 
   static Future<void> clearPremiumStatus() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(prefKeyIsPremium);
     await prefs.remove(prefKeyPremiumUntil);
+    premiumStatusChanges.value = false;
   }
 
   @override

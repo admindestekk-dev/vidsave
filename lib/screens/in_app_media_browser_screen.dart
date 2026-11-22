@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as inapp;
 
 import '../admob_service.dart';
@@ -102,12 +101,14 @@ class InAppMediaBrowserScreen extends StatefulWidget {
     this.initialUrl = 'https://www.google.com',
     this.onCloseTab,
     this.showDownloadButton = true,
+    this.watchClipboard = true,
     @visibleForTesting this.webViewBuilder,
   });
 
   final String initialUrl;
   final VoidCallback? onCloseTab;
   final bool showDownloadButton;
+  final bool watchClipboard;
   final WidgetBuilder? webViewBuilder;
 
   @override
@@ -532,7 +533,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   }
 
   void _startClipboardWatcher() {
-    if (AdmobService.instance.isRunningInTest) return;
+    if (!widget.watchClipboard || AdmobService.instance.isRunningInTest) return;
     _clipboardCheckTimer = Timer.periodic(
       const Duration(milliseconds: 1200),
       (_) => _checkLocalClipboard(),
@@ -540,37 +541,30 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
   }
 
   bool _isFormatSheetOpen = false;
-  String? _lastDismissedClipboardUrl;
 
-  void triggerDownloadForUrl(String? url) {
+  Future<void> triggerDownloadForUrl(String? url) async {
     if (!mounted) return;
     if (url != null && url.trim().isNotEmpty) {
-      if (url.trim() == _lastDismissedClipboardUrl) return;
       setState(() {
         _detectedVideoUrl = url.trim();
         _isVideoActive = true;
       });
     }
     if (!_isFormatSheetOpen && !_isInlineDownloading) {
-      _triggerDownload();
+      await _triggerDownload();
     }
   }
 
   Future<void> _checkLocalClipboard() async {
     if (!mounted || _isInlineDownloading || _isFormatSheetOpen) return;
     try {
-      final data = await Clipboard.getData(Clipboard.kTextPlain);
-      final text = data?.text?.trim();
-      if (text != null && text.isNotEmpty) {
-        final extracted = ClipboardAutoDownloadService.extractUrl(text);
-        if (extracted != null &&
-            extracted.isNotEmpty &&
-            extracted != _detectedVideoUrl &&
-            extracted != _lastDismissedClipboardUrl) {
-          triggerDownloadForUrl(extracted);
-        }
+      final url = await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
+      if (mounted && url != null && !_isInlineDownloading && !_isFormatSheetOpen) {
+        await triggerDownloadForUrl(url);
       }
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('Tarayıcı pano kontrolü başarısız: $error');
+    }
   }
 
   @override
@@ -594,7 +588,7 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     _controller?.loadUrl(urlRequest: inapp.URLRequest(url: inapp.WebUri(raw)));
   }
 
-  void _triggerDownload() {
+  Future<void> _triggerDownload() async {
     final targetUrl = _detectedVideoUrl ?? _urlBarController.text.trim();
     if (targetUrl.isEmpty) return;
     if (checkAndShowYouTubeRestriction(context, _urlBarController.text) ||
@@ -603,18 +597,19 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
     }
 
     _isFormatSheetOpen = true;
-    DownloadFormatBottomSheet.show(
-      context: context,
-      url: targetUrl,
-      initialTitle: _pageTitle.isNotEmpty ? _pageTitle : null,
-      onFormatSelected: (kind, selectedUrl) {
-        _startInlineDownload(url: selectedUrl, kind: kind);
-      },
-    ).whenComplete(() {
+    try {
+      await DownloadFormatBottomSheet.show(
+        context: context,
+        url: targetUrl,
+        initialTitle: _pageTitle.isNotEmpty ? _pageTitle : null,
+        onFormatSelected: (kind, selectedUrl) {
+          _startInlineDownload(url: selectedUrl, kind: kind);
+        },
+      );
+    } finally {
       _isFormatSheetOpen = false;
-      _lastDismissedClipboardUrl = targetUrl;
-      ClipboardAutoDownloadService.markUrlAsHandled(targetUrl);
-    });
+      await ClipboardAutoDownloadService.markUrlAsHandled(targetUrl);
+    }
   }
 
   Future<void> _startInlineDownload({
@@ -633,7 +628,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
       _inlineDownloadProgress = 0.0;
       _inlineDownloadSpeed = 'Başlatılıyor…';
     });
-    ClipboardAutoDownloadService.clearMemoryAndCache();
 
     final isAudio = kind == DownloadKind.audio;
     final isPhoto = kind == DownloadKind.photo;
@@ -669,7 +663,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         _inlineDownloadProgress = 0.0;
         _inlineDownloadSpeed = '';
       });
-      ClipboardAutoDownloadService.clearMemoryAndCache();
 
       final fileName = file.path.split(Platform.pathSeparator).last;
       showMicroToast(
@@ -691,7 +684,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
           },
         ),
       );
-      unawaited(AdmobService.instance.showInterstitialAd());
     } catch (error) {
       // Birincil link doğrudan CDN veya geçici token URL'si olup başarısız olduysa,
       // adres çubuğundaki asıl sayfa/post URL'si üzerinden otomatik tekrar dene (Akıllı Emniyet Supabı)
@@ -726,7 +718,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
             _inlineDownloadProgress = 0.0;
             _inlineDownloadSpeed = '';
           });
-          ClipboardAutoDownloadService.clearMemoryAndCache();
 
           final fileName = file.path.split(Platform.pathSeparator).last;
           showMicroToast(
@@ -748,7 +739,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
               },
             ),
           );
-          unawaited(AdmobService.instance.showInterstitialAd());
           return;
         } catch (_) {}
       }
@@ -761,7 +751,6 @@ class InAppMediaBrowserScreenState extends State<InAppMediaBrowserScreen> {
         _inlineDownloadProgress = 0.0;
         _inlineDownloadSpeed = '';
       });
-      ClipboardAutoDownloadService.clearMemoryAndCache();
       DownloadExceptionHandler.showErrorSnackBar(context, error);
     }
   }

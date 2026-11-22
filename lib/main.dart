@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,10 +48,6 @@ import 'services/update_dialog.dart';
 const MethodChannel _externalShareDownloadChannel = MethodChannel(
   'vidsave/external_share_download',
 );
-const MethodChannel _shareLifecycleChannel = MethodChannel(
-  'vidsave/share_lifecycle',
-);
-
 @pragma('vm:entry-point')
 void externalShareDownloadEntrypoint() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -115,6 +110,7 @@ Future<void> _runExternalShareDownloads() async {
           rawUrl: url,
           type: downloadType,
           showSystemNotifications: false,
+          showInterstitialOnCompletion: false,
           onProgress: (_, _, progress, speed, _) {
             final percent = progress == null
                 ? null
@@ -166,6 +162,8 @@ Future<void> _runExternalShareDownloads() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AdmobService.instance.startSession();
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   // Olası beklenmeyen asenkron veya UI hatalarında uygulamanın beyaz ekranda donup kalmasını önle
   FlutterError.onError = (details) {
@@ -181,12 +179,6 @@ void main() async {
           .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
     } catch (e) {
       debugPrint('OnboardingScreen.checkIsFirstTime hatası: $e');
-    }
-
-    try {
-      await MobileAds.instance.initialize();
-    } catch (e) {
-      debugPrint('MobileAds.instance.initialize hatası: $e');
     }
 
     try {
@@ -282,9 +274,7 @@ class _MyAppState extends State<MyApp> {
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
           statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-          systemNavigationBarColor: isDark
-              ? ThemeService.darkBackgroundColor
-              : ThemeService.lightBackgroundColor,
+          systemNavigationBarColor: Colors.transparent,
           systemNavigationBarIconBrightness: isDark
               ? Brightness.light
               : Brightness.dark,
@@ -370,7 +360,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
   int _selectedIndex = 2;
   bool _isCheckingClipboard = false;
   bool _isClipboardPromptShowing = false;
-  bool _isCheckingPendingShareInterstitial = false;
   final GlobalKey<InAppMediaBrowserScreenState> _browserKey =
       GlobalKey<InAppMediaBrowserScreenState>();
   late final MediaLibrary _library =
@@ -387,7 +376,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       widget.mediaDownloader ?? MediaDownloader();
 
   Timer? _clipboardPollingTimer;
-  String? _lastDismissedUrl;
 
   @override
   void initState() {
@@ -397,7 +385,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     // Uygulama açılışında panoyu ve yeni güncellemeleri kontrol et
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkClipboard(checkOverlayRequest: true);
-      _checkPendingShareInterstitial();
       _checkForAppUpdatesSilently();
     });
     // Kullanıcı uygulama içindeyken (tarayıcıda veya başka sekmedeyken)
@@ -429,7 +416,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     // Kullanıcı Instagram veya TikTok'tan link kopyalayıp uygulamaya geri döndüğünde (resumed)
     if (state == AppLifecycleState.resumed) {
       _checkClipboard(checkOverlayRequest: true);
-      _checkPendingShareInterstitial();
       unawaited(AdmobService.instance.showAppOpenAdIfAvailable());
     }
   }
@@ -455,38 +441,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       }
     } catch (e) {
       debugPrint('Açılış güncelleme kontrolü uyarısı: $e');
-    }
-  }
-
-  Future<void> _checkPendingShareInterstitial() async {
-    if (!Platform.isAndroid ||
-        _isCheckingPendingShareInterstitial ||
-        AdmobService.instance.isRunningInTest) {
-      return;
-    }
-    _isCheckingPendingShareInterstitial = true;
-    try {
-      final pending = await _shareLifecycleChannel.invokeMethod<bool>(
-        'hasPendingInterstitial',
-      );
-      if (pending != true) return;
-
-      await Future<void>.delayed(const Duration(seconds: 2));
-      if (!mounted ||
-          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
-        return;
-      }
-
-      await _shareLifecycleChannel.invokeMethod<void>(
-        'clearPendingInterstitial',
-      );
-      await AdmobService.instance.showQueuedInterstitialAfterReopen();
-    } catch (error, stackTrace) {
-      debugPrint(
-        'Bekleyen indirme sonrası reklam durumu işlenemedi: $error\n$stackTrace',
-      );
-    } finally {
-      _isCheckingPendingShareInterstitial = false;
     }
   }
 
@@ -518,14 +472,12 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       // 2. Yoksa panodaki kopyalanmış desteklenen URL'yi kontrol et
       url ??= await ClipboardAutoDownloadService.checkClipboardForDownloadUrl();
 
-      // Kullanıcının daha önce 'X' ile kapattığı link ise tekrar açma
-      if (url != null && url == _lastDismissedUrl) {
-        return;
-      }
-
       if ((url != null || openDownloadFromOverlay) && mounted) {
         if (_selectedIndex == 0) {
-          _browserKey.currentState?.triggerDownloadForUrl(url);
+          final browser = _browserKey.currentState;
+          if (browser != null) {
+            await browser.triggerDownloadForUrl(url);
+          }
         } else {
           await _showClipboardPrompt(
             url,
@@ -581,8 +533,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
       // Kullanıcı pencereyi 'X' veya dışa dokunarak kapattıysa
       // aynı URL'nin tekrar tekrar art arda açılmasını engelle
       if (targetUrl != null && targetUrl.isNotEmpty) {
-        _lastDismissedUrl = targetUrl;
-        unawaited(ClipboardAutoDownloadService.markUrlAsHandled(targetUrl));
+        await ClipboardAutoDownloadService.markUrlAsHandled(targetUrl);
       }
     }
   }
@@ -604,7 +555,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
     }
 
     try {
-      ClipboardAutoDownloadService.clearMemoryAndCache();
       if (returnToSourceApp && Platform.isAndroid) {
         await ExternalAppDownloadOverlay.beginBackgroundDownload();
       }
@@ -640,7 +590,6 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
         fallbackDownloader: _mediaDownloader,
       );
 
-      ClipboardAutoDownloadService.clearMemoryAndCache();
       finishOverlayDownload(
         success: true,
         message:
@@ -669,9 +618,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           },
         ),
       );
-      unawaited(AdmobService.instance.showInterstitialAd());
     } catch (error) {
-      ClipboardAutoDownloadService.clearMemoryAndCache();
       final friendlyMsg = DownloadExceptionHandler.getFriendlyMessage(error, null);
       finishOverlayDownload(success: false, message: friendlyMsg);
       if (!mounted) return;
@@ -812,6 +759,7 @@ class _VidSaveHomePageState extends State<VidSaveHomePage>
           InAppMediaBrowserScreen(
             key: _browserKey,
             showDownloadButton: true,
+            watchClipboard: false,
             onCloseTab: () => _onDestinationSelected(_homeIndex),
           ),
           BatchDownloadScreen(
@@ -1022,7 +970,6 @@ class _DownloadPageState extends State<_DownloadPage> {
           ..progress = null
           ..status = 'İndirildi: $fileName';
       });
-      unawaited(AdmobService.instance.showInterstitialAd());
     } catch (error, stack) {
       debugPrint('Tile download error: $error\n$stack');
       final errorMsg = DownloadExceptionHandler.getFriendlyMessage(
@@ -2585,9 +2532,7 @@ class _PlatformSearchDownloadModalState
       Navigator.of(context).pop();
     }
 
-    // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing)
     _controller.clear();
-    ClipboardAutoDownloadService.clearMemoryAndCache();
 
     // Profesyonel Mikro Bildirim (Micro Toast): 2 saniyelik minimal bildirim
     showMicroToast(
@@ -2717,9 +2662,7 @@ class _PlatformSearchDownloadModalState
       Navigator.of(context).pop();
     }
 
-    // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing)
     _controller.clear();
-    ClipboardAutoDownloadService.clearMemoryAndCache();
 
     // Profesyonel Mikro Bildirim (Micro Toast): 2 saniyelik minimal bildirim
     showMicroToast(

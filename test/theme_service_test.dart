@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vid_downloader_app/theme_service.dart';
@@ -69,6 +70,49 @@ void main() {
       expect(
         darkTheme.appBarTheme.systemOverlayStyle?.statusBarIconBrightness,
         Brightness.light,
+      );
+    });
+
+    testWidgets('navigation bar stays transparent when the theme changes', (
+      tester,
+    ) async {
+      final styles = <Map<Object?, Object?>>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'SystemChrome.setSystemUIOverlayStyle') {
+            styles.add(Map<Object?, Object?>.from(call.arguments as Map));
+          }
+          return null;
+        },
+      );
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        );
+      });
+
+      await ThemeService.setDarkMode(true);
+      await tester.pump();
+      expect(
+        styles.last['systemNavigationBarColor'],
+        Colors.transparent.toARGB32(),
+      );
+      expect(
+        styles.last['systemNavigationBarIconBrightness'],
+        'Brightness.light',
+      );
+
+      await ThemeService.setDarkMode(false);
+      await tester.pump();
+      expect(
+        styles.last['systemNavigationBarColor'],
+        Colors.transparent.toARGB32(),
+      );
+      expect(
+        styles.last['systemNavigationBarIconBrightness'],
+        'Brightness.dark',
       );
     });
   });

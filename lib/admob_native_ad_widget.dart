@@ -7,6 +7,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import 'admob_service.dart';
 import 'services/ad_shield_service.dart';
+import 'subscription_screen.dart';
 
 /// AdMob ve Google Play politikalarına tam uyumlu Yerel (Native) Reklam Bileşeni.
 ///
@@ -29,27 +30,57 @@ class _AdmobNativeAdWidgetState extends State<AdmobNativeAdWidget> {
   NativeAd? _nativeAd;
   bool _isLoaded = false;
   bool _isPremium = false;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    SubscriptionScreen.premiumStatusChanges.addListener(_onPremiumStatusChanged);
     _checkPremiumAndLoad();
   }
 
+  void _onPremiumStatusChanged() {
+    if (SubscriptionScreen.premiumStatusChanges.value == true) {
+      _loadGeneration++;
+      _nativeAd?.dispose();
+      _nativeAd = null;
+      if (mounted) {
+        setState(() {
+          _isPremium = true;
+          _isLoaded = false;
+        });
+      }
+    } else {
+      unawaited(_checkPremiumAndLoad());
+    }
+  }
+
   Future<void> _checkPremiumAndLoad() async {
+    final generation = ++_loadGeneration;
     if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) return;
     if (AdmobService.instance.isRunningInTest) return;
 
     final isPrem = await AdmobService.instance.checkIsPremium();
     final isBlocked = await AdShieldService.instance.isAdBlocked();
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
     if (isPrem || isBlocked) {
-      setState(() => _isPremium = true);
+      setState(() {
+        _isPremium = true;
+        _isLoaded = false;
+      });
+      _nativeAd?.dispose();
+      _nativeAd = null;
       return;
     }
+    if (_isPremium) setState(() => _isPremium = false);
+    if (_nativeAd != null) return;
 
     await AdmobService.instance.initialize();
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration ||
+        await AdmobService.instance.checkIsPremium()) {
+      return;
+    }
+    if (!mounted || generation != _loadGeneration) return;
     if (!AdmobService.instance.isInitialized ||
         !AdmobService.instance.canRequestAds) {
       return;
@@ -80,8 +111,10 @@ class _AdmobNativeAdWidgetState extends State<AdmobNativeAdWidget> {
             }
           });
         },
-        onAdLoaded: (ad) {
-          if (!mounted) {
+        onAdLoaded: (ad) async {
+          final isPremium = await AdmobService.instance.checkIsPremium();
+          if (!mounted || isPremium || !identical(_nativeAd, ad)) {
+            if (identical(_nativeAd, ad)) _nativeAd = null;
             ad.dispose();
             return;
           }
@@ -92,7 +125,7 @@ class _AdmobNativeAdWidgetState extends State<AdmobNativeAdWidget> {
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
-          if (mounted) {
+          if (mounted && identical(_nativeAd, ad)) {
             setState(() {
               _nativeAd = null;
               _isLoaded = false;
@@ -121,11 +154,13 @@ class _AdmobNativeAdWidgetState extends State<AdmobNativeAdWidget> {
       ),
     );
 
+    _nativeAd = ad;
     ad.load();
   }
 
   @override
   void dispose() {
+    SubscriptionScreen.premiumStatusChanges.removeListener(_onPremiumStatusChanged);
     _nativeAd?.dispose();
     _nativeAd = null;
     super.dispose();

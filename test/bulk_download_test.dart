@@ -9,6 +9,7 @@ import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/bulk_download_screen.dart';
 import 'package:vid_downloader_app/bulk_download_service.dart';
 import 'package:vid_downloader_app/media_downloader.dart';
+import 'package:vid_downloader_app/services/review_service.dart';
 
 class _FakeResolver implements MediaResolver {
   @override
@@ -52,11 +53,24 @@ class _FakeDownloader extends MediaDownloader {
   }
 }
 
+Future<void> _waitForBulkCompletion(WidgetTester tester) async {
+  for (var i = 0; i < 300; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    if (find.textContaining('2/2 Başarılı').evaluate().isNotEmpty) return;
+  }
+  fail('Expected two completed bulk downloads');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      ReviewService.prefKeyHasRequestedReview: true,
+    });
   });
 
   group('BulkDownloadService.parseBulkUrls', () {
@@ -140,6 +154,30 @@ void main() {
   });
 
   group('BulkDownloadScreen UI', () {
+    testWidgets('a successful multi-file bulk download counts once', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BulkDownloadScreen(
+            resolver: _FakeResolver(),
+            downloader: _FakeDownloader(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField),
+        'https://instagram.com/reel/1\nhttps://tiktok.com/2',
+      );
+      await tester.pump();
+      await tester.tap(find.text('Toplu İndirmeyi Başlat (2 Link)'));
+      await _waitForBulkCompletion(tester);
+      expect(find.textContaining('2/2 Başarılı'), findsOneWidget);
+      expect(
+        (await SharedPreferences.getInstance()).getInt('ad_successful_operations'),
+        1,
+      );
+    });
+
     testWidgets('renders TextField with maxLines 6, type choice chips and start button', (
       WidgetTester tester,
     ) async {
@@ -178,6 +216,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.byType(LinearProgressIndicator), findsWidgets);
+      await _waitForBulkCompletion(tester);
     });
   });
 }

@@ -84,7 +84,8 @@ void main() {
 
         // Link kopyalandığında veya medya algılandığında doğrudan triggerDownloadForUrl çağrılır
         key.currentState?.triggerDownloadForUrl('https://example.com/video.mp4');
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
 
         expect(find.text('İndirme formatı'), findsOneWidget);
         expect(

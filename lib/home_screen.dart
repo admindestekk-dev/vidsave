@@ -16,7 +16,6 @@ import 'media_downloader.dart';
 import 'subscription_screen.dart';
 import 'download_exception_handler.dart';
 import 'downloads_screen.dart';
-import 'clipboard_auto_download_service.dart';
 import 'services/api_service.dart';
 import 'services/micro_toast.dart';
 import 'services/unified_download_engine.dart';
@@ -753,14 +752,11 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     }
     widget.onDownloadStarted?.call();
 
-    // Her İndirme Sonrası Link Hafızasını Sıfırla (Cache Cleansing):
-    // İndirme başladığı anda eski linki ve hafızayı tamamen temizle
     _controller.clear();
     _videoTitle = null;
     _videoThumbnail = null;
     _videoDuration = null;
     _activeTitle = null;
-    ClipboardAutoDownloadService.clearMemoryAndCache();
 
     setState(() {
       _isAnalyzing = false;

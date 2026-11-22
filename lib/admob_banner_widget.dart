@@ -7,6 +7,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import 'admob_service.dart';
 import 'services/ad_shield_service.dart';
+import 'subscription_screen.dart';
 
 /// AdMob ve Google Play politikalarına tam uyumlu standart Banner Reklam Bileşeni.
 ///
@@ -35,27 +36,57 @@ class _AdmobBannerWidgetState extends State<AdmobBannerWidget> {
   BannerAd? _bannerAd;
   bool _isLoaded = false;
   bool _isPremium = false;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    SubscriptionScreen.premiumStatusChanges.addListener(_onPremiumStatusChanged);
     _checkPremiumAndLoad();
   }
 
+  void _onPremiumStatusChanged() {
+    if (SubscriptionScreen.premiumStatusChanges.value == true) {
+      _loadGeneration++;
+      _bannerAd?.dispose();
+      _bannerAd = null;
+      if (mounted) {
+        setState(() {
+          _isPremium = true;
+          _isLoaded = false;
+        });
+      }
+    } else {
+      unawaited(_checkPremiumAndLoad());
+    }
+  }
+
   Future<void> _checkPremiumAndLoad() async {
+    final generation = ++_loadGeneration;
     if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) return;
     if (AdmobService.instance.isRunningInTest) return;
 
     final isPrem = await AdmobService.instance.checkIsPremium();
     final isBlocked = await AdShieldService.instance.isAdBlocked();
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
     if (isPrem || isBlocked) {
-      setState(() => _isPremium = true);
+      setState(() {
+        _isPremium = true;
+        _isLoaded = false;
+      });
+      _bannerAd?.dispose();
+      _bannerAd = null;
       return;
     }
+    if (_isPremium) setState(() => _isPremium = false);
+    if (_bannerAd != null) return;
 
     await AdmobService.instance.initialize();
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration ||
+        await AdmobService.instance.checkIsPremium()) {
+      return;
+    }
+    if (!mounted || generation != _loadGeneration) return;
     if (!AdmobService.instance.isInitialized ||
         !AdmobService.instance.canRequestAds) {
       return;
@@ -84,8 +115,10 @@ class _AdmobBannerWidgetState extends State<AdmobBannerWidget> {
             }
           });
         },
-        onAdLoaded: (ad) {
-          if (!mounted) {
+        onAdLoaded: (ad) async {
+          final isPremium = await AdmobService.instance.checkIsPremium();
+          if (!mounted || isPremium || !identical(_bannerAd, ad)) {
+            if (identical(_bannerAd, ad)) _bannerAd = null;
             ad.dispose();
             return;
           }
@@ -96,7 +129,7 @@ class _AdmobBannerWidgetState extends State<AdmobBannerWidget> {
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
-          if (mounted) {
+          if (mounted && identical(_bannerAd, ad)) {
             setState(() {
               _bannerAd = null;
               _isLoaded = false;
@@ -107,11 +140,13 @@ class _AdmobBannerWidgetState extends State<AdmobBannerWidget> {
       ),
     );
 
+    _bannerAd = ad;
     ad.load();
   }
 
   @override
   void dispose() {
+    SubscriptionScreen.premiumStatusChanges.removeListener(_onPremiumStatusChanged);
     _bannerAd?.dispose();
     _bannerAd = null;
     super.dispose();

@@ -110,7 +110,18 @@ void main() {
       );
     });
 
-    test('clearLastHandled allows re-detecting URL after completed download', () async {
+    test('concurrent checks only return the URL once', () async {
+      clipboardText = 'https://www.instagram.com/reel/123';
+
+      final results = await Future.wait([
+        ClipboardAutoDownloadService.checkClipboardForDownloadUrl(),
+        ClipboardAutoDownloadService.checkClipboardForDownloadUrl(),
+      ]);
+
+      expect(results.where((url) => url != null), [clipboardText]);
+    });
+
+    test('explicit reset allows re-detecting URL', () async {
       const url = 'https://www.instagram.com/reel/123';
       clipboardText = url;
 
@@ -125,7 +136,6 @@ void main() {
         isNull,
       );
 
-      // İndirme tamamlandığında clearLastHandled çağrılır
       await ClipboardAutoDownloadService.clearLastHandled();
 
       // Sıfırlandıktan sonra aynı link veya yeni istek yeniden algılanabilir
