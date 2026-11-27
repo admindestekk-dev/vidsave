@@ -4,6 +4,15 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -11,6 +20,17 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Log
+import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.BitmapOverlay
+import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.StaticOverlaySettings
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.Effects
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.Transformer
 import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -18,7 +38,11 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.ArrayDeque
 import java.util.Locale
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,6 +52,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val DOWNLOADS_CHANNEL = "vidsave/public_downloads"
+        private const val WATERMARK_CHANNEL = "vidsave/video_watermark"
         private const val OVERLAY_CHANNEL = "vidsave/external_app_download_overlay"
         private const val WRITE_STORAGE_REQUEST = 4207
     }
@@ -36,6 +61,9 @@ class MainActivity : FlutterActivity() {
     private var pendingLegacyResult: MethodChannel.Result? = null
     private var pendingOverlayDownloadUrl: String? = null
     private var pendingOverlayOpenDownload: Boolean = false
+    private var watermarkInProgress = false
+    private val pendingWatermarkRequests =
+        ArrayDeque<Pair<String, MethodChannel.Result>>()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -74,6 +102,22 @@ class MainActivity : FlutterActivity() {
             }
 
             exportFile(sourcePath, fileName, result)
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            WATERMARK_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "watermarkVideo") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val sourcePath = call.argument<String>("sourcePath")
+            if (sourcePath.isNullOrBlank()) {
+                result.error("invalid_arguments", "Video dosya yolu eksik.", null)
+                return@setMethodCallHandler
+            }
+            watermarkVideo(sourcePath, result)
         }
 
         MethodChannel(
@@ -348,6 +392,206 @@ class MainActivity : FlutterActivity() {
             return
         }
         exportFile(request.first, request.second, result)
+    }
+
+    @androidx.annotation.OptIn(UnstableApi::class)
+    private fun watermarkVideo(
+        sourcePath: String,
+        result: MethodChannel.Result,
+    ) {
+        if (watermarkInProgress) {
+            pendingWatermarkRequests.addLast(sourcePath to result)
+            return
+        }
+
+        val source = File(sourcePath)
+        if (!source.isFile) {
+            result.error("source_not_found", "Filigran uygulanacak video bulunamadı.", null)
+            return
+        }
+
+        val retriever = MediaMetadataRetriever()
+        val videoWidth: Int
+        val videoHeight: Int
+        try {
+            retriever.setDataSource(source.absolutePath)
+            videoWidth = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                ?.toIntOrNull() ?: 0
+            videoHeight = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                ?.toIntOrNull() ?: 0
+        } catch (error: Exception) {
+            result.error("invalid_video", error.message ?: "Video okunamadı.", null)
+            return
+        } finally {
+            retriever.release()
+        }
+        if (videoWidth <= 0 || videoHeight <= 0) {
+            result.error("invalid_video", "Video boyutları okunamadı.", null)
+            return
+        }
+
+        val badge = createWatermarkBitmap(videoWidth)
+        val margin = min(
+            videoWidth * 0.05f,
+            max(16f, videoWidth * 16f / 360f),
+        )
+        val overlaySettings = StaticOverlaySettings.Builder()
+            .setBackgroundFrameAnchor(
+                1f - 2f * margin / videoWidth,
+                -1f + 2f * margin / videoHeight,
+            )
+            .setOverlayFrameAnchor(1f, -1f)
+            .setAlphaScale(0.75f)
+            .build()
+        val bitmapOverlay = BitmapOverlay.createStaticBitmapOverlay(
+            badge,
+            overlaySettings,
+        )
+        val editedMediaItem = EditedMediaItem.Builder(
+            MediaItem.fromUri(Uri.fromFile(source)),
+        ).setEffects(
+            Effects(emptyList(), listOf(OverlayEffect(listOf(bitmapOverlay)))),
+        ).build()
+
+        val outputBase = "${source.nameWithoutExtension}_watermarked"
+        var output = File(source.parentFile ?: cacheDir, "$outputBase.mp4")
+        var copyIndex = 1
+        while (output.exists()) {
+            output = File(source.parentFile ?: cacheDir, "${outputBase}_$copyIndex.mp4")
+            copyIndex++
+        }
+
+        watermarkInProgress = true
+        val transformer = try {
+            Transformer.Builder(this)
+                .addListener(
+                    object : Transformer.Listener {
+                        override fun onCompleted(
+                            composition: Composition,
+                            exportResult: ExportResult,
+                        ) {
+                            badge.recycle()
+                            if (!output.isFile || output.length() == 0L) {
+                                result.error(
+                                    "watermark_failed",
+                                    "Filigranlı video oluşturulamadı.",
+                                    null,
+                                )
+                            } else {
+                                result.success(output.absolutePath)
+                            }
+                            finishWatermarkVideo()
+                        }
+
+                        override fun onError(
+                            composition: Composition,
+                            exportResult: ExportResult,
+                            exportException: androidx.media3.transformer.ExportException,
+                        ) {
+                            badge.recycle()
+                            output.delete()
+                            Log.e("VidSave", "Media3 filigran işlemi başarısız oldu", exportException)
+                            result.error(
+                                "watermark_failed",
+                                exportException.message ?: "Video filigranlanamadı.",
+                                null,
+                            )
+                            finishWatermarkVideo()
+                        }
+                    },
+                )
+                .build()
+        } catch (error: Exception) {
+            badge.recycle()
+            result.error("watermark_failed", error.message ?: "Media3 başlatılamadı.", null)
+            finishWatermarkVideo()
+            return
+        }
+
+        try {
+            transformer.start(editedMediaItem, output.absolutePath)
+        } catch (error: Exception) {
+            badge.recycle()
+            output.delete()
+            result.error("watermark_failed", error.message ?: "Video filigranlanamadı.", null)
+            finishWatermarkVideo()
+        }
+    }
+
+    private fun finishWatermarkVideo() {
+        watermarkInProgress = false
+        if (pendingWatermarkRequests.isNotEmpty()) {
+            val next = pendingWatermarkRequests.removeFirst()
+            watermarkVideo(next.first, next.second)
+        }
+    }
+
+    private fun createWatermarkBitmap(videoWidth: Int): Bitmap {
+        val bitmapWidth = max(1, (videoWidth * 0.15f).roundToInt())
+        val scale = bitmapWidth / 600f
+        val bitmapHeight = max(1, (150f * scale).roundToInt())
+        val bitmap = Bitmap.createBitmap(
+            bitmapWidth,
+            bitmapHeight,
+            Bitmap.Config.ARGB_8888,
+        )
+        val canvas = Canvas(bitmap)
+        canvas.scale(scale, scale)
+
+        val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xC0181D2B.toInt()
+            style = Paint.Style.FILL
+        }
+        val badgeBounds = RectF(2f, 2f, 598f, 148f)
+        canvas.drawRoundRect(badgeBounds, 42f, 42f, backgroundPaint)
+
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x99FFFFFF.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        canvas.drawRoundRect(badgeBounds, 42f, 42f, borderPaint)
+
+        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 11f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            shader = LinearGradient(
+                38f,
+                30f,
+                138f,
+                125f,
+                intArrayOf(0xFFFF3B50.toInt(), 0xFF9B42FF.toInt()),
+                null,
+                Shader.TileMode.CLAMP,
+            )
+        }
+        val arrow = Path().apply {
+            moveTo(88f, 28f)
+            lineTo(88f, 83f)
+            moveTo(62f, 62f)
+            lineTo(88f, 88f)
+            lineTo(114f, 62f)
+            moveTo(48f, 101f)
+            lineTo(48f, 120f)
+            lineTo(128f, 120f)
+            lineTo(128f, 101f)
+        }
+        canvas.drawPath(arrow, iconPaint)
+
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textSize = 53f
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        }
+        val label = "VidSave • HD"
+        val baseline = 75f - (textPaint.ascent() + textPaint.descent()) / 2f
+        canvas.drawText(label, 158f, baseline, textPaint)
+        return bitmap
     }
 
     private fun exportFile(

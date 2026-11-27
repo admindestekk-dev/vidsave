@@ -1260,8 +1260,8 @@ class _DownloadPageState extends State<_DownloadPage> {
               margin: EdgeInsets.symmetric(vertical: 4),
             ),
             const SizedBox(height: 20),
-            const Text(
-              '© 2026 VidSave. All rights reserved.',
+            Text(
+              '© ${DateTime.now().year} VidSave. All rights reserved.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Color(0xFF87949D),

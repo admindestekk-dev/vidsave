@@ -12,13 +12,19 @@ import server
 
 class DownloadRouteTests(unittest.TestCase):
     def setUp(self):
-        self.client = server.app.test_client()
         self.original_api_key = server.API_KEY
-        server.API_KEY = ""
+        self.original_limiter_enabled = server.limiter.enabled
+        server.API_KEY = "test-api-key"
+        server.limiter.enabled = False
+        self.client = server.app.test_client()
+        self.client.environ_base["HTTP_X_API_KEY"] = server.API_KEY
+        server.limiter.reset()
         server._JOBS.clear()
 
     def tearDown(self):
         server.API_KEY = self.original_api_key
+        server.limiter.enabled = self.original_limiter_enabled
+        server.limiter.reset()
         server._JOBS.clear()
 
     def test_proxy_route_forwards_range_header_for_resolved_job(self):

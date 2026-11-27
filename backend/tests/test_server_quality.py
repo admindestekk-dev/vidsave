@@ -2,12 +2,23 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from backend.server import app
+from backend import server
 
 
 class ServerQualityTests(unittest.TestCase):
     def setUp(self):
-        self.client = app.test_client()
+        self.original_api_key = server.API_KEY
+        self.original_limiter_enabled = server.limiter.enabled
+        server.API_KEY = "test-api-key"
+        server.limiter.enabled = False
+        self.client = server.app.test_client()
+        self.client.environ_base["HTTP_X_API_KEY"] = server.API_KEY
+        server.limiter.reset()
+
+    def tearDown(self):
+        server.API_KEY = self.original_api_key
+        server.limiter.enabled = self.original_limiter_enabled
+        server.limiter.reset()
 
     @patch("backend.server._run_json")
     def test_info_probe_returns_available_qualities(self, mock_run_json):

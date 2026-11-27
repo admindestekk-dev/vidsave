@@ -125,12 +125,18 @@ class PlayerClientLadderTests(unittest.TestCase):
 
 class AntiBotStatusTests(unittest.TestCase):
     def setUp(self):
-        self.client = server.app.test_client()
         self.original_api_key = server.API_KEY
-        server.API_KEY = ""
+        self.original_limiter_enabled = server.limiter.enabled
+        server.API_KEY = "test-api-key"
+        server.limiter.enabled = False
+        self.client = server.app.test_client()
+        self.client.environ_base["HTTP_X_API_KEY"] = server.API_KEY
+        server.limiter.reset()
 
     def tearDown(self):
         server.API_KEY = self.original_api_key
+        server.limiter.enabled = self.original_limiter_enabled
+        server.limiter.reset()
 
     def test_status_reports_strategy_without_leaking_proxy_credentials(self):
         secret_proxy = "http://user:supersecret@proxy.example:8080"
@@ -147,7 +153,9 @@ class AntiBotStatusTests(unittest.TestCase):
 
     def test_status_requires_configured_api_key(self):
         server.API_KEY = "test-api-key"
-        response = self.client.get("/api/anti-bot/status")
+        response = self.client.get(
+            "/api/anti-bot/status", headers={"X-Api-Key": "wrong"}
+        )
         self.assertEqual(response.status_code, 401)
 
 

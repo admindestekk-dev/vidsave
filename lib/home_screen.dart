@@ -41,7 +41,6 @@ Future<void> _handlePremiumClick(
   BackendSettingsStore? store,
   http.Client? httpClient,
   VoidCallback? onSubscribed,
-  bool? isPlayStoreLive,
 }) async {
   final auth = authService ?? AuthService.instance;
   final hasSession = await auth.hasStoredSession;
@@ -57,7 +56,6 @@ Future<void> _handlePremiumClick(
           httpClient: httpClient,
           authService: auth,
           onSubscribed: onSubscribed,
-          isPlayStoreLive: isPlayStoreLive,
         ),
       ),
     );
@@ -79,7 +77,6 @@ Future<void> _handlePremiumClick(
             httpClient: httpClient,
             authService: auth,
             onSubscribed: onSubscribed,
-            isPlayStoreLive: isPlayStoreLive,
           ),
         ),
       );
@@ -95,7 +92,6 @@ Future<void> handlePremiumClick(
   BackendSettingsStore? store,
   http.Client? httpClient,
   VoidCallback? onSubscribed,
-  bool? isPlayStoreLive,
 }) => _handlePremiumClick(
   context,
   authService: authService,
@@ -103,7 +99,6 @@ Future<void> handlePremiumClick(
   store: store,
   httpClient: httpClient,
   onSubscribed: onSubscribed,
-  isPlayStoreLive: isPlayStoreLive,
 );
 
 /// Kullanıcı Google ile giriş yapmadığında açılan şık Google oturum açma alt sayfası.
@@ -330,7 +325,6 @@ class PremiumBanner extends StatefulWidget {
     this.store,
     this.httpClient,
     this.onSubscribed,
-    this.isPlayStoreLive,
   });
 
   final AuthService? authService;
@@ -338,7 +332,6 @@ class PremiumBanner extends StatefulWidget {
   final BackendSettingsStore? store;
   final http.Client? httpClient;
   final VoidCallback? onSubscribed;
-  final bool? isPlayStoreLive;
 
   @override
   State<PremiumBanner> createState() => _PremiumBannerState();
@@ -375,7 +368,6 @@ class _PremiumBannerState extends State<PremiumBanner> {
         _checkPremium();
         widget.onSubscribed?.call();
       },
-      isPlayStoreLive: widget.isPlayStoreLive,
     ).then((_) {
       if (mounted) _checkPremium();
     });
@@ -655,6 +647,63 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     return '$minutes:$remainingSeconds';
   }
 
+  Future<bool?> _showVideoDownloadOptions({required bool isPremium}) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurface
+                        .withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                context.tr('download_watermark_options'),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(sheetContext, true),
+                icon: const Icon(Icons.branding_watermark_rounded),
+                label: Text(context.tr('download_watermarked')),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.pop(sheetContext, false),
+                icon: const Icon(Icons.workspace_premium_rounded),
+                label: Text(context.tr('download_without_watermark')),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: isPremium
+                      ? const Color(0xFFB8860B)
+                      : Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleDownloadPressed(String type) async {
     final rawUrl = _controller.text.trim();
     if (rawUrl.isEmpty) {
@@ -676,17 +725,39 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     _focusNode.unfocus();
 
     try {
+      var applyWatermark = false;
+      if (Platform.isAndroid &&
+          type.toLowerCase() != 'mp3' &&
+          type.toLowerCase() != 'audio') {
+        final isPremium = await SubscriptionScreen.readPremiumStatus();
+        if (!mounted) return;
+        final choice = await _showVideoDownloadOptions(isPremium: isPremium);
+        if (choice == null || !mounted) return;
+        if (!choice && !isPremium) {
+          await handlePremiumClick(context);
+          return;
+        }
+        applyWatermark = choice;
+      }
+
       // 1. Premium değilse yasal AdMob onay pop-up'ını aç
       await AdmobService.instance.showRewardedAdOrBypass(
         onRewardEarned: () async {
           if (!mounted) return;
-          await _executeServerDownload(rawUrl, type);
+          await _executeServerDownload(
+            rawUrl,
+            type,
+            applyWatermark: applyWatermark,
+          );
         },
       );
     } catch (e) {
       debugPrint('QuickDownloadWindow execution error: $e');
       if (!mounted) return;
-      final friendlyMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
+      final friendlyMsg = DownloadExceptionHandler.getFriendlyMessage(
+        e,
+        context,
+      );
       setState(() {
         _isAnalyzing = false;
         _isDownloading = false;
@@ -696,7 +767,11 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
     }
   }
 
-  Future<void> _executeServerDownload(String rawUrl, String type) async {
+  Future<void> _executeServerDownload(
+    String rawUrl,
+    String type, {
+    required bool applyWatermark,
+  }) async {
     final l10n = AppLocalizations.of(context);
     setState(() {
       _isAnalyzing = true;
@@ -780,6 +855,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
         rawUrl: rawUrl,
         type: type,
         preferredTitle: _videoTitle,
+        applyWatermark: applyWatermark,
         onProgress: (received, total, progress, speed, status) {
           if (!mounted) return;
           setState(() {
@@ -811,9 +887,7 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
           onPressed: () {
             Navigator.push(
               context,
-              MaterialPageRoute<void>(
-                builder: (_) => const DownloadsScreen(),
-              ),
+              MaterialPageRoute<void>(builder: (_) => const DownloadsScreen()),
             );
           },
         ),
@@ -833,7 +907,10 @@ class _QuickDownloadWindowState extends State<QuickDownloadWindow> {
 
       if (!mounted) return;
 
-      final friendlyMsg = DownloadExceptionHandler.getFriendlyMessage(e, context);
+      final friendlyMsg = DownloadExceptionHandler.getFriendlyMessage(
+        e,
+        context,
+      );
 
       setState(() {
         _isAnalyzing = false;

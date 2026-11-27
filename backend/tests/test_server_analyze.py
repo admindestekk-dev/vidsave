@@ -12,7 +12,18 @@ import server
 
 class AnalyzeEndpointTests(unittest.TestCase):
     def setUp(self):
+        self.original_api_key = server.API_KEY
+        self.original_limiter_enabled = server.limiter.enabled
+        server.API_KEY = "test-api-key"
+        server.limiter.enabled = False
         self.client = server.app.test_client()
+        self.client.environ_base["HTTP_X_API_KEY"] = server.API_KEY
+        server.limiter.reset()
+
+    def tearDown(self):
+        server.API_KEY = self.original_api_key
+        server.limiter.enabled = self.original_limiter_enabled
+        server.limiter.reset()
 
     def test_options_preflight_returns_204(self):
         res = self.client.options("/api/analyze")
@@ -197,7 +208,18 @@ class AnalyzeEndpointTests(unittest.TestCase):
 
 class StreamValidationTests(unittest.TestCase):
     def setUp(self):
+        self.original_api_key = server.API_KEY
+        self.original_limiter_enabled = server.limiter.enabled
+        server.API_KEY = "test-api-key"
+        server.limiter.enabled = False
         self.client = server.app.test_client()
+        self.client.environ_base["HTTP_X_API_KEY"] = server.API_KEY
+        server.limiter.reset()
+
+    def tearDown(self):
+        server.API_KEY = self.original_api_key
+        server.limiter.enabled = self.original_limiter_enabled
+        server.limiter.reset()
 
     def test_pick_direct_format_rejects_video_only_streams(self):
         video_only = {

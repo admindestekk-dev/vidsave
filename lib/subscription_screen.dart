@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:confetti/confetti.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -21,9 +20,6 @@ import 'l10n/l10n_extension.dart';
 /// Ürün Kimliği: `vidsave_premium_monthly`
 /// Satın alma gerçekleştiğinde makbuz backend `/api/auth/verify-purchase` endpoint'i
 /// ile doğrulanır, 3 saniyelik konfeti patlatılır ve premium durum SharedPreferences'a kaydedilir.
-/// Debug builds may opt into the backend test endpoint. Release builds always
-/// use the platform store purchase flow.
-bool isPlayStoreLive = false;
 
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({
@@ -33,7 +29,6 @@ class SubscriptionScreen extends StatefulWidget {
     this.httpClient,
     this.authService,
     this.onSubscribed,
-    this.isPlayStoreLive,
   });
 
   final InAppPurchase? inAppPurchase;
@@ -41,7 +36,6 @@ class SubscriptionScreen extends StatefulWidget {
   final http.Client? httpClient;
   final AuthService? authService;
   final VoidCallback? onSubscribed;
-  final bool? isPlayStoreLive;
 
   static const String productId = 'vidsave_premium_monthly';
   static const String prefKeyIsPremium = 'vidsave_is_premium_verified_v2';
@@ -103,7 +97,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _isAvailable = false;
   bool _loading = false;
   bool _isPremiumActive = false;
-  bool _offlineSandboxMode = false;
   String? _receiptMessage;
   ProductDetails? _monthlyProduct;
 
@@ -160,7 +153,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         if (mounted) {
           setState(() {
             _isAvailable = false;
-            _offlineSandboxMode = kDebugMode;
           });
         }
         return;
@@ -184,8 +176,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         setState(() {
           _isAvailable = true;
           _monthlyProduct = product;
-          _offlineSandboxMode =
-              kDebugMode && (response.error != null || product == null);
         });
       }
     } catch (e) {
@@ -194,7 +184,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         setState(() {
           _isAvailable = false;
           _monthlyProduct = null;
-          _offlineSandboxMode = kDebugMode;
         });
       }
     }
@@ -391,88 +380,18 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  bool get _liveMode =>
-      !kDebugMode || (widget.isPlayStoreLive ?? isPlayStoreLive);
-
   /// Abone Ol butonuna basıldığında
   Future<void> _handleSubscribe() async {
     if (_loading || _isPremiumActive) return;
 
-    if (_offlineSandboxMode && kDebugMode) {
-      await _satinAlmaBasarili();
-      return;
-    }
-
-    // isPlayStoreLive == true (Gelecekteki resmi mağaza durumu):
-    // Buton doğrudan resmi Google Play Store ödeme penceresini açar.
-    if (_liveMode) {
-      if (_monthlyProduct != null && _isAvailable) {
-        setState(() => _loading = true);
-        final purchaseParam = PurchaseParam(productDetails: _monthlyProduct!);
-        try {
-          await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
-        } catch (e) {
-          if (mounted) {
-            setState(() => _loading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Google Play ödeme akışı başlatılamadı: $e'),
-                backgroundColor: Colors.redAccent,
-              ),
-            );
-          }
-        }
-        return;
-      } else {
-        if (kDebugMode || _offlineSandboxMode) {
-          await _satinAlmaBasarili();
-          return;
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isTurkish(context)
-                  ? 'Google Play Store ürün detayı henüz hazır değil.'
-                  : 'Google Play Store product details not ready yet.',
-            ),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-        return;
-      }
-    }
-
-    // The test endpoint is available only in debug builds.
-    await _handleFallbackDirectSubscribe();
-  }
-
-  Future<void> _satinAlmaBasarili() async {
-    if (_loading || _isPremiumActive) {
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _receiptMessage = null;
-    });
-
-    try {
-      final premiumUntil = DateTime.now().add(const Duration(days: 30));
-      await SubscriptionScreen.savePremiumStatus(premiumUntil);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        SubscriptionScreen.prefKeySubscribedAt,
-        DateTime.now().toIso8601String(),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _loading = false);
+    final product = _monthlyProduct;
+    if (!_isAvailable || product == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             _isTurkish(context)
-                ? 'Test Premium durumu kaydedilemedi: $error'
-                : 'Could not save test Premium status: $error',
+                ? 'Google Play Store ürün detayı henüz hazır değil.'
+                : 'Google Play Store product details not ready yet.',
           ),
           backgroundColor: Colors.redAccent,
         ),
@@ -480,144 +399,24 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       return;
     }
 
-    if (!mounted) return;
-    final isTurkish = _isTurkish(context);
-    final receipt = isTurkish
-        ? 'Çevrimdışı test: Premium 30 gün boyunca etkinleştirildi. Gerçek ödeme alınmadı.'
-        : 'Offline test: Premium enabled for 30 days. No real payment was charged.';
-    setState(() {
-      _loading = false;
-      _isPremiumActive = true;
-      _receiptMessage = receipt;
-    });
-
-    _confettiController.play();
-    widget.onSubscribed?.call();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(receipt),
-        backgroundColor: const Color(0xFF0E7C4B),
-        duration: const Duration(seconds: 4),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-  }
-
-  Future<void> _handleFallbackDirectSubscribe() async {
-    if (!kDebugMode) return;
     setState(() {
       _loading = true;
       _receiptMessage = null;
     });
 
-    final isTurkish = _isTurkish(context);
-    final langCode = isTurkish ? 'tr' : 'en';
-    http.Client? ownedClient;
-
     try {
-      String baseUrl = BackendSettings.defaultBaseUrl;
-      String apiKey = '';
-      if (widget.store != null) {
-        try {
-          final settings = await widget.store!.load();
-          if (settings.isConfigured) {
-            baseUrl = settings.baseUrl;
-            apiKey = settings.apiKey;
-          }
-        } catch (_) {}
-      }
-
-      final uri = Uri.parse(baseUrl).resolve('/api/auth/subscribe-monthly');
-      final client = widget.httpClient ?? (ownedClient = http.Client());
-      final authService = widget.authService ?? AuthService.instance;
-
-      final response = await client
-          .post(
-            uri,
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              if (apiKey.isNotEmpty) 'X-Api-Key': apiKey,
-              ...await authService.authorizationHeaders(),
-            },
-            body: jsonEncode({
-              'lang': langCode,
-              'userId': await authService.userIdForRequests(),
-            }),
-          )
-          .timeout(const Duration(seconds: 5));
-      final data = jsonDecode(response.body);
-      final subscription = data is Map<String, dynamic>
-          ? data['subscription']
-          : null;
-      final premiumUntilValue = subscription is Map<String, dynamic>
-          ? subscription['premiumUntil'] ?? subscription['premium_until']
-          : null;
-      final premiumUntil = premiumUntilValue is String
-          ? DateTime.tryParse(premiumUntilValue)
-          : null;
-      if (response.statusCode != 200 ||
-          data is! Map<String, dynamic> ||
-          data['success'] != true ||
-          premiumUntil == null ||
-          !premiumUntil.isAfter(DateTime.now())) {
-        throw StateError('Test aboneliği sunucu tarafından onaylanmadı.');
-      }
-
-      final serverReceipt = subscription is Map<String, dynamic>
-          ? subscription['receiptMessage']?.toString()
-          : null;
-      final finalReceipt = serverReceipt?.isNotEmpty == true
-          ? serverReceipt!
-          : isTurkish
-          ? 'Geliştirici test aboneliği etkinleştirildi.'
-          : 'Developer test subscription enabled.';
-
-      await SubscriptionScreen.savePremiumStatus(premiumUntil);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        SubscriptionScreen.prefKeySubscribedAt,
-        DateTime.now().toIso8601String(),
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-        _isPremiumActive = true;
-        _receiptMessage = finalReceipt;
-      });
-
-      _confettiController.play();
-      widget.onSubscribed?.call();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(finalReceipt),
-          backgroundColor: const Color(0xFF0E7C4B),
-          duration: const Duration(seconds: 4),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      final purchaseParam = PurchaseParam(productDetails: product);
+      await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isTurkish
-                ? 'Abonelik işlemi tamamlanamadı: $e'
-                : 'Subscription could not be completed: $e',
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Google Play ödeme akışı başlatılamadı: $e'),
+            backgroundColor: Colors.redAccent,
           ),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    } finally {
-      ownedClient?.close();
+        );
+      }
     }
   }
 
@@ -649,32 +448,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final lang = _getLanguageCode(context);
     final isTurkish = lang == 'tr';
 
-    final productPrice = _offlineSandboxMode
-        ? (isTurkish ? '9,99 TL' : 'TRY 9.99')
-        : _monthlyProduct?.price ??
-              (_liveMode ? null : (isTurkish ? '9,99 TL' : '\$0.99'));
-    final priceTitle = _offlineSandboxMode
-        ? (isTurkish ? 'Aylık 9,99 TL' : 'TRY 9.99 / month')
-        : productPrice == null
+    final productPrice = _monthlyProduct?.price;
+    final priceTitle = productPrice == null
         ? (isTurkish ? 'Mağaza fiyatı alınamadı' : 'Store price unavailable')
         : isTurkish
         ? 'Aylık $productPrice'
         : '$productPrice / month';
-    final taxFootnote = _offlineSandboxMode
-        ? (isTurkish
-              ? 'Çevrimdışı test modu: Gerçek ödeme alınmaz.'
-              : 'Offline test mode: No real payment is charged.')
-        : !_liveMode
-        ? (isTurkish
-              ? 'Test modu: Gerçek ödeme alınmaz.'
-              : 'Test mode: No real payment is charged.')
-        : isTurkish
+    final taxFootnote = isTurkish
         ? 'Fiyat ve vergilendirme mağaza tarafından belirlenir.'
         : 'Price and applicable taxes are set by the store.';
     final buttonText = _isPremiumActive
         ? (isTurkish ? 'Premium Aktif' : 'Premium Active')
-        : _offlineSandboxMode
-        ? 'Aboneliği Başlat (Test Sürümü)'
         : productPrice == null
         ? (isTurkish ? 'Ürün yüklenemedi' : 'Product unavailable')
         : isTurkish
@@ -683,9 +467,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final canSubscribe =
         !_loading &&
         !_isPremiumActive &&
-        (_offlineSandboxMode ||
-            !_liveMode ||
-            (_isAvailable && _monthlyProduct != null));
+        _isAvailable &&
+        _monthlyProduct != null;
 
     return Scaffold(
       backgroundColor: _darkBackground,
@@ -981,21 +764,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                           : 'Restore purchases',
                     ),
                   ),
-                  if (!_isPremiumActive) ...[
-                    const SizedBox(height: 2),
-                    TextButton.icon(
-                      key: const Key('offline_test_subscribe_button'),
-                      onPressed: _loading ? null : _satinAlmaBasarili,
-                      icon: const Icon(Icons.bug_report_outlined, size: 15),
-                      label: Text(
-                        isTurkish
-                            ? 'Test Satın Alımı Yap (30 Günlük Simülasyon)'
-                            : 'Perform Test Purchase (30-Day Sandbox)',
-                        style: const TextStyle(fontSize: 12, color: Colors.white60),
-                      ),
-                    ),
-                  ],
-
                   const SizedBox(height: 16),
                   Text(
                     isTurkish

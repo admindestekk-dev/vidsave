@@ -1,6 +1,7 @@
 flask
 flask-cors
 Flask-Limiter
+python-dotenv>=1.0,<2
 requests
 yt-dlp
 curl-cffi

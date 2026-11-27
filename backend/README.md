@@ -1,7 +1,18 @@
 # Backend authentication and purchases
 
 Install `backend/requirements.txt` (the root requirements file is used by Render).
-Set `VIDSAVE_API_KEY` and supply `GOOGLE_APPLICATION_CREDENTIALS_JSON` as a
+Set `VIDSAVE_API_KEY` in the process environment or in the project-root `.env`
+file; `.env` values are loaded without overriding values already supplied by
+the hosting environment. Keep `.env` out of version control. Requests return
+`api_key.not_configured` (503) when the server key is missing and
+`api_key.invalid` (401) when `X-Api-Key` is absent or incorrect.
+
+The shared per-IP request limit defaults to `600 per minute`. Override it with
+`VIDSAVE_RATE_LIMIT` (for example `1200 per minute`) for the deployment's
+expected batch size. `VIDSAVE_RATE_LIMIT_STORAGE_URI` can point to shared
+storage such as Redis when running multiple workers.
+
+Supply `GOOGLE_APPLICATION_CREDENTIALS_JSON` as a
 secret environment variable containing the complete service-account JSON, not
 a file path. Never commit or log it. The Firebase project defaults to the
 service account's `project_id`; set `FIREBASE_PROJECT_ID` if the intended
@@ -29,9 +40,8 @@ claimed by whoever submits it first: use Play obfuscated account IDs and a
 recovery process if stronger purchase-to-account binding is required.
 
 Existing legacy entitlements cannot be proven and are ignored until verified
-again. The old simulated monthly subscription endpoint is disabled by default;
-`VIDSAVE_ENABLE_TEST_SUBSCRIPTIONS=true` enables it only for isolated developer
-environments and must never be enabled in production.
+again. Premium entitlements are granted only after Google Play purchase
+verification.
 
 Configuration failures return `google.config_unavailable` (503), Play or
 Firebase upstream failures `google.upstream_unavailable` (502), and malformed

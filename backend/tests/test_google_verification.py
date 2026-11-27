@@ -147,10 +147,6 @@ class GoogleEndpointTests(unittest.TestCase):
                 self.assertEqual(response.status_code, status)
                 self.assertEqual(response.get_json()["error"]["code"], code)
                 self.assertNotIn("secret-token", response.get_data(as_text=True))
-        with patch.dict(os.environ, {"VIDSAVE_ENABLE_TEST_SUBSCRIPTIONS": ""}):
-            self.assertEqual(self.client.post("/api/auth/subscribe-monthly", headers=headers, json={}).status_code, 403)
-
-
 class GoogleVerifierTests(unittest.TestCase):
     def test_firebase_verifier_classifies_invalid_and_upstream(self):
         from firebase_admin import auth

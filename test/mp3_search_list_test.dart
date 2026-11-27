@@ -66,6 +66,7 @@ class _FakeMusicDownloader extends MediaDownloader {
     ResolvedMedia media, {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
+    bool publishToMediaStore = true,
   }) async {
     final file = File('${_dir.path}/${media.fileName}');
     await file.writeAsBytes(const [1, 2, 3]);

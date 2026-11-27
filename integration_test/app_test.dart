@@ -107,6 +107,7 @@ class _IntegrationTestDownloader extends MediaDownloader {
     ResolvedMedia media, {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
+    bool publishToMediaStore = true,
   }) async {
     final file = File('${_testDir.path}${Platform.pathSeparator}${media.fileName}');
     await file.writeAsBytes(List.filled(1024 * 100, 65)); // 100 KB test dosyası

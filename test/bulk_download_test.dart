@@ -45,6 +45,7 @@ class _FakeDownloader extends MediaDownloader {
     ResolvedMedia media, {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
+    bool publishToMediaStore = true,
   }) async {
     onProgress?.call(100, 100);
     final tempFile = File('${Directory.systemTemp.path}/test_bulk.mp4');

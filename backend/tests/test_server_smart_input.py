@@ -49,13 +49,19 @@ class SmartInputTests(unittest.TestCase):
 
 class ResolveSearchRoutingTests(unittest.TestCase):
     def setUp(self):
-        self.client = server.app.test_client()
         self.original_api_key = server.API_KEY
-        server.API_KEY = ""
+        self.original_limiter_enabled = server.limiter.enabled
+        server.API_KEY = "test-api-key"
+        server.limiter.enabled = False
+        self.client = server.app.test_client()
+        self.client.environ_base["HTTP_X_API_KEY"] = server.API_KEY
+        server.limiter.reset()
         server._JOBS.clear()
 
     def tearDown(self):
         server.API_KEY = self.original_api_key
+        server.limiter.enabled = self.original_limiter_enabled
+        server.limiter.reset()
         server._JOBS.clear()
 
     def test_search_text_is_not_ssrf_validated_but_starts_a_job(self):
@@ -229,89 +235,34 @@ class PlatformSpecificTests(unittest.TestCase):
         self.assertEqual(server.ydl_opts["http_chunk_size"], 1024 * 1024)
 
 
-class SubscriptionMonthlyTests(unittest.TestCase):
+class PurchaseVerificationTests(unittest.TestCase):
     def setUp(self):
-        self.client = server.app.test_client()
         self._temporary_directory = tempfile.TemporaryDirectory()
         self._original_db_path = server.DB_PATH
         self._original_api_key = server.API_KEY
+        self._original_limiter_enabled = server.limiter.enabled
         server.DB_PATH = str(Path(self._temporary_directory.name) / "test.db")
-        server.API_KEY = ""
+        server.API_KEY = "test-api-key"
+        server.limiter.enabled = False
         server._init_db()
+        self.client = server.app.test_client()
+        self.client.environ_base["HTTP_X_API_KEY"] = server.API_KEY
+        server.limiter.reset()
 
     def tearDown(self):
         server.DB_PATH = self._original_db_path
         server.API_KEY = self._original_api_key
+        server.limiter.enabled = self._original_limiter_enabled
         server._JOBS.clear()
+        server.limiter.reset()
         self._temporary_directory.cleanup()
 
-    def test_turkish_subscription_accounting_is_9_99_try(self):
-        res = self.client.post("/api/auth/subscribe-monthly", json={"lang": "tr", "userId": "11111111-1111-4111-8111-111111111111"})
-        self.assertEqual(res.status_code, 200)
-        data = res.get_json()
-        self.assertTrue(data["success"])
-        sub = data["subscription"]
-        self.assertEqual(sub["amount"], 9.99)
-        self.assertEqual(sub["currency"], "TRY")
-        self.assertEqual(sub["lang"], "tr")
-        self.assertIn("9,99 TL/ay", sub["receiptMessage"])
-        self.assertIn("gerçek ödeme alınmadı", sub["receiptMessage"])
-
-    def test_english_subscription_accounting_is_0_99_usd(self):
-        res = self.client.post("/api/auth/subscribe-monthly", json={"lang": "en", "userId": "22222222-2222-4222-8222-222222222222"})
-        self.assertEqual(res.status_code, 200)
-        data = res.get_json()
-        self.assertTrue(data["success"])
-        sub = data["subscription"]
-        self.assertEqual(sub["amount"], 0.99)
-        self.assertEqual(sub["currency"], "USD")
-        self.assertEqual(sub["lang"], "en")
-        self.assertIn("$0.99/month", sub["receiptMessage"])
-        self.assertIn("no real payment was charged", sub["receiptMessage"])
-
-    @patch("server.sqlite3.connect", side_effect=sqlite3.OperationalError("disk full"))
-    @patch(
-        "server._auth_user_id",
-        return_value=("11111111-1111-4111-8111-111111111111", None),
-    )
-    def test_accounting_failure_does_not_activate_test_premium(
-        self, _mock_auth_user_id, _mock_connect
-    ):
+    def test_verify_purchase_requires_authenticated_user(self):
         response = self.client.post(
-            "/api/auth/subscribe-monthly",
-            json={"lang": "tr", "userId": "11111111-1111-4111-8111-111111111111"},
+            "/api/auth/verify-purchase", json={"token": "receipt"}
         )
-
-        self.assertEqual(response.status_code, 500)
-        data = response.get_json()
-        self.assertFalse(data["success"])
-        self.assertEqual(data["error"]["code"], "subscription.record_failed")
-
-
-    def test_verify_purchase_extends_premium_until_by_30_days(self):
-        res = self.client.post("/api/auth/verify-purchase", json={
-            "token": "google_play_purchase_token_xyz_123",
-            "productId": "vidsave_premium_monthly",
-            "userId": "33333333-3333-4333-8333-333333333333",
-            "lang": "tr",
-        })
-        self.assertEqual(res.status_code, 200)
-        data = res.get_json()
-        self.assertTrue(data["success"])
-        self.assertTrue(data["verified"])
-        self.assertEqual(data["userId"], "33333333-3333-4333-8333-333333333333")
-        self.assertIn("premiumUntil", data)
-        self.assertIn("30 gün uzatıldı", data["receiptMessage"])
-
-    def test_verify_purchase_missing_token_returns_bad_request(self):
-        res = self.client.post("/api/auth/verify-purchase", json={
-            "productId": "vidsave_premium_monthly",
-            "userId": "33333333-3333-4333-8333-333333333333",
-        })
-        self.assertEqual(res.status_code, 400)
-        data = res.get_json()
-        self.assertEqual(data["error"]["code"], "token.missing")
-
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["error"]["code"], "auth.required")
 
     def test_delete_account_only_deletes_the_requested_installation(self):
         user_a = "11111111-1111-4111-8111-111111111111"
@@ -375,7 +326,9 @@ class SubscriptionMonthlyTests(unittest.TestCase):
 
         server.API_KEY = "test-api-key"
         response = self.client.post(
-            "/api/auth/delete-account", json={"userId": user_id}
+            "/api/auth/delete-account",
+            headers={"X-Api-Key": "wrong"},
+            json={"userId": user_id},
         )
         self.assertEqual(response.status_code, 401)
         with closing(sqlite3.connect(server.DB_PATH)) as conn:

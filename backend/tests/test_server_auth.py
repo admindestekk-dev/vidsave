@@ -15,17 +15,23 @@ import server
 
 class AuthEndpointTests(unittest.TestCase):
     def setUp(self):
-        self.client = server.app.test_client()
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.original_db_path = server.DB_PATH
         self.original_api_key = server.API_KEY
+        self.original_limiter_enabled = server.limiter.enabled
         server.DB_PATH = str(Path(self.temporary_directory.name) / "auth-test.db")
-        server.API_KEY = ""
+        server.API_KEY = "test-api-key"
+        server.limiter.enabled = False
         server._init_db()
+        self.client = server.app.test_client()
+        self.client.environ_base["HTTP_X_API_KEY"] = server.API_KEY
+        server.limiter.reset()
 
     def tearDown(self):
         server.DB_PATH = self.original_db_path
         server.API_KEY = self.original_api_key
+        server.limiter.enabled = self.original_limiter_enabled
+        server.limiter.reset()
         self.temporary_directory.cleanup()
 
     def register(self, email="person@example.com", password="correct horse battery staple"):
@@ -105,28 +111,6 @@ class AuthEndpointTests(unittest.TestCase):
         logged_out = self.client.post("/api/auth/logout", headers=headers)
         self.assertEqual(logged_out.status_code, 200)
         self.assertEqual(self.client.get("/api/auth/me", headers=headers).status_code, 401)
-
-    def test_subscription_uses_authenticated_identity_not_body_identity(self):
-        registered = self.register().get_json()
-        response = self.client.post(
-            "/api/auth/subscribe-monthly",
-            headers={"Authorization": f"Bearer {registered['token']}"},
-            json={
-                "lang": "tr",
-                "userId": "22222222-2222-4222-8222-222222222222",
-            },
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["subscription"]["userId"], registered["user"]["id"])
-
-        unauthenticated = self.client.post(
-            "/api/auth/subscribe-monthly",
-            json={"lang": "tr", "userId": registered["user"]["id"]},
-        )
-        self.assertEqual(unauthenticated.status_code, 401)
-        self.assertEqual(
-            unauthenticated.get_json()["error"]["code"], "auth.required"
-        )
 
     def test_delete_account_requires_session_and_deletes_only_session_user(self):
         first = self.register("first@example.com").get_json()
@@ -225,53 +209,3 @@ if __name__ == "__main__":
         me_user = me.get_json()["user"]
         self.assertEqual(me_user["email"], "googleuser@gmail.com")
         self.assertEqual(me_user["name"], "Google User Updated")
-
-    def test_monthly_subscription_simulation_extends_premium_until_by_30_days(self):
-        # 1. Register new user via Google
-        res_auth = self.client.post(
-            "/api/auth/google",
-            json={
-                "email": "testuser@gmail.com",
-                "name": "Test User",
-            },
-        )
-        self.assertEqual(res_auth.status_code, 200)
-        auth_data = res_auth.get_json()
-        self.assertFalse(auth_data["is_premium"])
-        token = auth_data["token"]
-        user_id = auth_data["user"]["id"]
-
-        # 2. Simulate monthly subscription
-        res_sub = self.client.post(
-            "/api/auth/subscribe-monthly",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"lang": "tr"},
-        )
-        self.assertEqual(res_sub.status_code, 200)
-        sub_data = res_sub.get_json()
-        self.assertTrue(sub_data["success"])
-        self.assertTrue(sub_data["is_premium"])
-        self.assertTrue(sub_data["premium_until"])
-
-        # Verify database record in user_subscriptions
-        with closing(sqlite3.connect(server.DB_PATH)) as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT is_premium, premium_until, product_id FROM user_subscriptions WHERE user_id = ?",
-                (user_id,),
-            )
-            row = cur.fetchone()
-            self.assertIsNotNone(row)
-            self.assertEqual(row[0], 1)
-            self.assertIsNotNone(row[1])
-            self.assertEqual(row[2], "vidsave_premium_monthly")
-
-        # 3. Next Google login should reflect is_premium == True
-        res_login_again = self.client.post(
-            "/api/auth/google",
-            json={"email": "testuser@gmail.com"},
-        )
-        self.assertEqual(res_login_again.status_code, 200)
-        login_again_data = res_login_again.get_json()
-        self.assertTrue(login_again_data["is_premium"])
-        self.assertTrue(login_again_data["premium_until"])

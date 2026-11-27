@@ -31,7 +31,18 @@ class FfmpegShieldTests(unittest.TestCase):
             # extraction is retried without impersonation.
             self.assertEqual(
                 lines,
-                ["flask", "flask-cors", "requests", "yt-dlp", "curl-cffi", "gunicorn"],
+                [
+                    "flask",
+                    "flask-cors",
+                    "flask-limiter",
+                    "python-dotenv>=1.0,<2",
+                    "requests",
+                    "yt-dlp",
+                    "curl-cffi",
+                    "gunicorn",
+                    "firebase-admin>=6.5,<8",
+                    "google-auth>=2.29,<3",
+                ],
             )
 
     def test_audio_format_selector_uses_bestaudio(self):

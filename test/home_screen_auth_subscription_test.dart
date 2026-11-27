@@ -139,7 +139,6 @@ void main() {
               body: PremiumBanner(
                 authService: auth,
                 store: _SettingsStore(),
-                isPlayStoreLive: true,
               ),
             ),
           ),
@@ -215,7 +214,6 @@ void main() {
                 authService: auth,
                 store: _SettingsStore(),
                 httpClient: mockClient,
-                isPlayStoreLive: true,
               ),
             ),
           ),
@@ -254,72 +252,6 @@ void main() {
 
         expect(find.byType(SubscriptionScreen), findsOneWidget);
         expect(find.text('Mağaza fiyatı alınamadı'), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'isPlayStoreLive test shield: isPlayStoreLive == false invokes /api/auth/subscribe-monthly and does not touch Play Store',
-      (tester) async {
-        tester.view.physicalSize = const Size(1080, 2400);
-        tester.view.devicePixelRatio = 2;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-
-        final tokenStore = _MemoryTokenStore();
-        await tokenStore.saveToken('jwt-session-token');
-        await tokenStore.saveUserId('33333333-3333-4333-8333-333333333333');
-
-        bool monthlySubscribeCalled = false;
-        final mockClient = MockClient((request) async {
-          if (request.url.path == '/api/auth/subscribe-monthly') {
-            monthlySubscribeCalled = true;
-            return http.Response(
-              jsonEncode({
-                'status': 'ok',
-                'success': true,
-                'subscription': {
-                  'amount': 9.99,
-                  'currency': 'TRY',
-                  'premiumUntil': '2099-11-18T12:00:00Z',
-                  'receiptMessage':
-                      'Geliştirici test aboneliği etkinleştirildi.',
-                },
-              }),
-              200,
-              headers: {'content-type': 'application/json'},
-            );
-          }
-          return http.Response('Not Found', 404);
-        });
-
-        final auth = AuthService(
-          settingsStore: _SettingsStore(),
-          tokenStore: tokenStore,
-          httpClient: mockClient,
-        );
-
-        await tester.pumpWidget(
-          _buildTestApp(
-            child: SubscriptionScreen(
-              isPlayStoreLive: false,
-              httpClient: mockClient,
-              authService: auth,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        final subscribeButton = find.text('9,99 TL / Ay - Abone Ol');
-        expect(subscribeButton, findsOneWidget);
-        await tester.tap(subscribeButton);
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 200));
-
-        expect(monthlySubscribeCalled, isTrue);
-        expect(find.text('PREMIUM AKTİF'), findsOneWidget);
-
-        final prefs = await SharedPreferences.getInstance();
-        expect(prefs.getBool(SubscriptionScreen.prefKeyIsPremium), isTrue);
       },
     );
 

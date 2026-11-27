@@ -732,6 +732,7 @@ class MediaDownloader {
     ResolvedMedia media, {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
+    bool publishToMediaStore = true,
   }) async {
     final cleanUrl =
         Uri.tryParse(evrenselTemizUrl(media.url.toString())) ?? media.url;
@@ -764,6 +765,7 @@ class MediaDownloader {
         directory,
         onProgress: onProgress,
         timeout: timeout,
+        publishToMediaStore: publishToMediaStore,
       );
     }
 
@@ -793,7 +795,9 @@ class MediaDownloader {
       return _processAudioFile(downloadedFile, safeMedia, directory);
     }
 
-    await _publishToMediaStore(downloadedFile);
+    if (publishToMediaStore) {
+      await _publishToMediaStore(downloadedFile);
+    }
     return downloadedFile;
   }
 
@@ -803,6 +807,7 @@ class MediaDownloader {
     Directory directory, {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
+    bool publishToMediaStore = true,
   }) async {
     final tempVideoName =
         'temp_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
@@ -900,7 +905,9 @@ class MediaDownloader {
         audioFile: audioFile,
         outputFile: finalFile,
       );
-      await _publishToMediaStore(merged);
+      if (publishToMediaStore) {
+        await _publishToMediaStore(merged);
+      }
       return merged;
     } finally {
       // Clean up temporary partial files

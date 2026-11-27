@@ -137,15 +137,11 @@ Ad delivery and fill rates in each country depend on the AdMob account, app
 configuration, and available inventory; they cannot be guaranteed by client
 code alone.
 
-## Premium offline sandbox
+## Premium subscriptions
 
-In debug builds, if the Play Store is unavailable or the monthly product cannot
-be loaded, the Premium screen offers a clearly labeled local test option showing
-`9,99 TL / Ay` as a sample price. Activating it stores a 30-day Premium test
-entitlement on the device only and returns to the main download tab. It does not
-contact the backend or charge a payment method; the sample price is not billed.
-This fallback is disabled in release builds; production purchases continue to
-require a valid store product and purchase verification.
+Premium subscriptions are purchased through Google Play Billing and activated
+only after the backend verifies the purchase token. If the Play Store or monthly
+product is unavailable, the subscription cannot be started.
 
 ## Android external-app download shortcut
 

@@ -47,10 +47,19 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from dotenv import load_dotenv
 
 # Add project bin directories to PATH if present (e.g. for ffmpeg binary on Render)
 _server_dir = Path(__file__).resolve().parent
 _root_dir = _server_dir.parent
+
+
+def _load_environment(dotenv_path: Path | None = None) -> None:
+    load_dotenv(dotenv_path=dotenv_path or _root_dir / ".env", override=False)
+
+
+_load_environment()
+
 for _bin_candidate in [_root_dir / "bin", _server_dir / "bin", Path.home() / ".local" / "bin"]:
     if _bin_candidate.is_dir() and str(_bin_candidate) not in os.environ.get("PATH", ""):
         os.environ["PATH"] = f"{_bin_candidate}:{os.environ.get('PATH', '')}"
@@ -86,10 +95,16 @@ app = Flask(__name__)
 if os.environ.get("RENDER") == "true":
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=3)
 
+RATE_LIMIT = os.environ.get("VIDSAVE_RATE_LIMIT", "600 per minute").strip()
+if not re.fullmatch(r"[1-9]\d* per minute", RATE_LIMIT):
+    raise RuntimeError(
+        "VIDSAVE_RATE_LIMIT must use the format '<positive number> per minute'"
+    )
+
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
-    application_limits=["10 per minute"],
+    application_limits=[RATE_LIMIT],
     application_limits_exempt_when=lambda: request.path == "/" or request.method == "OPTIONS",
     storage_uri=os.environ.get("VIDSAVE_RATE_LIMIT_STORAGE_URI", "memory://"),
     headers_enabled=True,
@@ -116,7 +131,9 @@ except Exception:
 # Shared secret supplied through the server environment.
 API_KEY = os.environ.get("VIDSAVE_API_KEY", "").strip()
 if not API_KEY:
-    logging.error("VIDSAVE_API_KEY is not configured; API requests will be rejected")
+    logging.error(
+        "VIDSAVE_API_KEY is missing; set it in the process environment or project .env file"
+    )
 
 # Directory where yt-dlp writes merged/transcoded output.
 WORK_DIR = os.environ.get("VIDSAVE_WORK_DIR") or os.path.join(
@@ -1941,8 +1958,26 @@ def _authorized() -> bool:
 def _require_api_key() -> tuple[Response, int] | None:
     if request.method != "OPTIONS" and (
         request.path == "/download" or request.path.startswith("/api/")
-    ) and not _authorized():
-        return jsonify(status="error", error={"code": "unauthorized"}), 401
+    ):
+        if not API_KEY:
+            return jsonify(
+                status="error",
+                error={
+                    "code": "api_key.not_configured",
+                    "message": (
+                        "The server API key is not configured. Set "
+                        "VIDSAVE_API_KEY in the environment or project .env file."
+                    ),
+                },
+            ), 503
+        if not _authorized():
+            return jsonify(
+                status="error",
+                error={
+                    "code": "api_key.invalid",
+                    "message": "A valid X-Api-Key header is required.",
+                },
+            ), 401
     return None
 
 
@@ -3279,10 +3314,7 @@ def api_auth_google() -> Response | tuple[Response, int]:
         premium_until = None
         if sub_row:
             prem_until_str, is_prem_flag = sub_row[0], sub_row[1]
-            trusted_source = sub_row[2] == "google_play" or (
-                sub_row[2] == "test" and os.environ.get("VIDSAVE_ENABLE_TEST_SUBSCRIPTIONS") == "true"
-            )
-            if is_prem_flag and prem_until_str and trusted_source:
+            if is_prem_flag and prem_until_str and sub_row[2] == "google_play":
                 try:
                     premium_date = datetime.datetime.fromisoformat(
                         str(prem_until_str).replace("Z", "+00:00")
@@ -3351,119 +3383,6 @@ def api_logout() -> Response | tuple[Response, int]:
         )
         conn.commit()
     return jsonify(status="ok", success=True)
-
-
-@app.post("/api/auth/subscribe-monthly")
-def api_subscribe_monthly() -> Response | tuple[Response, int]:
-    """Monthly subscription accounting endpoint with psychological pricing (9.99 TRY vs 0.99 USD)."""
-    if not _authorized():
-        return jsonify(status="error", error={"code": "unauthorized"}), 401
-    if os.environ.get("VIDSAVE_ENABLE_TEST_SUBSCRIPTIONS") != "true":
-        return jsonify(status="error", error={"code": "subscription.test_disabled"}), 403
-
-    body = request.get_json(silent=True) or {}
-    user_id, auth_error = _auth_user_id(body)
-    if auth_error:
-        return auth_error
-    assert user_id is not None
-
-    lang = str(body.get("lang") or request.args.get("lang") or "tr").strip().lower()
-
-    # Psychological pricing based on language / region
-    is_tr = lang == "tr"
-    amount = 9.99 if is_tr else 0.99
-    currency = "TRY" if is_tr else "USD"
-
-    subscription_id = f"sub_{uuid.uuid4().hex[:12]}"
-    invoice_id = f"inv_{uuid.uuid4().hex[:12]}"
-
-    now = datetime.datetime.now(datetime.timezone.utc)
-    current_until = None
-    new_until_str = (now + datetime.timedelta(days=30)).isoformat()
-
-    # Accounting record persistence & 30-day premium extension in SQLite
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("SELECT premium_until FROM user_subscriptions WHERE user_id = ? AND entitlement_source = 'test'", (user_id,))
-        row = cur.fetchone()
-        if row and row[0]:
-            try:
-                parsed_ts = datetime.datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
-                if parsed_ts > now:
-                    current_until = parsed_ts
-            except Exception:
-                pass
-
-        base_time = current_until or now
-        new_until = base_time + datetime.timedelta(days=30)
-        new_until_str = new_until.isoformat()
-
-        # Update or insert into user_subscriptions for active premium & 30-day extension
-        conn.execute(
-            """
-            INSERT INTO user_subscriptions (user_id, is_premium, premium_until, product_id, purchase_token, entitlement_source, updated_at)
-            VALUES (?, 1, ?, 'vidsave_premium_monthly', ?, 'test', CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET
-                is_premium = 1,
-                premium_until = excluded.premium_until,
-                product_id = excluded.product_id,
-                purchase_token = excluded.purchase_token,
-                entitlement_source = excluded.entitlement_source,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (user_id, new_until_str, f"sim_{subscription_id}"),
-        )
-
-        conn.execute(
-            """
-            INSERT INTO subscriptions (
-                id, user_id, lang, amount, currency, vat_included, status, invoice_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (subscription_id, user_id, lang, amount, currency, 1, "active", invoice_id),
-        )
-        conn.commit()
-    except sqlite3.Error:
-        logging.exception("Subscription accounting recording failed")
-        return jsonify(
-            status="error",
-            success=False,
-            error={
-                "code": "subscription.record_failed",
-                "message": "Abonelik kaydı oluşturulamadı. Lütfen tekrar deneyin.",
-            },
-        ), 500
-    finally:
-        if conn:
-            conn.close()
-
-    receipt_message = (
-        "Test aboneliği etkinleştirildi: 9,99 TL/ay (gerçek ödeme alınmadı)."
-        if is_tr
-        else "Developer test subscription enabled: $0.99/month (no real payment was charged)."
-    )
-
-    return jsonify(
-        status="ok",
-        success=True,
-        is_premium=True,
-        premium_until=new_until_str,
-        subscription={
-            "id": subscription_id,
-            "userId": user_id,
-            "status": "active",
-            "tier": "premium_monthly",
-            "amount": amount,
-            "currency": currency,
-            "lang": lang,
-            "vatIncluded": True,
-            "invoiceId": invoice_id,
-            "receiptMessage": receipt_message,
-            "premiumUntil": new_until_str,
-        },
-    )
 
 
 @app.post("/api/auth/verify-purchase")

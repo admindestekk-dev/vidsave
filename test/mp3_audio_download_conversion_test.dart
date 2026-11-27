@@ -44,6 +44,7 @@ class _FakeVideoDownloader extends MediaDownloader {
     ResolvedMedia media, {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
+    bool publishToMediaStore = true,
   }) async {
     return fakeDownloadedFile;
   }

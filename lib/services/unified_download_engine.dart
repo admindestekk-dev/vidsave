@@ -13,7 +13,9 @@ import '../download_notification_service.dart';
 import '../ffmpeg_service.dart';
 import '../media_downloader.dart';
 import '../storage_service.dart';
+import '../subscription_screen.dart';
 import 'api_service.dart';
+import 'android_video_watermarker.dart';
 import 'download_manager.dart';
 import '../youtube_restriction.dart';
 import 'pro_server_reward_service.dart';
@@ -110,6 +112,7 @@ class UnifiedDownloadEngine {
     double? startTime,
     double? endTime,
     String? audioEffect,
+    bool applyWatermark = true,
     void Function(
       int received,
       int? total,
@@ -140,6 +143,14 @@ class UnifiedDownloadEngine {
         type.toLowerCase() == 'picture' ||
         type.toLowerCase() == 'foto';
     final normalizedType = isAudio ? 'mp3' : (isPhoto ? 'photo' : 'video');
+    final isVideo = !isAudio && !isPhoto;
+    final isPremium = isVideo
+        ? await SubscriptionScreen.readPremiumStatus()
+        : false;
+    if (isVideo && !applyWatermark && !isPremium) {
+      throw StateError('Filigransız indirme Premium aboneliği gerektirir.');
+    }
+    final shouldWatermark = Platform.isAndroid && isVideo && applyWatermark && !isPremium;
 
     final notifService = DownloadNotificationService.instance;
     final notificationId = notifService.allocateNotificationId();
@@ -349,6 +360,10 @@ class UnifiedDownloadEngine {
             }
           }
 
+          if (shouldWatermark) {
+            downloadedFile = await _applyVideoWatermark(downloadedFile);
+          }
+
           // Veritabanına kaydet
           int fileSize = 0;
           try {
@@ -397,6 +412,9 @@ class UnifiedDownloadEngine {
           }
           return downloadedFile;
         } catch (serverStreamErr) {
+          if (serverStreamErr is _WatermarkProcessingException) {
+            rethrow;
+          }
           debugPrint(
             'UnifiedDownloadEngine: Sunucu akış indirmesi başarısız oldu ($serverStreamErr). Cihaz içi emniyet motoruna geçiliyor...',
           );
@@ -442,6 +460,7 @@ class UnifiedDownloadEngine {
       final downloader = fallbackDownloader ?? MediaDownloader();
       final downloadedFile = await downloader.download(
         media,
+        publishToMediaStore: false,
         onProgress: (received, total) {
           final now = DateTime.now();
           if (lastProgressTime != null && lastReceivedBytes != null) {
@@ -550,6 +569,10 @@ class UnifiedDownloadEngine {
         }
       }
 
+      if (shouldWatermark) {
+        targetDownloadedFile = await _applyVideoWatermark(targetDownloadedFile);
+      }
+
       await MediaDownloader.publishToMediaStore(targetDownloadedFile);
 
       final finalFileName = targetDownloadedFile.path
@@ -610,4 +633,25 @@ class UnifiedDownloadEngine {
       rethrow;
     }
   }
+
+  Future<File> _applyVideoWatermark(File source) async {
+    try {
+      final watermarked = await AndroidVideoWatermarker.apply(source);
+      if (watermarked.path != source.path && await source.exists()) {
+        await source.delete();
+      }
+      return watermarked;
+    } catch (error) {
+      throw _WatermarkProcessingException(error);
+    }
+  }
+}
+
+class _WatermarkProcessingException implements Exception {
+  const _WatermarkProcessingException(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'Video filigranı uygulanamadı: $cause';
 }

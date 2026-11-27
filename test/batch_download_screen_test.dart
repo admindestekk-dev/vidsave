@@ -48,6 +48,7 @@ class _FakeDownloader extends MediaDownloader {
     ResolvedMedia media, {
     DownloadProgressCallback? onProgress,
     Duration timeout = const Duration(minutes: 30),
+    bool publishToMediaStore = true,
   }) async {
     onProgress?.call(50, 100);
     await Future<void>.delayed(const Duration(milliseconds: 10));
