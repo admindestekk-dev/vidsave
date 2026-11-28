@@ -36,6 +36,7 @@ import 'screens/in_app_media_browser_screen.dart';
 import 'remote_config_service.dart';
 import 'welcome_screen.dart';
 import 'home_screen.dart';
+import 'subscription_screen.dart';
 import 'admob_banner_widget.dart';
 import 'admob_service.dart';
 import 'services/download_manager.dart';
@@ -2614,7 +2615,10 @@ class _PlatformSearchDownloadModalState
     }
   }
 
-  Future<void> _startDownloadQuality(VideoQuality quality) async {
+  Future<void> _startDownloadQuality(
+    VideoQuality quality, {
+    bool applyWatermark = true,
+  }) async {
     final rawText = _controller.text.trim();
     if (rawText.isEmpty) return;
 
@@ -2641,8 +2645,28 @@ class _PlatformSearchDownloadModalState
 
     await AdmobService.instance.showRewardedAdOrBypass(
       onRewardEarned: () async {
-        await _executeDownloadQuality(quality, text, parsed, isUrl);
+        await _executeDownloadQuality(
+          quality,
+          text,
+          parsed,
+          isUrl,
+          applyWatermark: applyWatermark,
+        );
       },
+    );
+  }
+
+  Future<void> _startWatermarkFreeDownload() async {
+    final isPremium = await SubscriptionScreen.readPremiumStatus();
+    if (!mounted) return;
+    if (!isPremium) {
+      await handlePremiumClick(context);
+      return;
+    }
+
+    await _startDownloadQuality(
+      _qualitiesFor(_preview!).first,
+      applyWatermark: false,
     );
   }
 
@@ -2650,8 +2674,9 @@ class _PlatformSearchDownloadModalState
     VideoQuality quality,
     String text,
     Uri? parsed,
-    bool isUrl,
-  ) async {
+    bool isUrl, {
+    required bool applyWatermark,
+  }) async {
     final cleanText = evrenselTemizUrl(text);
     final kind = widget.platform.isAudio
         ? DownloadKind.audio
@@ -2690,6 +2715,7 @@ class _PlatformSearchDownloadModalState
         type: widget.platform.isAudio ? 'mp3' : 'video',
         preferredTitle: modalDisplayTitle,
         height: height,
+        applyWatermark: applyWatermark,
         onProgress: (received, total, progress, speed, status) {
           if (!mounted) return;
           final speedText = speed.isNotEmpty ? ' ($speed)' : '';
@@ -3499,6 +3525,27 @@ class _PlatformSearchDownloadModalState
                   ),
                 );
               }),
+              if (!widget.platform.isAudio) ...[
+                const SizedBox(height: 4),
+                OutlinedButton.icon(
+                  key: const ValueKey('watermark_free_download'),
+                  onPressed: _downloading ? null : _startWatermarkFreeDownload,
+                  icon: const Icon(Icons.workspace_premium_rounded),
+                  label: Text(
+                    AppLocalizations.of(context).text(
+                      'download_without_watermark',
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFB8860B),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    side: const BorderSide(color: Color(0xFFE6C875)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ],
         ),

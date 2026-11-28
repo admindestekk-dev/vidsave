@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vid_downloader_app/admob_service.dart';
 import 'package:vid_downloader_app/backend_settings.dart';
 import 'package:vid_downloader_app/main.dart';
 import 'package:vid_downloader_app/media_downloader.dart';
 import 'package:vid_downloader_app/media_library.dart';
+import 'package:vid_downloader_app/subscription_screen.dart';
 import 'package:vid_downloader_app/services/download_manager.dart';
 
 class _MockMediaLibrary implements MediaLibrary {
@@ -117,6 +119,7 @@ class _MockDownloader extends MediaDownloader {
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     AdmobService.instance.disableAdsForTesting = true;
     DownloadManager.instance.clearAllTasks();
   });
@@ -172,6 +175,7 @@ void main() {
     expect(find.text('1080p Full HD'), findsOneWidget);
     expect(find.text('720p HD'), findsOneWidget);
     expect(find.text('480p Standart'), findsOneWidget);
+    expect(find.byKey(const ValueKey('watermark_free_download')), findsOneWidget);
 
     // Each quality has its own INDIR button beside it
     final indirButtons = find.text('İNDİR');
@@ -193,6 +197,49 @@ void main() {
 
     // Confirm that 720 was resolved
     expect(resolver.resolvedCalls.any((call) => call.contains('height=720')), isTrue);
+  });
+
+  testWidgets('premium watermark-free option downloads the best quality', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      SubscriptionScreen.prefKeyIsPremium: true,
+      SubscriptionScreen.prefKeyPremiumUntil: '2099-12-31T23:59:59Z',
+    });
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final resolver = _MockResolver();
+    final downloader = _MockDownloader();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VidSaveHomePage(
+          library: const _MockMediaLibrary(),
+          backendSettingsStore: _MockSettingsStore(),
+          mediaResolver: resolver,
+          mediaDownloader: downloader,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('FB VİDEO İNDİR'));
+    await tester.pumpAndSettle();
+
+    final searchInput = find.widgetWithText(
+      TextField,
+      'Video ara veya bağlantı yapıştırın',
+    );
+    await tester.enterText(searchInput, 'https://facebook.com/reel/12345');
+    await tester.tap(find.text('ARA'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('watermark_free_download')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(resolver.resolvedCalls, contains('/reel/12345|height=null'));
   });
 
   testWidgets('tapping Pinterest platform tile opens search modal with correct styling and allowed domains', (

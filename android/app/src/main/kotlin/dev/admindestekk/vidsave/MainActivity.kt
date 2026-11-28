@@ -599,25 +599,29 @@ class MainActivity : FlutterActivity() {
         requestedName: String,
         result: MethodChannel.Result,
     ) {
-        try {
-            val source = File(sourcePath)
-            if (!source.isFile) {
-                throw IllegalArgumentException("Kaynak medya dosyası bulunamadı.")
+        Thread({
+            try {
+                val source = File(sourcePath)
+                if (!source.isFile) {
+                    throw IllegalArgumentException("Kaynak medya dosyası bulunamadı.")
+                }
+                val fileName = requestedName
+                    .substringAfterLast('/')
+                    .substringAfterLast('\\')
+                    .ifBlank { source.name }
+                val mimeType = mimeTypeFor(fileName)
+                val savedLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    exportWithMediaStore(source, fileName, mimeType)
+                } else {
+                    exportToLegacyDownloads(source, fileName, mimeType)
+                }
+                runOnUiThread { result.success(savedLocation) }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    result.error("export_failed", error.message ?: "Dosya kaydedilemedi.", null)
+                }
             }
-            val fileName = requestedName
-                .substringAfterLast('/')
-                .substringAfterLast('\\')
-                .ifBlank { source.name }
-            val mimeType = mimeTypeFor(fileName)
-            val savedLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                exportWithMediaStore(source, fileName, mimeType)
-            } else {
-                exportToLegacyDownloads(source, fileName, mimeType)
-            }
-            result.success(savedLocation)
-        } catch (error: Exception) {
-            result.error("export_failed", error.message ?: "Dosya kaydedilemedi.", null)
-        }
+        }, "vidsave-download-export").start()
     }
 
     private fun isAudioFile(fileName: String): Boolean {
